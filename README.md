@@ -1,0 +1,2 @@
+# hattrickmanager
+Hattrick Manager Assistant
