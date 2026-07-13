@@ -1,0 +1,119 @@
+.steps {
+  list-style: none;
+  margin: 40px auto 0;
+  padding: 0;
+  max-width: 640px;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding-bottom: 28px;
+}
+
+/* Соединительная линия между шагами — простой визуальный "путь" 1→2→3→4→5 */
+.step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 17px;
+  top: 36px;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-border);
+}
+
+.stepNumber {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-bg-darker);
+  font-weight: 800;
+  font-size: 15px;
+  z-index: 1;
+}
+
+.stepText {
+  margin-top: 6px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-text);
+}
+
+.domain {
+  background: rgba(201, 162, 39, 0.14);
+  color: var(--color-accent);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.95em;
+  font-weight: 700;
+}
+
+.emphasis {
+  color: var(--color-accent);
+}
+
+.revokeCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  max-width: 640px;
+  margin: 48px auto 0;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+.revokeIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(201, 162, 39, 0.12);
+  font-size: 20px;
+}
+
+.revokeTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.revokeText {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  margin-top: 8px;
+  line-height: 1.55;
+}
+
+@media (max-width: 560px) {
+  .step {
+    gap: 12px;
+  }
+
+  .stepNumber {
+    width: 30px;
+    height: 30px;
+    font-size: 13px;
+  }
+
+  .step:not(:last-child)::before {
+    left: 14px;
+    top: 30px;
+  }
+
+  .revokeCard {
+    flex-direction: column;
+    gap: 12px;
+  }
+}

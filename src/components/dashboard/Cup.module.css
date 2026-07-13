@@ -1,0 +1,346 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 0 0 14px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 720px) {
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Карточка кубка: значок + название + краткий результат последнего матча +
+   статус справа. Это <button> — клик разворачивает/сворачивает путь по
+   сетке и призовые ниже (см. .expanded), для любого статуса кубка, у
+   которого есть данные о пройденном пути. */
+.cupHeadRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cupHeadRow:disabled {
+  cursor: default;
+}
+
+.expandChevron {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  transition: transform 0.15s ease;
+}
+
+.expandChevronOpen {
+  transform: rotate(180deg);
+}
+
+.cupIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1.5px solid var(--color-border);
+  background: var(--color-bg-darker);
+  font-size: 20px;
+}
+
+.cupHeadBody {
+  flex: 1 1 auto;
+  min-width: 160px;
+}
+
+.lastMatchLine {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.expanded {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--color-border);
+}
+
+.nextMatchBlock {
+  margin-bottom: 18px;
+}
+
+.prizeNote {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* Текущий статус в кубке */
+.statusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.cupName {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.cupRound {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.statusTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 5px 14px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.statusIn {
+  color: var(--color-good);
+  background: rgba(76, 175, 111, 0.14);
+}
+
+.statusIn .statusDot {
+  background: var(--color-good);
+}
+
+.statusOut {
+  color: var(--color-bad);
+  background: rgba(192, 80, 63, 0.14);
+}
+
+.statusOut .statusDot {
+  background: var(--color-bad);
+}
+
+.statusChampion {
+  color: var(--color-accent);
+  background: rgba(201, 162, 39, 0.16);
+}
+
+.statusChampion .statusDot {
+  background: var(--color-accent);
+}
+
+/* Ближайший матч — тот же плотный формат строки, что и на Обзоре */
+.matchRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 13.5px;
+}
+
+.matchDate {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.matchOpponent {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+}
+
+.homeTag {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex: none;
+}
+
+/* Вертикальный таймлайн раундов */
+.timeline {
+  display: flex;
+  flex-direction: column;
+}
+
+.timelineItem {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  padding-bottom: 20px;
+}
+
+.timelineItem:last-child {
+  padding-bottom: 0;
+}
+
+.timelineLine {
+  position: absolute;
+  left: 13px;
+  top: 28px;
+  bottom: -20px;
+  width: 2px;
+  background: var(--color-border);
+}
+
+.timelineItem:last-child .timelineLine {
+  display: none;
+}
+
+.timelineDot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  font-size: 12px;
+  font-weight: 800;
+  z-index: 1;
+}
+
+.timelineDotWon {
+  background: rgba(76, 175, 111, 0.15);
+  color: var(--color-good);
+  border: 2px solid var(--color-good);
+}
+
+.timelineDotLost {
+  background: rgba(192, 80, 63, 0.15);
+  color: var(--color-bad);
+  border: 2px solid var(--color-bad);
+}
+
+.timelineDotCurrent {
+  background: var(--color-accent);
+  color: var(--color-bg-darker);
+  border: 2px solid var(--color-accent);
+  box-shadow: 0 0 0 4px rgba(201, 162, 39, 0.2);
+}
+
+.timelineDotUpcoming {
+  background: none;
+  color: var(--color-text-muted);
+  border: 2px dashed var(--color-border);
+  opacity: 0.7;
+}
+
+.timelineBody {
+  flex: 1;
+  padding-top: 2px;
+  min-width: 0;
+}
+
+.timelineRound {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.timelineItemUpcoming .timelineRound,
+.timelineItemUpcoming .timelineDetail {
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
+.timelineItemCurrent .timelineRound {
+  color: var(--color-accent);
+}
+
+.timelineDetail {
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.timelineScore {
+  font-weight: 800;
+  margin-left: 6px;
+}
+
+.timelineScoreWon {
+  color: var(--color-good);
+}
+
+.timelineScoreLost {
+  color: var(--color-bad);
+}
+
+/* Таблица призовых */
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  padding: 0 8px 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table td {
+  padding: 8px;
+  border-bottom: 1px solid rgba(44, 74, 64, 0.6);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.prizeCell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}

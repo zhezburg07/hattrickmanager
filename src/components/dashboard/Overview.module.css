@@ -1,0 +1,746 @@
+/* Компактный layout вкладки "Обзор" в духе плотных дашбордов Tomattrick —
+   много мелких панелей на экране, минимум отступов, узкая типографика. */
+
+.page {
+  padding: 24px 0 0;
+}
+
+/* Верхняя акцентная полоса-заголовок */
+.titleBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: linear-gradient(90deg, var(--color-accent), var(--color-accent-hover));
+  color: var(--color-bg-darker);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+}
+
+.titleBarLabel {
+  font-size: 15px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.titleBarClub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.titleBarCrest {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: rgba(15, 33, 28, 0.18);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.titleBarClub b {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+/* Баннер "Демо-режим" — показывается, пока команда не подключена к Hattrick
+   (нет сохранённого Access Token) или запрос реальных данных не удался.
+   Пропадает сам собой, как только teamdetails.xml успешно получен и
+   разобран — тогда дальше по странице показываются реальные данные. */
+.demoBanner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-bottom: 12px;
+}
+
+.demoBannerIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(201, 162, 39, 0.14);
+  color: var(--color-accent);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.demoBannerBody {
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+.demoBannerTitle {
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--color-accent);
+}
+
+.demoBannerText {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.demoBannerAction {
+  flex: none;
+  font-size: 13px;
+  padding: 9px 16px;
+}
+
+.demoBannerList {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+/* Временная отладочная панель CHPP-запросов — намеренно яркая/заметная
+   (пунктирная рамка цвета "bad"), чтобы было видно, что это диагностический,
+   а не постоянный элемент интерфейса. */
+.debugPanel {
+  border: 2px dashed var(--color-bad);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  background: rgba(192, 80, 63, 0.06);
+}
+
+.debugPanelTitle {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--color-bad);
+  margin-bottom: 10px;
+}
+
+.debugEntry {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  background: var(--color-bg-darker);
+}
+
+.debugSummary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--color-text);
+}
+
+.debugBody {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.debugLabel {
+  margin-top: 6px;
+  font-weight: 700;
+}
+
+.debugRaw {
+  margin-top: 4px;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 11px;
+  font-family: "Consolas", "Courier New", monospace;
+}
+
+/* Сетка панелей */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.span2 {
+  grid-column: span 2;
+}
+
+.span3 {
+  grid-column: span 3;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .span3 {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 600px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .span2,
+  .span3 {
+    grid-column: span 1;
+  }
+}
+
+.panel {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+/* Нейтральная иконка-подсказка рядом с заголовком панели (при наведении
+   показывает title-текст) — тот же приём, что и в Lineup.module.css. */
+.infoHint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: help;
+}
+
+.infoHint:hover {
+  color: var(--color-accent);
+}
+
+.panelTitle {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 0 0 6px;
+}
+
+.panelHeadRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.panelHint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.panelLink {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.panelLink:hover {
+  color: var(--color-accent-hover);
+}
+
+/* Плотная таблица лиги */
+.denseTableWrap {
+  overflow-x: auto;
+}
+
+.denseTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.denseTable th {
+  text-align: left;
+  font-size: 9.5px;
+  color: var(--color-text-muted);
+  font-weight: 700;
+  padding: 0 4px 4px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.denseTable td {
+  padding: 3px 4px;
+  border-bottom: 1px solid rgba(44, 74, 64, 0.5);
+  white-space: nowrap;
+}
+
+.denseTable tr:last-child td {
+  border-bottom: none;
+}
+
+.numCell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.teamCell {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.posCell {
+  color: var(--color-text-muted);
+  width: 16px;
+}
+
+.rowUs td {
+  font-weight: 700;
+}
+
+.rowUs {
+  outline: 1.5px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.zonePromotion {
+  background: rgba(76, 175, 111, 0.12);
+}
+
+.zonePlayoff {
+  background: rgba(217, 164, 65, 0.14);
+}
+
+.zoneRelegation {
+  background: rgba(192, 80, 63, 0.12);
+}
+
+.zonePromotion td:first-child {
+  border-left: 2px solid var(--color-good);
+}
+
+.zonePlayoff td:first-child {
+  border-left: 2px solid var(--color-warn);
+}
+
+.zoneRelegation td:first-child {
+  border-left: 2px solid var(--color-bad);
+}
+
+.last5 {
+  display: flex;
+  gap: 2px;
+}
+
+.last5Icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  font-size: 8px;
+  font-weight: 800;
+  flex: none;
+}
+
+.last5Win {
+  color: var(--color-good);
+  background: rgba(76, 175, 111, 0.15);
+}
+
+.last5Draw {
+  color: var(--color-text-muted);
+  background: rgba(169, 189, 181, 0.15);
+}
+
+.last5Loss {
+  color: var(--color-bad);
+  background: rgba(192, 80, 63, 0.15);
+}
+
+/* Матчи: два мини-списка бок о бок */
+.matchesCols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 14px;
+}
+
+@media (max-width: 600px) {
+  .matchesCols {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
+.matchesColTitle {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin: 0 0 4px;
+}
+
+.matchRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(44, 74, 64, 0.5);
+  font-size: 11.5px;
+}
+
+.matchRow:last-child {
+  border-bottom: none;
+}
+
+.matchDate {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+  width: 78px;
+}
+
+.matchTime {
+  color: var(--color-text-muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.matchOpponent {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.matchScore {
+  flex: none;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.matchResultWin {
+  color: var(--color-good);
+}
+
+.matchResultDraw {
+  color: var(--color-warn);
+}
+
+.matchResultLoss {
+  color: var(--color-bad);
+}
+
+/* Список строк общего назначения (Персонал) */
+.rowList {
+  display: flex;
+  flex-direction: column;
+}
+
+.rowListItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(44, 74, 64, 0.5);
+  font-size: 12px;
+}
+
+.rowListItem:last-child {
+  border-bottom: none;
+}
+
+.rowDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.rowDotOn {
+  background: var(--color-good);
+}
+
+.rowDotOff {
+  background: var(--color-text-muted);
+  opacity: 0.5;
+}
+
+.rowLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowValue {
+  flex: none;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rowValueOn {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+/* Финансы: компактный список из трёх строк */
+.financeList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.financeList .rowListItem {
+  justify-content: space-between;
+}
+
+.financeIncome {
+  color: var(--color-good);
+  font-weight: 700;
+}
+
+.financeExpense {
+  color: var(--color-bad);
+  font-weight: 700;
+}
+
+.financeBalance {
+  font-weight: 800;
+  color: var(--color-accent);
+}
+
+/* Рейтинг силы: крупное число + позиция в общемировом рейтинге */
+.powerRatingValue {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--color-accent);
+  line-height: 1.2;
+}
+
+.powerRatingRank {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+/* Состав: краткая сводка */
+.summaryRow {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.summaryRow b {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+/* Болельщики: три строки текста */
+.fansLines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.fansLines b {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.moodGood {
+  color: var(--color-good);
+  font-weight: 700;
+}
+
+.moodWarn {
+  color: var(--color-warn);
+  font-weight: 700;
+}
+
+.moodBad {
+  color: var(--color-bad);
+  font-weight: 700;
+}
+
+/* Герой и Ноль недели */
+.highlightGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .highlightGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.highlightCard {
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--color-bg-darker);
+  border: 1px solid var(--color-border);
+}
+
+.highlightHero {
+  border-color: var(--color-good);
+}
+
+.highlightZero {
+  border-color: var(--color-bad);
+}
+
+.highlightTitle {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--color-text-muted);
+}
+
+.highlightHero .highlightTitle {
+  color: var(--color-good);
+}
+
+.highlightZero .highlightTitle {
+  color: var(--color-bad);
+}
+
+.highlightName {
+  font-size: 15px;
+  font-weight: 800;
+  margin-top: 2px;
+}
+
+.highlightMeta {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.highlightMeta b {
+  color: var(--color-text);
+}
+
+.highlightStats {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.highlightNote {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  margin: 8px 0 0;
+  line-height: 1.4;
+}
+
+.trendUp {
+  color: var(--color-good);
+  font-weight: 700;
+  margin-left: 3px;
+}
+
+.trendDown {
+  color: var(--color-bad);
+  font-weight: 700;
+  margin-left: 3px;
+}
+
+.trendFlat {
+  color: var(--color-text-muted);
+  margin-left: 3px;
+}
+
+/* Изменения TSI за неделю: два столбца (прогресс / регресс) */
+.tsiCols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 14px;
+}
+
+@media (max-width: 600px) {
+  .tsiCols {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
+.tsiRow {
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(44, 74, 64, 0.5);
+}
+
+.tsiRow:last-child {
+  border-bottom: none;
+}
+
+.tsiRowTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+}
+
+.tsiName {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tsiRowSub {
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+  margin-top: 1px;
+}
+
+.tsiUp {
+  flex: none;
+  color: var(--color-good);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tsiDown {
+  flex: none;
+  color: var(--color-bad);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

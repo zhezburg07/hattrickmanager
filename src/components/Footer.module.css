@@ -1,0 +1,45 @@
+.footer {
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-darker);
+  padding: 32px 0;
+}
+
+.inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.brand {
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.links {
+  display: flex;
+  gap: 16px;
+}
+
+.link {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  transition: color 0.15s ease;
+}
+
+.link:hover {
+  color: var(--color-accent);
+}
+
+.disclaimer {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  max-width: 620px;
+}
+
+.copyright {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 8px;
+}

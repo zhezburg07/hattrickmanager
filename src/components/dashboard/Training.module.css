@@ -1,0 +1,141 @@
+.card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 0 0 14px;
+}
+
+/* Тип тренировки */
+.typeGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.typeBtn {
+  background: var(--color-bg-darker);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.typeBtn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.typeBtnActive {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg-darker);
+}
+
+/* Ползунки */
+.sliderBlock + .sliderBlock {
+  margin-top: 26px;
+}
+
+.sliderHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 13.5px;
+  color: var(--color-text-muted);
+}
+
+.sliderHead b {
+  color: var(--color-accent);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.slider {
+  width: 100%;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.sliderHint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+/* Последние изменения навыков */
+.skillChangeList {
+  display: flex;
+  flex-direction: column;
+}
+
+.skillChangeRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(44, 74, 64, 0.6);
+  font-size: 13.5px;
+}
+
+.skillChangeRow:last-child {
+  border-bottom: none;
+}
+
+.skillChangeName {
+  font-weight: 700;
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.skillChangeDetail {
+  color: var(--color-text-muted);
+  flex: 2 1 220px;
+}
+
+.skillChangeUp {
+  flex: none;
+  color: var(--color-good);
+  font-weight: 800;
+}
+
+.skillChangeDown {
+  flex: none;
+  color: var(--color-bad);
+  font-weight: 800;
+}
+
+/* Тренер */
+.coachMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  font-size: 13.5px;
+  color: var(--color-text-muted);
+}
+
+.coachMetaRow b {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+/* Общая подсказка внизу вкладки */
+.footerHint {
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}

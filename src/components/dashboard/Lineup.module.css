@@ -1,0 +1,934 @@
+.card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 0 0 14px;
+}
+
+/* Поле и таблица игроков сразу под ним — без отступа между ними, единый блок */
+.pitchGridGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Нейтральная иконка-подсказка (в отличие от .congestionHint это не предупреждение) */
+.infoHint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: help;
+}
+
+.infoHint:hover {
+  color: var(--color-accent);
+}
+
+/* Роли в составе — капитан и исполнитель стандартов, единым компактным блоком */
+.rolesBar {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.roleItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 260px;
+  font-size: 13.5px;
+  color: var(--color-text-muted);
+}
+
+.roleItemHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.roleSelectLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.roleSelect {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--color-bg-darker);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.roleSelect:hover {
+  border-color: var(--color-accent);
+}
+
+.roleHint {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.roleDivider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--color-border);
+}
+
+@media (max-width: 560px) {
+  .roleDivider {
+    display: none;
+  }
+}
+
+.captainBarIcon {
+  color: var(--color-accent);
+  font-size: 16px;
+  flex: none;
+}
+
+.setPieceBarIcon {
+  font-size: 16px;
+  flex: none;
+}
+
+.badgeWrap {
+  position: relative;
+}
+
+/* Иконка индивидуального указания игроку — встроена прямо в угол квадратной
+   карточки (там же, где раньше была иконка капитана). Небольшая стрелка,
+   направление которой зависит от указания (→ атакующий вперёд / ← оборони-
+   тельный назад / ↑↓ к центру или к флангу, в зависимости от того, где на
+   поле стоит слот), золотая на тёмном фоне — в цветах интерфейса. Клик
+   переключает указание по кругу между вариантами, доступными для роли слота. */
+.instructionIcon {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-darker);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0;
+  transition: transform 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.instructionIcon:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  transform: scale(1.12);
+}
+
+.instructionIconActive {
+  background: var(--color-accent);
+  color: var(--color-bg-darker);
+  border-color: var(--color-accent);
+}
+
+/* Пометка ручного переопределения амплуа — противоположный угол карточки от
+   иконки указания, чтобы не пересекаться с ней. Показывается только когда
+   назначенное амплуа отличается от естественного (см. positionOverrides.ts). */
+.overrideMark {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--color-accent);
+  background: var(--color-bg-darker);
+  color: var(--color-accent);
+  font-size: 9px;
+  line-height: 1;
+  cursor: help;
+}
+
+/* Всплывающее сообщение об ограничении */
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-bad);
+  color: var(--color-text);
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 200;
+  max-width: 90vw;
+  text-align: center;
+}
+
+/* Обёртка поля + скамейки запасных вдоль нижней бровки — на всю доступную
+   ширину блока, без пустых полей по бокам. */
+.pitchWrap {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* Строка схемы + кнопки рекомендации, встроенная прямо в верхнюю границу
+   поля — единый блок с полем (общая рамка, без зазора), а не отдельная
+   панель над ним. */
+.pitchHeaderStrip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  background: rgba(10, 22, 18, 0.6);
+  border: 2px solid var(--color-accent);
+  border-bottom: 1.5px dashed rgba(242, 237, 225, 0.3);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.pitchHeaderInfo {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.pitchHeaderInfo b {
+  color: var(--color-accent);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.pitchHeaderBtn {
+  flex: none;
+  background: var(--color-accent);
+  color: var(--color-bg-darker);
+  border: none;
+  font-weight: 700;
+  font-size: 12.5px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.pitchHeaderBtn:hover {
+  background: var(--color-accent-hover);
+  transform: translateY(-1px);
+}
+
+/* Плоский вид строго сверху, прямоугольное поле на всю ширину блока.
+   Полосы стрижки газона — мягкий переход через несколько оттенков (а не
+   жёсткая граница 50/50), плюс лёгкий блик сверху и виньетка снизу для
+   ощущения живого газона, а не плоской заливки. Тот же тёмно-зелёный тон,
+   что и база сайта. Тонкая золотая рамка — в стиле остального сайта. */
+.pitch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2.1 / 1;
+  background:
+    radial-gradient(120% 90% at 50% 8%, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 50%),
+    radial-gradient(140% 110% at 50% 100%, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0) 55%),
+    repeating-linear-gradient(
+      180deg,
+      #1e4a34 0px,
+      #1a4030 16px,
+      #163527 32px,
+      #1a4030 48px,
+      #1e4a34 64px
+    );
+  border: 2px solid var(--color-accent);
+  border-top: none;
+  overflow: hidden;
+}
+
+.pitch::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border: 1.5px solid rgba(242, 237, 225, 0.25);
+}
+
+.centerLine {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 50%;
+  border-left: 1.5px solid rgba(242, 237, 225, 0.25);
+}
+
+.centerCircle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 110px;
+  height: 110px;
+  border: 1.5px solid rgba(242, 237, 225, 0.25);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.penaltyBoxLeft {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  width: 12%;
+  height: 50%;
+  border: 1.5px solid rgba(242, 237, 225, 0.25);
+  border-left: none;
+  transform: translateY(-50%);
+}
+
+.penaltyBoxRight {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  width: 12%;
+  height: 50%;
+  border: 1.5px solid rgba(242, 237, 225, 0.25);
+  border-right: none;
+  transform: translateY(-50%);
+}
+
+.goalAreaLeft {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  width: 5%;
+  height: 22%;
+  border: 1.5px solid rgba(242, 237, 225, 0.25);
+  border-left: none;
+  transform: translateY(-50%);
+}
+
+.goalAreaRight {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  width: 5%;
+  height: 22%;
+  border: 1.5px solid rgba(242, 237, 225, 0.25);
+  border-right: none;
+  transform: translateY(-50%);
+}
+
+/* Угловые дуги — маленькие окружности, центр которых точно в углу поля;
+   лишнее обрезается благодаря overflow:hidden у .pitch, остаётся четверть */
+.cornerArc {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid rgba(242, 237, 225, 0.25);
+  border-radius: 50%;
+}
+
+.cornerArcTL {
+  top: -9px;
+  left: -9px;
+}
+
+.cornerArcTR {
+  top: -9px;
+  right: -9px;
+}
+
+.cornerArcBL {
+  bottom: -9px;
+  left: -9px;
+}
+
+.cornerArcBR {
+  bottom: -9px;
+  right: -9px;
+}
+
+/* Слоты для игроков */
+.slot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.slotBadge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 12px;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.slotBadgeEmpty {
+  border: 2px dashed rgba(242, 237, 225, 0.35);
+  color: rgba(242, 237, 225, 0.45);
+  background: rgba(15, 33, 28, 0.25);
+}
+
+.slotBadgeFilled {
+  border: 2px solid var(--color-accent);
+  background: var(--color-bg-card);
+  color: var(--color-text);
+  cursor: grab;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.slotBadgeSelected {
+  background: var(--color-accent);
+  color: var(--color-bg-darker);
+  box-shadow: 0 0 0 4px rgba(201, 162, 39, 0.3);
+}
+
+.slotOver .slotBadge,
+.slotOver .slotCard {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 4px rgba(201, 162, 39, 0.35);
+}
+
+/* Карточка игрока на поле — широкая горизонтальная плашка (~в 3 раза шире,
+   чем была квадратная версия): номер | фамилия | позиция в один ряд. Цвета
+   берутся из тех же модификаторов (.slotBadgeEmpty/.slotBadgeFilled/
+   .slotBadgeSelected), что и раньше — меняется только форма/размер. */
+.slotCard {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 156px;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* Цветовая кодировка по типу позиции — тонкая акцентная полоска слева и
+   цвет подписи роли (см. .slotCardRole ниже). Сама карточка остаётся в
+   тёмно-зелёной/золотой гамме — цвет используется только как акцент, а не
+   как основной фон, чтобы не потерять фирменный стиль сайта. */
+.slotCard::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 5px;
+  bottom: 5px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--slot-accent, transparent);
+}
+
+.slotBadgeEmpty.slotCard::before {
+  opacity: 0.55;
+}
+
+.slotAccentGk {
+  --slot-accent: #4caf6f;
+}
+
+.slotAccentDefense {
+  --slot-accent: #e0913f;
+}
+
+.slotAccentMidCentral {
+  --slot-accent: #e6c94a;
+}
+
+.slotAccentMidWide {
+  --slot-accent: #4caf6f;
+}
+
+.slotAccentFwd {
+  --slot-accent: #d9564a;
+}
+
+.slotCardNumber {
+  flex: none;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--color-accent);
+  line-height: 1;
+}
+
+.slotBadgeSelected .slotCardNumber {
+  color: var(--color-bg-darker);
+}
+
+.slotCardName {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-left: 1px solid rgba(242, 237, 225, 0.25);
+  padding-left: 6px;
+}
+
+.slotCardRole {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--slot-accent, var(--color-text-muted));
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+  line-height: 1;
+  border-left: 1px solid rgba(242, 237, 225, 0.25);
+  padding-left: 6px;
+}
+
+.slotBadgeSelected .slotCardRole {
+  color: var(--color-bg-darker);
+  opacity: 0.75;
+  border-left-color: rgba(15, 33, 28, 0.3);
+}
+
+.slotBadgeSelected .slotCardName {
+  border-left-color: rgba(15, 33, 28, 0.3);
+}
+
+/* Промежуточная ширина — на средних экранах (планшет/неширокое окно
+   десктопа) поле уже растянуто на всю ширину блока, но самого блока может
+   не хватать для полноразмерной (156px) карточки без столкновений колонок */
+@media (max-width: 1023px) {
+  .slotCard {
+    width: 108px;
+    height: 30px;
+    gap: 4px;
+    padding: 0 6px;
+    font-size: 10px;
+  }
+
+  .slotCardNumber {
+    font-size: 10px;
+  }
+
+  .slotCardName {
+    font-size: 9px;
+    padding-left: 4px;
+  }
+
+  .slotCardRole {
+    font-size: 8px;
+    padding-left: 4px;
+  }
+}
+
+@media (max-width: 560px) {
+  /* На узких экранах поле само сужается — карточка здесь заметно компактнее,
+     чтобы соседние колонки не сталкивались */
+  .slotCard {
+    width: 68px;
+    height: 24px;
+    gap: 3px;
+    padding: 0 5px;
+    font-size: 9px;
+  }
+
+  .slotCardNumber {
+    font-size: 9px;
+  }
+
+  .slotCardName {
+    font-size: 8px;
+    padding-left: 3px;
+  }
+
+  .slotCardRole {
+    font-size: 7px;
+    padding-left: 3px;
+  }
+}
+
+/* Скрытый элемент-образец для кастомного превью перетаскивания (drag image):
+   рендерится за пределами экрана, но остаётся видимым для браузера, чтобы
+   setDragImage мог использовать его как "фишку" игрока вместо всей строки списка */
+.dragGhost {
+  position: fixed;
+  top: -200px;
+  left: -200px;
+  pointer-events: none;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0 0 16px;
+}
+
+/* Плотная Excel-подобная таблица игроков вне поля, сразу под полем.
+   Узкие колонки, только числа, тонкие линии между всеми ячейками. */
+.gridCard {
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.gridWrap {
+  overflow-x: auto;
+  border-radius: 6px;
+  border: 1px dashed transparent;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.gridWrapOver {
+  border-color: var(--color-accent);
+  background: rgba(201, 162, 39, 0.06);
+}
+
+.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.grid th,
+.grid td {
+  border: 1px solid var(--color-border);
+  padding: 3px 6px;
+}
+
+.grid thead th {
+  padding: 0;
+  background: var(--color-bg-darker);
+}
+
+.gridSortBtn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+  padding: 4px 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.gridSortBtn:hover {
+  color: var(--color-text);
+}
+
+.gridSortActive {
+  color: var(--color-accent);
+}
+
+.gridSortArrow {
+  font-size: 8px;
+}
+
+.gridRow {
+  cursor: grab;
+}
+
+.gridRow:hover td {
+  background: rgba(201, 162, 39, 0.07);
+}
+
+/* Статус игрока в общем списке — очень мягкая подсветка строки, чтобы не
+   мешать читаемости таблицы. "Не в составе" — без подсветки (обычный вид). */
+.gridRowStarting td {
+  background: rgba(76, 175, 111, 0.07);
+}
+
+.gridRowSub td {
+  background: rgba(201, 162, 39, 0.07);
+}
+
+/* Выбранный игрок в клик-режиме расстановки — та же золотая рамка, что и
+   у выделенного слота на поле/скамейке (.slotBadgeSelected). Идёт после
+   статусной подсветки в исходном коде, поэтому при выборе игрока побеждает
+   и не спорит со статусным фоном */
+.gridRowSelected td {
+  background: rgba(201, 162, 39, 0.14);
+  box-shadow: inset 0 2px 0 var(--color-accent), inset 0 -2px 0 var(--color-accent);
+}
+
+.gridNameCell {
+  font-weight: 700;
+  text-align: left;
+}
+
+/* Цветовая метка амплуа перед именем — тот же акцент (полоска), что и на
+   карточках игроков на поле: цвет зависит от эффективного амплуа игрока
+   (ручное переопределение, если оно задано, иначе естественная позиция),
+   а не от того, где игрок сейчас числится (основа/запас/список). */
+.ampluaAccent {
+  display: inline-block;
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  margin-right: 7px;
+  vertical-align: middle;
+  flex: none;
+}
+
+.gridNumCell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.gridFlagCell {
+  text-align: center;
+  font-size: 13px;
+}
+
+.gridEmpty {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: 20px 0;
+}
+
+/* Объединённая шапка поля: заголовок + краткие показатели + переключатель режима */
+.fieldHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.fieldHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.quickStatsInline {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.quickStatsInline b {
+  color: var(--color-accent);
+}
+
+.congestionHint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  color: var(--color-warn);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: help;
+}
+
+/* Переключатель "Состав" / "Показатели" */
+.viewToggle {
+  display: flex;
+  gap: 4px;
+  background: var(--color-bg-darker);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.viewToggleBtn {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 16px;
+  border-radius: 999px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.viewToggleBtn:hover {
+  color: var(--color-text);
+}
+
+.viewToggleBtnActive {
+  background: var(--color-accent);
+  color: var(--color-bg-darker);
+}
+
+/* Значки зональных рейтингов поверх поля в режиме "Показатели" */
+.zoneSlotBadge {
+  min-width: 78px;
+  max-width: 92px;
+  border-radius: 10px;
+  padding: 6px 8px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.zoneSlotValue {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--color-text);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  line-height: 1.2;
+}
+
+.zoneSlotLabel {
+  font-size: 9.5px;
+  color: var(--color-text);
+  opacity: 0.85;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+  margin-top: 2px;
+}
+
+/* Скамейка запасных — узкая полоса вдоль нижней бровки поля, визуально
+   отделённая от газона (более тёмный/приглушённый фон, без градиента травы),
+   с 5 слотами чуть меньшего размера, чем позиции на поле. Не привязана к
+   абсолютным координатам — обычный flex-ряд, растянутый на ширину поля. */
+.benchStrip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 10px;
+  background: rgba(10, 22, 18, 0.55);
+  border: 2px solid rgba(242, 237, 225, 0.35);
+  border-top: 1.5px dashed rgba(242, 237, 225, 0.3);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+.benchStripTag {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  padding-right: 2px;
+}
+
+.benchSlotWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.benchSlot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.benchSlotBadge {
+  width: 34px;
+  height: 34px;
+  font-size: 10px;
+}
+
+.benchSlotLabel {
+  font-size: 9.5px;
+  color: var(--color-text-muted);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+@media (max-width: 560px) {
+  .benchStripTag {
+    display: none;
+  }
+
+  .benchSlotBadge {
+    width: 28px;
+    height: 28px;
+    font-size: 9px;
+  }
+
+  .benchSlotLabel {
+    font-size: 8.5px;
+  }
+}
+
+@media (max-width: 560px) {
+  .fieldHeaderRight {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .zoneSlotBadge {
+    min-width: 46px;
+    max-width: 54px;
+    padding: 3px 4px;
+  }
+
+  .zoneSlotValue {
+    font-size: 9px;
+    line-height: 1.1;
+  }
+
+  /* Подпись зоны прячется на узких экранах — как и полное имя игрока,
+     она остаётся доступна через title при долгом нажатии/наведении */
+  .zoneSlotLabel {
+    display: none;
+  }
+}

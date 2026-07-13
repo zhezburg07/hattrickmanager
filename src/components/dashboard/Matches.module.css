@@ -1,0 +1,260 @@
+.card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 0 0 14px;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0 0 16px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th {
+  text-align: left;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  padding: 0 8px 8px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid rgba(44, 74, 64, 0.6);
+  vertical-align: middle;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.row {
+  cursor: default;
+}
+
+.rowClickable {
+  cursor: pointer;
+}
+
+.rowClickable:hover td {
+  background: rgba(201, 162, 39, 0.06);
+}
+
+.rowNext {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.rowNext td {
+  font-weight: 700;
+}
+
+.rowExpanded td {
+  background: rgba(201, 162, 39, 0.06);
+  border-bottom: none;
+}
+
+.expandedRow td {
+  padding: 16px 8px 22px;
+}
+
+.roundCell {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.competitionTag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.competitionLeague {
+  color: var(--color-text-muted);
+  background: rgba(169, 189, 181, 0.12);
+}
+
+.competitionCup {
+  color: var(--color-accent);
+  background: rgba(201, 162, 39, 0.14);
+}
+
+.competitionFriendly {
+  color: var(--color-text-muted);
+  background: rgba(169, 189, 181, 0.12);
+}
+
+.opponentCell {
+  font-weight: 600;
+}
+
+.homeTag {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.scoreCell {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.scorePending {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.nextBadge {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-bg-darker);
+  background: var(--color-accent);
+  padding: 1px 8px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* Блок указаний на ближайший матч */
+.instructionsHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.instructionsOpponent {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.instructionsMeta {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.optionGroup + .optionGroup {
+  margin-top: 20px;
+}
+
+.optionGroupLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  margin-bottom: 10px;
+}
+
+.optionGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.optionItem {
+  position: relative;
+  display: inline-block;
+}
+
+.optionHint {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+}
+
+.optionHint:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.optionBtn {
+  background: var(--color-bg-darker);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.optionBtn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.optionBtnActive {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg-darker);
+}
+
+.instructionsFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.deadlineHint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}

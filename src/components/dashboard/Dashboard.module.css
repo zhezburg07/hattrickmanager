@@ -1,0 +1,561 @@
+.page {
+  padding: 40px 0 0;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 720px) {
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 0 0 14px;
+}
+
+/* Шапка кабинета */
+.headerCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.crest {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: rgba(201, 162, 39, 0.12);
+  border: 2px solid var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.clubName {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.clubMeta {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.ratingBlock {
+  text-align: right;
+}
+
+.ratingLabel {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.ratingValue {
+  font-size: 34px;
+  font-weight: 800;
+  color: var(--color-accent);
+  line-height: 1.1;
+}
+
+/* Таблица лиги */
+.tableScroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th {
+  text-align: left;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  padding: 0 8px 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table td {
+  padding: 9px 8px;
+  border-bottom: 1px solid rgba(44, 74, 64, 0.6);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Подсветка "наша команда" — жирный текст + золотой контур, работает
+   поверх любой цветной зоны, не перекрывая её фон/полосу слева */
+.tableRowUs td {
+  font-weight: 700;
+}
+
+.tableRowUs {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+/* Зоны турнирной таблицы */
+.zonePromotion {
+  background: rgba(76, 175, 111, 0.12);
+}
+
+.zonePlayoff {
+  background: rgba(217, 164, 65, 0.14);
+}
+
+.zoneRelegation {
+  background: rgba(192, 80, 63, 0.12);
+}
+
+.zonePromotion td:first-child {
+  border-left: 3px solid var(--color-good);
+}
+
+.zonePlayoff td:first-child {
+  border-left: 3px solid var(--color-warn);
+}
+
+.zoneRelegation td:first-child {
+  border-left: 3px solid var(--color-bad);
+}
+
+.zonePromotion td:first-child,
+.zonePlayoff td:first-child,
+.zoneRelegation td:first-child {
+  padding-left: 6px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legendDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.posCell {
+  color: var(--color-text-muted);
+  width: 28px;
+}
+
+.teamCell {
+  font-weight: 600;
+}
+
+.numCell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.last5 {
+  display: flex;
+  gap: 3px;
+  justify-content: flex-end;
+}
+
+.last5Icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
+  flex: none;
+}
+
+.last5Win {
+  color: var(--color-good);
+  background: rgba(76, 175, 111, 0.15);
+}
+
+.last5Draw {
+  color: var(--color-text-muted);
+  background: rgba(169, 189, 181, 0.15);
+}
+
+.last5Loss {
+  color: var(--color-bad);
+  background: rgba(192, 80, 63, 0.15);
+}
+
+/* Матчи */
+.matchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(44, 74, 64, 0.6);
+  font-size: 14px;
+}
+
+.matchRow:last-child {
+  border-bottom: none;
+}
+
+.matchInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.matchOpponent {
+  font-weight: 600;
+}
+
+.matchDate {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.matchScore {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+}
+
+.resultTag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.resultWin {
+  color: var(--color-good);
+  background: rgba(76, 175, 111, 0.15);
+}
+
+.resultDraw {
+  color: var(--color-warn);
+  background: rgba(217, 164, 65, 0.15);
+}
+
+.resultLoss {
+  color: var(--color-bad);
+  background: rgba(192, 80, 63, 0.15);
+}
+
+.homeTag {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+/* Финансы */
+.balanceValue {
+  font-size: 40px;
+  font-weight: 800;
+  color: var(--color-accent);
+  line-height: 1.1;
+}
+
+.balanceLabel {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+}
+
+.financeTables {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 24px;
+}
+
+@media (max-width: 720px) {
+  .financeTables {
+    grid-template-columns: 1fr;
+  }
+}
+
+.financeGroupTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 8px;
+}
+
+.financeRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(44, 74, 64, 0.6);
+  font-size: 13.5px;
+}
+
+.financeRowLabel {
+  color: var(--color-text-muted);
+}
+
+.financeRowValue {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.financeTotalRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.financeIncomeValue {
+  color: var(--color-good);
+}
+
+.financeExpenseValue {
+  color: var(--color-bad);
+}
+
+/* Краткая сводка финансов на Обзоре */
+.financeSummaryLine {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  flex-wrap: wrap;
+}
+
+.financeSummarySep {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.financeSummaryHint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.cardLink {
+  display: inline-block;
+  margin-top: 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.cardLink:hover {
+  color: var(--color-accent-hover);
+}
+
+/* Персонал */
+.coachRow {
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.coachName {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.coachMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.coachMeta b {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.staffGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .staffGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.staffItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--color-bg-darker);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.staffDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex: none;
+}
+
+.staffItemHired .staffDot {
+  background: var(--color-good);
+}
+
+.staffItemMissing .staffDot {
+  background: var(--color-text-muted);
+  opacity: 0.5;
+}
+
+.staffItemBody {
+  min-width: 0;
+}
+
+.staffItemLabel {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.staffItemLevel {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.staffItemHired .staffItemLevel {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+/* Болельщики */
+.fansRow {
+  display: flex;
+  gap: 32px;
+  margin-bottom: 14px;
+}
+
+.moodValue {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.moodGood {
+  color: var(--color-good);
+}
+
+.moodWarn {
+  color: var(--color-warn);
+}
+
+.moodBad {
+  color: var(--color-bad);
+}
+
+.fansClubValue {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color-accent);
+}
+
+.fansExpectation {
+  font-size: 13.5px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+/* Стадион */
+.statsHeaderRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.statsFillCount {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.statsFillCount b {
+  color: var(--color-accent);
+}
+
+.stadiumTotals {
+  display: flex;
+  gap: 32px;
+  margin: 20px 0;
+  flex-wrap: wrap;
+}
