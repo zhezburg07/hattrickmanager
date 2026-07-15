@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   squadPlayers,
+  demoTrainerPlayerId,
   positionGroupLabel,
   positionGroupAccentColor,
   statusLabel,
@@ -11,6 +12,7 @@ import {
   formWord,
   leadershipWord,
   levelWord,
+  staminaToLevel,
   type SquadPlayer,
   type PlayerStatus,
   type PlayerStatSnapshot,
@@ -159,6 +161,47 @@ function LevelCell({
   );
 }
 
+// Навыки (Вратарь/Защита/.../Стандарты) — числом по официальной шкале 0-20
+// вместо слова, с подсказкой-словом при наведении (см. чат). Опыт/Форма/
+// Лидерство/Преданность по-прежнему словом — этой ячейки не касаются.
+function SkillNumberCell({
+  value,
+  diff = "none",
+  hoverWord,
+}: {
+  value: number;
+  diff?: DiffDirection;
+  hoverWord: string;
+}) {
+  return (
+    <td className={`${styles.skillCell} ${diffClass(diff)}`} title={hoverWord}>
+      <span className={`${styles.skillWord} ${tierFromRatio(value / 20)}`}>{value}</span>
+    </td>
+  );
+}
+
+// Тренер команды в Hattrick — один из собственных игроков (см.
+// src/lib/teamDetails.ts, trainerPlayerId) — небольшая нейтральная иконка
+// рядом с именем, чтобы выделить его в общем списке. Обычная SVG вместо
+// эмодзи — эмодзи-символы на Windows не всегда рисуются как картинка (см.
+// историю с флагами стран).
+function TrainerIcon() {
+  return (
+    <span
+      title="Тренер команды"
+      aria-label="Тренер команды"
+      style={{ display: "inline-flex", marginLeft: 6, verticalAlign: "middle", flex: "none" }}
+    >
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+        <circle cx="8" cy="12" r="6" fill="none" stroke="var(--color-accent)" strokeWidth="1.8" />
+        <circle cx="8" cy="12" r="1.6" fill="var(--color-accent)" />
+        <path d="M14 12h6" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M18 9v6" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    </span>
+  );
+}
+
 // Цветовая метка амплуа перед именем игрока — та же акцентная полоска, что и
 // на карточках игроков на поле вкладки "Расстановка". Цвет всегда берётся из
 // эффективного амплуа (ручное переопределение, если оно задано, иначе
@@ -216,11 +259,18 @@ function PositionBadge({
 export default function SquadTable({
   players,
   prevByPlayerId,
+  trainerPlayerId,
 }: {
   players?: SquadPlayer[];
   prevByPlayerId?: Record<number, PlayerStatSnapshot | undefined>;
+  trainerPlayerId?: number;
 } = {}) {
   const roster = players ?? squadPlayers;
+  // В демо-режиме (нет players — используется встроенный тестовый состав)
+  // нет реального тренера, привязанного к конкретному игроку (coach в
+  // src/data/dashboard.ts — отдельный персонаж не из этого списка) — берём
+  // иллюстративный demoTrainerPlayerId, чтобы иконку было видно и на демо.
+  const effectiveTrainerPlayerId = trainerPlayerId ?? (players ? undefined : demoTrainerPlayerId);
   const [sortKey, setSortKey] = useState<SortKey>("status");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedPlayer, setSelectedPlayer] = useState<SquadPlayer | null>(null);
@@ -292,7 +342,9 @@ export default function SquadTable({
             {sorted.map((p) => {
               const prev = resolvedPrevByPlayerId[p.id];
               const tsiDiff = diffDirection(p.tsi, prev?.tsi);
-              const staminaDiff = diffDirection(p.stamina, prev?.stamina);
+              const staminaLevel = staminaToLevel(p.stamina);
+              const prevStaminaLevel = prev?.stamina !== undefined ? staminaToLevel(prev.stamina) : undefined;
+              const staminaDiff = diffDirection(staminaLevel, prevStaminaLevel);
               return (
               <tr key={p.id} className={styles.rowClickable} onClick={() => setSelectedPlayer(p)}>
                 <td className={styles.flagCell}>
@@ -301,6 +353,7 @@ export default function SquadTable({
                 <td className={styles.nameCell}>
                   <AmpluaAccent player={p} overrides={overrides} />
                   {p.name}
+                  {p.id === effectiveTrainerPlayerId && <TrainerIcon />}
                 </td>
                 <td className={styles.numCell}>{p.age}</td>
                 <td>
@@ -318,19 +371,17 @@ export default function SquadTable({
                   diff={diffDirection(p.form, prev?.form)}
                   title={diffTitle("Форма", prev?.form, p.form)}
                 />
-                <td
-                  className={`${styles.numCell} ${diffClass(staminaDiff)}`}
-                  title={diffTitle("Выносливость", prev?.stamina, p.stamina, (n) => `${n}%`)}
-                >
-                  {p.stamina}%
-                </td>
+                <SkillNumberCell
+                  value={staminaLevel}
+                  diff={staminaDiff}
+                  hoverWord={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? skillWord(staminaLevel)}
+                />
                 {skillKeys.map((k) => (
-                  <LevelCell
+                  <SkillNumberCell
                     key={k}
-                    word={skillWord(p.skills[k])}
-                    ratio={p.skills[k] / 20}
+                    value={p.skills[k]}
                     diff={diffDirection(p.skills[k], prev?.skills[k])}
-                    title={diffTitle(skillLabel[k], prev?.skills[k], p.skills[k])}
+                    hoverWord={diffTitle(skillLabel[k], prev?.skills[k], p.skills[k]) ?? skillWord(p.skills[k])}
                   />
                 ))}
                 <LevelCell word={leadershipWord(p.leadership)} ratio={p.leadership / 7} />
@@ -357,12 +408,15 @@ export default function SquadTable({
       <div className={styles.cardList}>
         {sorted.map((p) => {
           const prev = resolvedPrevByPlayerId[p.id];
+          const staminaLevel = staminaToLevel(p.stamina);
+          const prevStaminaLevel = prev?.stamina !== undefined ? staminaToLevel(prev.stamina) : undefined;
           return (
           <div className={`${styles.playerCard} ${styles.playerCardClickable}`} key={p.id} onClick={() => setSelectedPlayer(p)}>
             <div className={styles.playerCardHead}>
               <span className={styles.playerCardName}>
                 <AmpluaAccent player={p} overrides={overrides} />
                 {p.name}
+                {p.id === effectiveTrainerPlayerId && <TrainerIcon />}
               </span>
               <StatusTag status={p.status} />
             </div>
@@ -380,10 +434,10 @@ export default function SquadTable({
                 Форма <b>{formWord(p.form)}</b>
               </span>
               <span
-                className={diffClass(diffDirection(p.stamina, prev?.stamina))}
-                title={diffTitle("Выносливость", prev?.stamina, p.stamina, (n) => `${n}%`)}
+                className={diffClass(diffDirection(staminaLevel, prevStaminaLevel))}
+                title={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? skillWord(staminaLevel)}
               >
-                Вын-ть <b>{p.stamina}%</b>
+                Вын-ть <b>{staminaLevel}</b>
               </span>
               <span
                 className={diffClass(diffDirection(p.tsi, prev?.tsi))}
@@ -401,10 +455,10 @@ export default function SquadTable({
                 <div
                   className={`${styles.playerCardSkillRow} ${diffClass(diffDirection(p.skills[k], prev?.skills[k]))}`}
                   key={k}
-                  title={diffTitle(skillLabel[k], prev?.skills[k], p.skills[k])}
+                  title={diffTitle(skillLabel[k], prev?.skills[k], p.skills[k]) ?? skillWord(p.skills[k])}
                 >
                   <span className={styles.playerCardSkillLabel}>{skillLabel[k]}</span>
-                  <span className={styles.playerCardSkillValue}>{skillWord(p.skills[k])}</span>
+                  <span className={styles.playerCardSkillValue}>{p.skills[k]}</span>
                 </div>
               ))}
               <div

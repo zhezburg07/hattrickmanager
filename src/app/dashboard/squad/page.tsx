@@ -7,11 +7,26 @@ import { getStoredHattrickTokens, getStoredHattrickUserId, requestChppXmlRaw, ty
 import { parsePlayersDetailedXml, debugRawPlayerCountryIds, type DebugPlayerCountryRaw } from "@/lib/squadPlayers";
 import { resolveRealHomeCountry } from "@/lib/worldCurrency";
 import { getCountryIdLookup } from "@/lib/worldCountries";
+import { parseTeamDetailsXml } from "@/lib/teamDetails";
 import { resolvePlayerHistory } from "@/lib/playerHistoryDb";
 import type { SquadPlayer } from "@/data/squad";
 
 async function fetchPlayersRaw(tokens: StoredHattrickTokens) {
   return requestChppXmlRaw("players", {}, tokens);
+}
+
+// Тренер команды в Hattrick — один из собственных игроков (см.
+// src/lib/teamDetails.ts). Та же схема, что уже работает на "Тренировке"
+// (src/app/dashboard/training/page.tsx): teamdetails.xml даёт его PlayerID.
+async function resolveTrainerPlayerId(tokens: StoredHattrickTokens): Promise<number | undefined> {
+  try {
+    const raw = await requestChppXmlRaw("teamdetails", {}, tokens);
+    if (raw.httpStatus < 200 || raw.httpStatus >= 300) return undefined;
+    const id = Number(parseTeamDetailsXml(raw.rawXml).trainerPlayerId);
+    return Number.isNaN(id) || id === 0 ? undefined : id;
+  } catch {
+    return undefined;
+  }
 }
 
 // ВРЕМЕННАЯ диагностика флагов на реальных данных — покажите true, чтобы
@@ -38,11 +53,13 @@ export default async function SquadPage() {
     );
   }
 
-  const [{ homeCountry, error: homeCountryError }, playersRaw, countryIdLookupResult] = await Promise.all([
-    resolveRealHomeCountry(tokens),
-    fetchPlayersRaw(tokens).catch(() => null),
-    getCountryIdLookup(tokens),
-  ]);
+  const [{ homeCountry, error: homeCountryError }, playersRaw, countryIdLookupResult, trainerPlayerId] =
+    await Promise.all([
+      resolveRealHomeCountry(tokens),
+      fetchPlayersRaw(tokens).catch(() => null),
+      getCountryIdLookup(tokens),
+      resolveTrainerPlayerId(tokens),
+    ]);
 
   let players: SquadPlayer[] | null = null;
   let error: string | null = null;
@@ -105,7 +122,11 @@ export default async function SquadPage() {
             </div>
           )}
           {error && <DemoModeBanner title="Не удалось загрузить реальный состав" reasons={[error]} />}
-          <SquadTable players={players ?? undefined} prevByPlayerId={players ? prevByPlayerId : undefined} />
+          <SquadTable
+            players={players ?? undefined}
+            prevByPlayerId={players ? prevByPlayerId : undefined}
+            trainerPlayerId={trainerPlayerId}
+          />
         </div>
       </main>
       <Footer />

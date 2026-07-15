@@ -185,6 +185,13 @@ export function staminaWord(percent: number): string {
   return formWordsDesc[idx];
 }
 
+// Выносливость числом по официальной шкале навыков 0-20 (см. skillWord) —
+// используется на "Составе" вместо процентов, см. src/components/dashboard/SquadTable.tsx.
+export function staminaToLevel(percent: number): number {
+  const p = Math.max(0, Math.min(100, percent));
+  return Math.round((p / 100) * 20);
+}
+
 // Шкала Лидерства, 8 уровней (0-7), от лучшего к худшему
 const leadershipWordsDesc = [
   "хорошо",
@@ -403,3 +410,10 @@ export const squadPlayers: SquadPlayer[] = roster.map((r, index) => {
     goalsScored,
   };
 });
+
+// Демо-иллюстрация "тренер команды — один из своих игроков" (см.
+// src/lib/teamDetails.ts, trainerPlayerId): в тестовых данных нет отдельного
+// связанного с составом тренера (coach в src/data/dashboard.ts — отдельный
+// персонаж не из этого списка), поэтому для примера в SquadTable берём
+// первого игрока состава.
+export const demoTrainerPlayerId = squadPlayers[0]?.id;

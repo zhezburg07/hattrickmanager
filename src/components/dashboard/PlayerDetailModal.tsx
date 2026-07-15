@@ -7,7 +7,7 @@ import {
   skillLabel,
   skillWord,
   formWord,
-  staminaWord,
+  staminaToLevel,
   leadershipWord,
   levelWord,
   type SquadPlayer,
@@ -114,6 +114,9 @@ export default function PlayerDetailModal({
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
+  const staminaLevel = staminaToLevel(player.stamina);
+  const prevStaminaLevel = prev?.stamina !== undefined ? staminaToLevel(prev.stamina) : undefined;
+
   return createPortal(
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -161,10 +164,10 @@ export default function PlayerDetailModal({
               Форма: <b>{formWord(player.form)}</b>
             </span>
             <span
-              className={diffClass(diffDirection(player.stamina, prev?.stamina))}
-              title={diffTitle("Выносливость", prev?.stamina, player.stamina, (n) => `${n}%`)}
+              className={diffClass(diffDirection(staminaLevel, prevStaminaLevel))}
+              title={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? skillWord(staminaLevel)}
             >
-              Выносливость: <b>{staminaWord(player.stamina)}</b>
+              Выносливость: <b>{staminaLevel}</b>
             </span>
           </div>
           <div className={styles.infoRow}>
@@ -192,11 +195,11 @@ export default function PlayerDetailModal({
             <div
               className={`${styles.skillRow} ${diffClass(diffDirection(player.skills[k], prev?.skills[k]))}`}
               key={k}
-              title={diffTitle(skillLabel[k], prev?.skills[k], player.skills[k])}
+              title={diffTitle(skillLabel[k], prev?.skills[k], player.skills[k]) ?? skillWord(player.skills[k])}
             >
               <span className={styles.skillLabel}>{skillLabel[k]}</span>
               <SkillBar level={player.skills[k]} />
-              <span className={styles.skillWordText}>{skillWord(player.skills[k])}</span>
+              <span className={styles.skillWordText}>{player.skills[k]}</span>
             </div>
           ))}
         </div>
