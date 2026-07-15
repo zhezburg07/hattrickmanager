@@ -336,7 +336,6 @@ export default async function DashboardPage() {
             <PowerRatingPanel
               value={data.powerRatingValue}
               worldRank={data.powerRatingWorldRank ?? powerRating.worldRank}
-              totalTeams={powerRating.totalTeams}
             />
             <TsiWeeklyChanges />
           </div>

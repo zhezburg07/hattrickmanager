@@ -4,11 +4,9 @@ import styles from "./Overview.module.css";
 export default function PowerRatingPanel({
   value,
   worldRank,
-  totalTeams,
 }: {
   value: number;
   worldRank: number;
-  totalTeams: number;
 }) {
   return (
     <div className={styles.panel}>
@@ -19,9 +17,7 @@ export default function PowerRatingPanel({
         </span>
       </div>
       <div className={styles.powerRatingValue}>{value.toLocaleString("ru-RU")}</div>
-      <div className={styles.powerRatingRank}>
-        {worldRank.toLocaleString("ru-RU")}-е место из {totalTeams.toLocaleString("ru-RU")}+
-      </div>
+      <div className={styles.powerRatingRank}>{worldRank.toLocaleString("ru-RU")}-е место</div>
     </div>
   );
 }

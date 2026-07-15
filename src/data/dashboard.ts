@@ -405,5 +405,4 @@ export const powerRatingHint =
 export const powerRating = {
   value: 5342,
   worldRank: 1_847,
-  totalTeams: 350_000,
 };
