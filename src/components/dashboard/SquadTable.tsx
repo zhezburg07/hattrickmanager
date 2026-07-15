@@ -13,6 +13,7 @@ import {
   levelWord,
   type SquadPlayer,
   type PlayerStatus,
+  type PlayerStatSnapshot,
   type SquadSkills,
   type PositionGroup,
 } from "@/data/squad";
@@ -20,7 +21,7 @@ import { usePositionOverrides, effectivePositionGroup, type PositionOverrides } 
 import NationalityTag from "./NationalityTag";
 import FlagIcon from "./FlagIcon";
 import PlayerDetailModal from "./PlayerDetailModal";
-import { usePlayerStatChanges, diffDirection, diffTitle, type DiffDirection } from "./playerStatChanges";
+import { diffDirection, diffTitle, type DiffDirection } from "./playerStatChanges";
 import styles from "./SquadTable.module.css";
 import diffStyles from "./StatDiff.module.css";
 
@@ -212,13 +213,25 @@ function PositionBadge({
   );
 }
 
-export default function SquadTable({ players }: { players?: SquadPlayer[] } = {}) {
+export default function SquadTable({
+  players,
+  prevByPlayerId,
+}: {
+  players?: SquadPlayer[];
+  prevByPlayerId?: Record<number, PlayerStatSnapshot | undefined>;
+} = {}) {
   const roster = players ?? squadPlayers;
   const [sortKey, setSortKey] = useState<SortKey>("status");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedPlayer, setSelectedPlayer] = useState<SquadPlayer | null>(null);
   const { overrides, setOverride } = usePositionOverrides();
-  const prevByPlayerId = usePlayerStatChanges(roster);
+  // В демо-режиме сравнение "было → стало" уже встроено в тестовые данные
+  // (player.prev, см. src/data/squad.ts); для реальных данных прошлый снимок
+  // приходит с сервера (см. src/lib/playerHistoryDb.ts) — там, где данные
+  // сервер не запрашивал (например, свой список <SquadTable /> без пропсов),
+  // просто берём player.prev напрямую.
+  const resolvedPrevByPlayerId =
+    prevByPlayerId ?? Object.fromEntries(roster.map((p) => [p.id, p.prev]));
 
   // CHPP не отдаёт "преданность клубу" — прячем столбец целиком, если он не
   // заполнен ни у одного игрока, вместо пустых прочерков в каждой строке.
@@ -277,7 +290,7 @@ export default function SquadTable({ players }: { players?: SquadPlayer[] } = {}
           </thead>
           <tbody>
             {sorted.map((p) => {
-              const prev = prevByPlayerId[p.id];
+              const prev = resolvedPrevByPlayerId[p.id];
               const tsiDiff = diffDirection(p.tsi, prev?.tsi);
               const staminaDiff = diffDirection(p.stamina, prev?.stamina);
               return (
@@ -343,7 +356,7 @@ export default function SquadTable({ players }: { players?: SquadPlayer[] } = {}
 
       <div className={styles.cardList}>
         {sorted.map((p) => {
-          const prev = prevByPlayerId[p.id];
+          const prev = resolvedPrevByPlayerId[p.id];
           return (
           <div className={`${styles.playerCard} ${styles.playerCardClickable}`} key={p.id} onClick={() => setSelectedPlayer(p)}>
             <div className={styles.playerCardHead}>
@@ -420,7 +433,7 @@ export default function SquadTable({ players }: { players?: SquadPlayer[] } = {}
       {selectedPlayer && (
         <PlayerDetailModal
           player={selectedPlayer}
-          prev={prevByPlayerId[selectedPlayer.id]}
+          prev={resolvedPrevByPlayerId[selectedPlayer.id]}
           onClose={() => setSelectedPlayer(null)}
         />
       )}

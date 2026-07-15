@@ -3,9 +3,10 @@ import Footer from "@/components/Footer";
 import SquadTable from "@/components/dashboard/SquadTable";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getStoredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
+import { getStoredHattrickTokens, getStoredHattrickUserId, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parsePlayersDetailedXml } from "@/lib/squadPlayers";
 import { resolveRealHomeCountry, type HomeCountryInfo } from "@/lib/worldCurrency";
+import { resolvePlayerHistory } from "@/lib/playerHistoryDb";
 import type { SquadPlayer } from "@/data/squad";
 
 async function fetchPlayersRaw(tokens: StoredHattrickTokens) {
@@ -48,13 +49,15 @@ export default async function SquadPage() {
     error = `Состав (players): ${message}`;
   }
 
+  const prevByPlayerId = players ? await resolvePlayerHistory(getStoredHattrickUserId(), players) : {};
+
   return (
     <>
       <Header />
       <main className={styles.page}>
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
           {error && <DemoModeBanner title="Не удалось загрузить реальный состав" reasons={[error]} />}
-          <SquadTable players={players ?? undefined} />
+          <SquadTable players={players ?? undefined} prevByPlayerId={players ? prevByPlayerId : undefined} />
         </div>
       </main>
       <Footer />

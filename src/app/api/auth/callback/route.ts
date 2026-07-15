@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildAuthorizationHeader, buildOAuthParams, HATTRICK_OAUTH_URLS } from "@/lib/hattrickOAuth";
+import { requestChppXmlRaw } from "@/lib/hattrickApi";
+import { parseManagerXml } from "@/lib/manager";
 
 // Шаг 3 из 3 подключения к Hattrick: "Access Token".
 //
@@ -97,6 +99,21 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Hattrick UserID — стабильный идентификатор менеджера (в отличие от
+  // access-токена, не меняется), нужен как ключ для истории навыков между
+  // визитами (см. src/lib/playerHistoryDb.ts). Если запрос не удался — не
+  // блокируем вход из-за этого, просто история между визитами не будет
+  // сохраняться для этой сессии.
+  let managerUserId: string | null = null;
+  try {
+    const managerRaw = await requestChppXmlRaw("manager", {}, { accessToken, accessTokenSecret });
+    if (managerRaw.httpStatus >= 200 && managerRaw.httpStatus < 300) {
+      managerUserId = parseManagerXml(managerRaw.rawXml).userId;
+    }
+  } catch {
+    // см. комментарий выше — не блокируем вход
+  }
+
   const redirectResponse = NextResponse.redirect(new URL("/dashboard", request.url));
 
   // Постоянный ключ доступа — сохраняем его надолго (Hattrick не ограничивает
@@ -117,6 +134,15 @@ export async function GET(request: NextRequest) {
     maxAge: 60 * 60 * 24 * 400,
     path: "/",
   });
+  if (managerUserId) {
+    redirectResponse.cookies.set("hattrick_user_id", managerUserId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 400,
+      path: "/",
+    });
+  }
 
   // Временный пропуск больше не нужен — убираем за собой.
   redirectResponse.cookies.delete("hattrick_request_token");

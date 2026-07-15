@@ -3,9 +3,10 @@ import Footer from "@/components/Footer";
 import LineupBoard from "@/components/dashboard/LineupBoard";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getStoredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
+import { getStoredHattrickTokens, getStoredHattrickUserId, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parsePlayersDetailedXml } from "@/lib/squadPlayers";
 import { resolveRealHomeCountry } from "@/lib/worldCurrency";
+import { resolvePlayerHistory } from "@/lib/playerHistoryDb";
 import type { SquadPlayer } from "@/data/squad";
 
 async function fetchPlayersRaw(tokens: StoredHattrickTokens) {
@@ -48,6 +49,8 @@ export default async function LineupPage() {
     error = `Состав (players): ${message}`;
   }
 
+  const prevByPlayerId = players ? await resolvePlayerHistory(getStoredHattrickUserId(), players) : {};
+
   return (
     <>
       <Header />
@@ -60,7 +63,7 @@ export default async function LineupPage() {
               «Рекомендовать состав».
             </p>
           )}
-          <LineupBoard players={players ?? undefined} />
+          <LineupBoard players={players ?? undefined} prevByPlayerId={players ? prevByPlayerId : undefined} />
         </div>
       </main>
       <Footer />

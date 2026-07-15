@@ -11,12 +11,11 @@ import {
   slotCounts,
   type Assignments,
 } from "@/data/pitchBoard";
-import { squadPlayers, type PositionGroup, type SquadPlayer } from "@/data/squad";
+import { squadPlayers, type PositionGroup, type SquadPlayer, type PlayerStatSnapshot } from "@/data/squad";
 import { applicableInstructions, type PlayerInstruction } from "@/data/playerInstructions";
 import LineupField from "./LineupField";
 import LineupPlayerList from "./LineupPlayerList";
 import LineupPlayerDetails from "./LineupPlayerDetails";
-import { usePlayerStatChanges } from "./playerStatChanges";
 import { recommendLineup } from "./recommendLineup";
 import { formationExperienceLevel } from "./formationExperience";
 import type { DragPayload } from "./dragPayload";
@@ -82,10 +81,18 @@ function cloneAssignments(a: Assignments): Assignments {
 
 const MAX_FIELD_PLAYERS = 10;
 
-export default function LineupBoard({ players }: { players?: SquadPlayer[] } = {}) {
+export default function LineupBoard({
+  players,
+  prevByPlayerId,
+}: {
+  players?: SquadPlayer[];
+  prevByPlayerId?: Record<number, PlayerStatSnapshot | undefined>;
+} = {}) {
   const roster = players ?? squadPlayers;
   const playersById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
-  const prevByPlayerId = usePlayerStatChanges(roster);
+  // См. комментарий в SquadTable.tsx: демо-данные уже несут player.prev,
+  // реальные — прошлый снимок приходит с сервера (playerHistoryDb.ts).
+  const resolvedPrevByPlayerId = prevByPlayerId ?? Object.fromEntries(roster.map((p) => [p.id, p.prev]));
   const [assignments, setAssignments] = useState<Assignments>(() => initialAssignments(roster));
   const [subs, setSubs] = useState<(number | null)[]>(() => subCategories.map(() => null));
   const [instructions, setInstructions] = useState<Record<number, PlayerInstruction>>({});
@@ -450,7 +457,7 @@ export default function LineupBoard({ players }: { players?: SquadPlayer[] } = {
           assignedIds={assignedIds}
           subIds={subIds}
           payloadForPlayer={payloadForPlayer}
-          prevByPlayerId={prevByPlayerId}
+          prevByPlayerId={resolvedPrevByPlayerId}
         />
       </div>
 
@@ -505,7 +512,7 @@ export default function LineupBoard({ players }: { players?: SquadPlayer[] } = {
         </div>
       </div>
 
-      <LineupPlayerDetails player={selectedPlayer} prev={selectedPlayer ? prevByPlayerId[selectedPlayer.id] : undefined} />
+      <LineupPlayerDetails player={selectedPlayer} prev={selectedPlayer ? resolvedPrevByPlayerId[selectedPlayer.id] : undefined} />
 
       {toast && <div className={styles.toast}>{toast}</div>}
     </>

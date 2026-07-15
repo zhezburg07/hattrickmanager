@@ -18,6 +18,16 @@ export function getStoredHattrickTokens(): StoredHattrickTokens | null {
   return { accessToken, accessTokenSecret };
 }
 
+// Hattrick UserID, сохранённый в cookie при входе (см. /api/auth/callback) —
+// стабильный ключ для истории навыков между визитами (см.
+// src/lib/playerHistoryDb.ts). Может отсутствовать, даже если пользователь
+// подключён (например, если запрос manager.xml не удался при входе) — тогда
+// история между визитами просто не сохраняется, остальной сайт работает как
+// обычно.
+export function getStoredHattrickUserId(): string | null {
+  return cookies().get("hattrick_user_id")?.value ?? null;
+}
+
 export interface ChppRawResponse {
   file: string;
   httpStatus: number;

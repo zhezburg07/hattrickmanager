@@ -10,8 +10,12 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const redirectResponse = NextResponse.redirect(new URL("/", request.url));
 
+  // Удаляем только cookie текущей сессии — историю навыков и т.п. в базе
+  // данных (см. src/lib/playerHistoryDb.ts) это не трогает: она хранится
+  // отдельно, по Hattrick UserID, и никуда не денется до следующего входа.
   redirectResponse.cookies.delete("hattrick_access_token");
   redirectResponse.cookies.delete("hattrick_access_token_secret");
+  redirectResponse.cookies.delete("hattrick_user_id");
 
   return redirectResponse;
 }
