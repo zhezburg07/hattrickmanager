@@ -1,4 +1,5 @@
 import { squadPlayers } from "./squad";
+import { computeLeagueStandings } from "./leagueMatrix";
 
 // Валюта команды — CHPP отдаёт её не в economy.xml/teamdetails.xml (там
 // денежные суммы вообще без указания валюты), а в отдельном файле
@@ -42,105 +43,11 @@ export interface LeagueRow {
   isOurTeam?: boolean;
 }
 
-export const leagueTable: LeagueRow[] = [
-  {
-    position: 1,
-    name: "Атлетик Норд",
-    played: 18,
-    wins: 14,
-    draws: 3,
-    losses: 1,
-    goalsFor: 50,
-    goalsAgainst: 22,
-    points: 45,
-    last5: ["win", "win", "draw", "win", "win"],
-  },
-  {
-    position: 2,
-    name: "Юнион Стар",
-    played: 18,
-    wins: 12,
-    draws: 5,
-    losses: 1,
-    goalsFor: 44,
-    goalsAgainst: 25,
-    points: 41,
-    last5: ["draw", "win", "win", "loss", "win"],
-  },
-  {
-    position: 3,
-    name: "FC Заря",
-    played: 18,
-    wins: 11,
-    draws: 5,
-    losses: 2,
-    goalsFor: 39,
-    goalsAgainst: 25,
-    points: 38,
-    last5: ["win", "draw", "loss", "draw", "win"],
-    isOurTeam: true,
-  },
-  {
-    position: 4,
-    name: "Дракон Сити",
-    played: 18,
-    wins: 9,
-    draws: 7,
-    losses: 2,
-    goalsFor: 30,
-    goalsAgainst: 24,
-    points: 34,
-    last5: ["win", "draw", "win", "draw", "loss"],
-  },
-  {
-    position: 5,
-    name: "Ред Фалькон",
-    played: 18,
-    wins: 8,
-    draws: 6,
-    losses: 4,
-    goalsFor: 28,
-    goalsAgainst: 26,
-    points: 30,
-    last5: ["loss", "win", "draw", "loss", "draw"],
-  },
-  {
-    position: 6,
-    name: "Стальные Волки",
-    played: 18,
-    wins: 7,
-    draws: 5,
-    losses: 6,
-    goalsFor: 24,
-    goalsAgainst: 28,
-    points: 26,
-    last5: ["draw", "loss", "win", "draw", "win"],
-  },
-  {
-    position: 7,
-    name: "Гранит СК",
-    played: 18,
-    wins: 4,
-    draws: 6,
-    losses: 8,
-    goalsFor: 20,
-    goalsAgainst: 32,
-    points: 18,
-    last5: ["loss", "loss", "draw", "loss", "win"],
-  },
-  {
-    position: 8,
-    name: "Феникс Юнайтед",
-    played: 18,
-    wins: 2,
-    draws: 6,
-    losses: 10,
-    goalsFor: 15,
-    goalsAgainst: 38,
-    points: 12,
-    last5: ["loss", "loss", "loss", "draw", "loss"],
-  },
-];
+// Таблица лиги (тестовые данные) считается из полной сетки результатов
+// между всеми 8 командами (src/data/leagueMatrix.ts) — так таблица "Все
+// игры" на Обзоре и сетка результатов под ней всегда согласованы друг с
+// другом, а режимы "Домашние/Гостевые игры" считаются из того же источника.
+export const leagueTable: LeagueRow[] = computeLeagueStandings("all");
 
 export type MatchResult = "win" | "draw" | "loss";
 

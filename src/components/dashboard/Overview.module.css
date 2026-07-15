@@ -687,3 +687,113 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* Переключатель "Все/Домашние/Гостевые игры" над таблицей лиги */
+.modeTabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.modeTab {
+  padding: 4px 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  background: var(--color-bg-darker);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.modeTab:hover {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+
+.modeTabActive {
+  color: var(--color-bg-darker);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+/* Сетка очных результатов между командами лиги — тот же тёмно-зелёный/
+   золотой стиль, что и остальной Обзор: тёмный фон, компактный шрифт,
+   тонкие разделительные линии между ячейками. */
+.matrixTitle {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 14px 0 6px;
+}
+
+.matrixWrap {
+  overflow-x: auto;
+}
+
+.matrixTable {
+  border-collapse: collapse;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.matrixTable th,
+.matrixTable td {
+  border: 1px solid var(--color-border);
+  padding: 3px 6px;
+  text-align: center;
+}
+
+.matrixTable thead th {
+  background: var(--color-bg-darker);
+  color: var(--color-text-muted);
+  font-weight: 700;
+  font-size: 9.5px;
+  vertical-align: bottom;
+}
+
+.matrixTable thead th a,
+.matrixTable tbody th a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.matrixTable thead th a:hover,
+.matrixTable tbody th a:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.matrixTable tbody th {
+  background: var(--color-bg-darker);
+  color: var(--color-text-muted);
+  font-weight: 700;
+  font-size: 9.5px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.matrixCorner {
+  background: var(--color-bg-darker);
+  border: 1px solid var(--color-border);
+}
+
+.matrixCell {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  background: var(--color-bg-card);
+}
+
+/* Своя команда — слегка подсвеченные строка и столбец, чтобы её было
+   легко найти в сетке */
+.matrixHeadUs {
+  color: var(--color-accent) !important;
+  background: rgba(201, 162, 39, 0.14) !important;
+}
+
+.matrixCellUs {
+  background: rgba(201, 162, 39, 0.08);
+}

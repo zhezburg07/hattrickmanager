@@ -53,6 +53,11 @@ interface DashboardData {
   badgeLabel: string;
   leagueRows: LeagueTableRow[];
   leagueName?: string;
+  // Сетка результатов между командами и переключатель "Все/Домашние/
+  // Гостевые игры" существуют только для тестовых данных (CHPP не отдаёт
+  // очные результаты всех команд лиги) — true, пока leagueRows не заменили
+  // на реальную таблицу из leaguedetails.xml.
+  leagueIsDemo: boolean;
   recentMatches: RecentMatchRow[];
   upcomingMatches: UpcomingMatchRow[];
   balance: number;
@@ -102,6 +107,7 @@ function buildDemoData(): Omit<DashboardData, "errors"> {
     powerRatingWorldRank: powerRating.worldRank,
     currencyLabel: defaultCurrency.label,
     isFullyDemo: true,
+    leagueIsDemo: true,
   };
 }
 
@@ -204,6 +210,7 @@ async function resolveDashboardData(): Promise<DashboardData> {
         points: r.points,
         isOurTeam: r.isOurTeam,
       }));
+      data.leagueIsDemo = false;
     }
     data.isFullyDemo = false;
   } catch (err) {
@@ -316,7 +323,7 @@ export default async function DashboardPage() {
           <DashboardHeader clubName={data.clubName} clubShortName={data.clubShortName} badgeLabel={data.badgeLabel} />
 
           <div className={styles.grid}>
-            <LeagueTable rows={data.leagueRows} leagueName={data.leagueName} />
+            <LeagueTable rows={data.leagueRows} leagueName={data.leagueName} showResultsMatrix={data.leagueIsDemo} />
             <SquadSummaryPanel
               totalPlayers={data.squadTotal}
               starting={data.squadStarting}
