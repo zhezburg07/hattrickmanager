@@ -46,6 +46,14 @@ const modeTabs: { mode: LeagueTableMode; label: string }[] = [
   { mode: "away", label: "Гостевые игры" },
 ];
 
+// Временно скрыто на время межсезонья — реальный сезон лиги ещё не начался
+// (см. чат: leaguedetails/leaguefixtures честно отдают 0 сыгранных матчей),
+// поэтому сетку результатов пока не на чем проверить на реальных данных.
+// Переключатель "Все/Домашние/Гостевые игры" при этом продолжает работать —
+// скрыта только сама таблица-сетка ниже. Верните true, когда появятся
+// первые сыгранные туры.
+const SHOW_RESULTS_GRID = false;
+
 // Сетка очных результатов между всеми командами лиги — строки: команда
 // дома, столбцы: команда в гостях, на пересечении — счёт "голы хозяев-голы
 // гостей", как на оригинальной странице лиги в Hattrick. Диагональ пустая.
@@ -225,7 +233,7 @@ export default function LeagueTable({
         </table>
       </div>
 
-      {showResultsMatrix && matrixTeams && resultsMatrix && (
+      {SHOW_RESULTS_GRID && showResultsMatrix && matrixTeams && resultsMatrix && (
         <>
           <div className={styles.matrixTitle}>Результаты между командами</div>
           <ResultsMatrix teams={matrixTeams} matrix={resultsMatrix} />
