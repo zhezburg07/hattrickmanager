@@ -64,6 +64,23 @@ interface DashboardData {
   // сетку, как раньше.
   resultsMatrixTeams?: MatrixTeamMeta[];
   resultsMatrix?: (string | null)[][];
+  // ВРЕМЕННАЯ диагностика — почему сетка результатов не строится на реальных
+  // данных (см. чат: таблица лиги неожиданно обнулилась после подключения
+  // leaguefixtures). Уберите вместе с рендером блока в DashboardPage, когда
+  // причина найдена.
+  debugLeague?: {
+    leagueLevelUnitId: string;
+    leagueDetailsHttpStatus: number | null;
+    leagueDetailsSnippet: string;
+    standingsCount: number;
+    firstStandingRaw: string;
+    leagueFixturesRequested: boolean;
+    leagueFixturesHttpStatus: number | null;
+    leagueFixturesSnippet: string;
+    fixturesParsedCount: number | null;
+    matrixFilledCells: number | null;
+    fixturesError: string | null;
+  };
   recentMatches: RecentMatchRow[];
   upcomingMatches: UpcomingMatchRow[];
   balance: number;
@@ -206,6 +223,21 @@ async function resolveDashboardData(): Promise<DashboardData> {
     }
     const league = parseLeagueDetailsXml(raw.leaguedetails.rawXml, teamId);
     data.leagueName = league.leagueName;
+
+    data.debugLeague = {
+      leagueLevelUnitId,
+      leagueDetailsHttpStatus: raw.leaguedetails.httpStatus,
+      leagueDetailsSnippet: raw.leaguedetails.rawXml.slice(0, 1500),
+      standingsCount: league.standings.length,
+      firstStandingRaw: league.standings[0] ? JSON.stringify(league.standings[0]) : "(пусто)",
+      leagueFixturesRequested: !!leagueLevelUnitId,
+      leagueFixturesHttpStatus: raw.leaguefixtures?.httpStatus ?? null,
+      leagueFixturesSnippet: raw.leaguefixtures?.rawXml.slice(0, 1500) ?? "(запрос не отправлялся)",
+      fixturesParsedCount: null,
+      matrixFilledCells: null,
+      fixturesError: null,
+    };
+
     // Таблица появляется только после старта сезона (см. комментарий у
     // CHPP_REQUESTS выше) — в межсезонье standings пуст, тогда оставляем
     // демо-таблицу вместо пустого блока.
@@ -230,22 +262,25 @@ async function resolveDashboardData(): Promise<DashboardData> {
       data.resultsMatrix = undefined;
 
       try {
-        if (!raw.leaguefixtures) throw new Error("запрос не выполнился");
+        if (!raw.leaguefixtures) throw new Error("запрос не выполнился (LeagueLevelUnitID не определён?)");
         if (raw.leaguefixtures.httpStatus < 200 || raw.leaguefixtures.httpStatus >= 300) {
           throw new Error(`HTTP ${raw.leaguefixtures.httpStatus}: ${raw.leaguefixtures.rawXml.slice(0, 200)}`);
         }
         const fixtures = parseLeagueFixturesXml(raw.leaguefixtures.rawXml);
+        data.debugLeague.fixturesParsedCount = fixtures.length;
         const { teams, matrix } = buildRealLeagueMatrix(league.standings, fixtures);
-        const hasAnyPlayedMatch = matrix.some((row) => row.some((cell) => cell !== null));
-        if (hasAnyPlayedMatch) {
+        const filledCells = matrix.reduce((sum, row) => sum + row.filter((c) => c !== null).length, 0);
+        data.debugLeague.matrixFilledCells = filledCells;
+        if (filledCells > 0) {
           data.resultsMatrixTeams = teams;
           data.resultsMatrix = matrix;
         }
-      } catch {
+      } catch (fixturesErr) {
         // Сетка результатов — дополнительная деталь, не первостепенная
         // таблица лиги: если leaguefixtures недоступен или не разобрался,
         // молча остаёмся без переключателя/сетки, не блокируем баннером
-        // остальную страницу.
+        // остальную страницу. Причину всё же сохраняем в debugLeague.
+        data.debugLeague.fixturesError = errorMessage(fixturesErr);
       }
     }
     data.isFullyDemo = false;
@@ -350,6 +385,48 @@ export default async function DashboardPage() {
       <Header />
       <main className={styles.page}>
         <div className="container" style={{ paddingBottom: 48 }}>
+          {data.debugLeague && (
+            <div
+              style={{
+                border: "2px dashed #c0503f",
+                borderRadius: 8,
+                padding: "12px 14px",
+                marginBottom: 12,
+                background: "rgba(192, 80, 63, 0.06)",
+                fontSize: 12,
+                color: "#f2ede1",
+              }}
+            >
+              <div style={{ fontWeight: 800, color: "#c0503f", marginBottom: 6 }}>
+                ⚠ Временная диагностика сетки результатов лиги (убрать после отладки)
+              </div>
+              <div>LeagueLevelUnitID: {data.debugLeague.leagueLevelUnitId || "(пусто)"}</div>
+              <div>
+                leaguedetails: HTTP {data.debugLeague.leagueDetailsHttpStatus} · команд в standings:{" "}
+                {data.debugLeague.standingsCount}
+              </div>
+              <div>Первая команда (как разобрана): {data.debugLeague.firstStandingRaw}</div>
+              <div>leaguefixtures запрошен: {data.debugLeague.leagueFixturesRequested ? "да" : "нет"}</div>
+              <div>leaguefixtures: HTTP {data.debugLeague.leagueFixturesHttpStatus ?? "—"}</div>
+              <div>Матчей разобрано из leaguefixtures: {data.debugLeague.fixturesParsedCount ?? "—"}</div>
+              <div>Заполненных ячеек сетки: {data.debugLeague.matrixFilledCells ?? "—"}</div>
+              {data.debugLeague.fixturesError && (
+                <div style={{ color: "#c0503f" }}>Ошибка на шаге leaguefixtures: {data.debugLeague.fixturesError}</div>
+              )}
+              <details style={{ marginTop: 6 }}>
+                <summary style={{ cursor: "pointer" }}>Сырой XML leaguedetails (начало)</summary>
+                <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", fontSize: 10.5, maxHeight: 200, overflow: "auto" }}>
+                  {data.debugLeague.leagueDetailsSnippet}
+                </pre>
+              </details>
+              <details style={{ marginTop: 6 }}>
+                <summary style={{ cursor: "pointer" }}>Сырой XML leaguefixtures (начало)</summary>
+                <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", fontSize: 10.5, maxHeight: 200, overflow: "auto" }}>
+                  {data.debugLeague.leagueFixturesSnippet}
+                </pre>
+              </details>
+            </div>
+          )}
           {data.errors.length > 0 && (
             <DemoModeBanner
               title={data.isFullyDemo ? "Демо-режим" : "Часть данных не удалось загрузить"}
