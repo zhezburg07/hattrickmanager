@@ -14,6 +14,10 @@ export interface RealMatch {
   ourScore: number | null;
   oppScore: number | null;
   matchType: string;
+  // ID кубка — заполнено только у кубковых матчей, если Hattrick вообще
+  // кладёт это поле сюда (не проверено на живом ответе; нужно для
+  // cupmatches.xml, см. src/lib/cupMatches.ts).
+  cupId: string | null;
 }
 
 // Разбирает XML-ответ CHPP на файл matches.xml — последние и ближайшие
@@ -38,6 +42,9 @@ export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
     const homeGoals = m.HomeGoals !== undefined ? Number(m.HomeGoals) : null;
     const awayGoals = m.AwayGoals !== undefined ? Number(m.AwayGoals) : null;
 
+    const cupIdRaw = m.CupID ?? m.CupId;
+    const cupId = cupIdRaw !== undefined && String(cupIdRaw) !== "" && String(cupIdRaw) !== "0" ? String(cupIdRaw) : null;
+
     return {
       matchId: String(m.MatchID ?? ""),
       date: String(m.MatchDate ?? ""),
@@ -47,6 +54,7 @@ export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
       ourScore: homeGoals === null || awayGoals === null ? null : isHome ? homeGoals : awayGoals,
       oppScore: homeGoals === null || awayGoals === null ? null : isHome ? awayGoals : homeGoals,
       matchType: String(m.MatchType ?? ""),
+      cupId,
     };
   });
 }

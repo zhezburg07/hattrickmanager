@@ -16,7 +16,22 @@ import styles from "./Overview.module.css";
 // уровень 0 значит "не нанят". Тренер, командный дух и уверенность пока
 // остаются демонстрационными — для них нужен отдельный файл (training.xml),
 // это следующий шаг.
-const realStaffLabels: { key: keyof RealClubStaff; label: string }[] = [
+//
+// Явно перечисленные числовые ключи (а не весь keyof RealClubStaff) — там
+// есть и cupId (string | null, не уровень специалиста), который сюда
+// попадать не должен.
+type StaffLevelKey = Extract<
+  keyof RealClubStaff,
+  | "assistantTrainerLevel"
+  | "formCoachLevel"
+  | "medicLevel"
+  | "sportPsychologistLevel"
+  | "financialDirectorLevel"
+  | "tacticalAssistantLevel"
+  | "spokespersonLevel"
+>;
+
+const realStaffLabels: { key: StaffLevelKey; label: string }[] = [
   { key: "assistantTrainerLevel", label: "Помощник тренера" },
   { key: "formCoachLevel", label: "Тренер по физподготовке" },
   { key: "medicLevel", label: "Медик" },

@@ -18,6 +18,10 @@ export interface RealClubStaff {
   // отдаёт через youthplayers.xml/youthdetails.xml — оба стабильно падают
   // с 401 у этого приложения, похоже на ограничение прав доступа).
   youthLevel: number;
+  // Проверенная структура club.xml (см. комментарий выше) содержит только
+  // <Staff> и <YouthSquad> — CupID здесь не найден, поле оставлено на
+  // случай, если в реальном ответе всё же обнаружится где-то ещё.
+  cupId: string | null;
 }
 
 export function parseClubXml(xml: string): RealClubStaff {
@@ -28,6 +32,8 @@ export function parseClubXml(xml: string): RealClubStaff {
   assertNoChppError(root, "club");
 
   const staff = root?.Team?.Staff ?? {};
+  const cupIdRaw = root?.Team?.Cup?.CupID ?? root?.Team?.CupID;
+  const cupId = cupIdRaw !== undefined && String(cupIdRaw) !== "" && String(cupIdRaw) !== "0" ? String(cupIdRaw) : null;
 
   return {
     assistantTrainerLevel: Number(staff.AssistantTrainerLevels ?? 0),
@@ -38,5 +44,6 @@ export function parseClubXml(xml: string): RealClubStaff {
     sportPsychologistLevel: Number(staff.SportPsychologistLevels ?? 0),
     tacticalAssistantLevel: Number(staff.TacticalAssistantLevels ?? 0),
     youthLevel: Number(root?.Team?.YouthSquad?.YouthLevel ?? 0),
+    cupId,
   };
 }

@@ -15,6 +15,10 @@ export interface RealTeamDetails {
   powerRatingValue: number | null;
   powerRatingGlobalRank: number | null;
   stillInCup: boolean | null; // null — поле <Cup> недоступно в ответе
+  // ID активного кубка команды, если Hattrick кладёт его прямо в <Cup> рядом
+  // со StillInCup — не проверено на живом ответе, читаем защитно (см.
+  // src/lib/cupMatches.ts, там же нужен параметр CupID для cupmatches.xml).
+  cupId: string | null;
 }
 
 // Разбирает XML-ответ CHPP на файл teamdetails.xml.
@@ -35,6 +39,10 @@ export function parseTeamDetailsXml(xml: string): RealTeamDetails {
   const globalRank =
     team.PowerRating?.GlobalRanking !== undefined ? Number(team.PowerRating.GlobalRanking) : NaN;
   const stillInCupRaw = team.Cup?.StillInCup;
+  // Пробуем несколько вероятных названий поля — не проверено на живом
+  // ответе, какое именно использует CHPP (если вообще использует).
+  const cupIdRaw = team.Cup?.CupID ?? team.Cup?.CupId ?? team.CupID;
+  const cupId = cupIdRaw !== undefined && String(cupIdRaw) !== "" && String(cupIdRaw) !== "0" ? String(cupIdRaw) : null;
 
   return {
     teamId: String(team.TeamID ?? ""),
@@ -48,5 +56,6 @@ export function parseTeamDetailsXml(xml: string): RealTeamDetails {
     powerRatingValue: Number.isNaN(powerRatingValue) ? null : powerRatingValue,
     powerRatingGlobalRank: Number.isNaN(globalRank) ? null : globalRank,
     stillInCup: stillInCupRaw === undefined ? null : String(stillInCupRaw) === "True",
+    cupId,
   };
 }
