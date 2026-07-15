@@ -108,6 +108,43 @@ export function parsePlayersDetailedXml(
   });
 }
 
+// ВРЕМЕННАЯ диагностика — показывает сырое значение поля национальности
+// (CountryID и всё, что рядом с ним похоже на страну) для первых нескольких
+// игроков, как оно реально приходит от CHPP, без какой-либо обработки.
+// Используется только на время отладки (см. src/app/dashboard/squad/page.tsx,
+// SHOW_NATIONALITY_DEBUG) — удалить вместе с этим флагом, когда причина
+// найдена.
+export interface DebugPlayerCountryRaw {
+  name: string;
+  countryId: string;
+  rawCountryFields: string;
+}
+
+export function debugRawPlayerCountryIds(xml: string, limit = 3): DebugPlayerCountryRaw[] {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  const rawPlayers = root?.Team?.PlayerList?.Player;
+  const players: Record<string, unknown>[] = Array.isArray(rawPlayers) ? rawPlayers : rawPlayers ? [rawPlayers] : [];
+
+  return players.slice(0, limit).map((p) => {
+    const firstName = String(p.FirstName ?? "").trim();
+    const lastName = String(p.LastName ?? "").trim();
+    // Собираем вообще любые поля с "country"/"nation" в названии — вдруг
+    // реальное имя поля отличается от того, что мы предполагаем (CountryID).
+    const countryLikeFields = Object.keys(p).filter((k) => /country|nation/i.test(k));
+    const rawCountryFields = countryLikeFields.length
+      ? countryLikeFields.map((k) => `${k}=${JSON.stringify(p[k])}`).join(", ")
+      : "(полей с country/nation в имени не найдено)";
+
+    return {
+      name: [firstName, lastName].filter(Boolean).join(" ") || "Без имени",
+      countryId: String(p.CountryID ?? "(нет поля CountryID)"),
+      rawCountryFields,
+    };
+  });
+}
+
 // CHPP не даёт "естественное" амплуа напрямую — берём навык с наибольшим
 // значением (полузащитные навыки усредняются) как лучшую доступную оценку.
 // Экспортирована, чтобы той же эвристикой пользовался парсер юношеских
