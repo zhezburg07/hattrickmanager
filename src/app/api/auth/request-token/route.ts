@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { buildAuthorizationHeader, buildOAuthParams, HATTRICK_OAUTH_URLS } from "@/lib/hattrickOAuth";
 
+// Этот роут не читает ничего из самого запроса (нет searchParams/cookies), и
+// без этой строки Next.js считает его "статическим" и кеширует один и тот же
+// ответ (с одним и тем же oauth_token и cookie) для всех подряд — на Vercel
+// это реально происходило и ломало вход в продакшене. force-dynamic
+// заставляет выполнять функцию заново при каждом обращении.
+export const dynamic = "force-dynamic";
+
 // Шаг 1 из 3 подключения к Hattrick: "Request Token".
 //
 // Что здесь происходит простыми словами:
