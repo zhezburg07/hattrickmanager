@@ -1,5 +1,10 @@
 import styles from "./PricingSection.module.css";
 
+// Временно скрыто на время технической настройки (подключение базы данных
+// и т.д.) — не финальное решение. Чтобы вернуть кнопку доната, поставьте
+// снова true.
+const SHOW_DONATE_BUTTON = false;
+
 export default function PricingSection() {
   return (
     <section id="pricing" className="section">
@@ -25,15 +30,17 @@ export default function PricingSection() {
             <a href="/api/auth/request-token" className={`btnPrimary ${styles.planAction}`}>
               Подключить команду
             </a>
-            <a
-              href="https://ko-fi.com/hattrickmanager"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`btnSecondary ${styles.planAction}`}
-              style={{ marginTop: 10 }}
-            >
-              Поддержать проект донатом
-            </a>
+            {SHOW_DONATE_BUTTON && (
+              <a
+                href="https://ko-fi.com/hattrickmanager"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`btnSecondary ${styles.planAction}`}
+                style={{ marginTop: 10 }}
+              >
+                Поддержать проект донатом
+              </a>
+            )}
           </div>
 
           <div className={styles.plan}>
