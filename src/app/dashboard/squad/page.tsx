@@ -6,6 +6,7 @@ import styles from "@/components/dashboard/Dashboard.module.css";
 import { getStoredHattrickTokens, getStoredHattrickUserId, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parsePlayersDetailedXml, debugRawPlayerCountryIds, type DebugPlayerCountryRaw } from "@/lib/squadPlayers";
 import { resolveRealHomeCountry } from "@/lib/worldCurrency";
+import { getCountryIdLookup } from "@/lib/worldCountries";
 import { resolvePlayerHistory } from "@/lib/playerHistoryDb";
 import type { SquadPlayer } from "@/data/squad";
 
@@ -37,9 +38,10 @@ export default async function SquadPage() {
     );
   }
 
-  const [{ homeCountry, error: homeCountryError }, playersRaw] = await Promise.all([
+  const [{ homeCountry, error: homeCountryError }, playersRaw, countryIdLookupResult] = await Promise.all([
     resolveRealHomeCountry(tokens),
     fetchPlayersRaw(tokens).catch(() => null),
+    getCountryIdLookup(tokens),
   ]);
 
   let players: SquadPlayer[] | null = null;
@@ -50,7 +52,7 @@ export default async function SquadPage() {
     if (playersRaw.httpStatus < 200 || playersRaw.httpStatus >= 300) {
       throw new Error(`HTTP ${playersRaw.httpStatus}: ${playersRaw.rawXml.slice(0, 200)}`);
     }
-    players = parsePlayersDetailedXml(playersRaw.rawXml, homeCountry);
+    players = parsePlayersDetailedXml(playersRaw.rawXml, homeCountry, countryIdLookupResult.lookup ?? undefined);
     if (SHOW_NATIONALITY_DEBUG) debugPlayers = debugRawPlayerCountryIds(playersRaw.rawXml, 3);
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
@@ -86,6 +88,15 @@ export default async function SquadPage() {
                   : "не определена"}
               </div>
               {homeCountryError && <div style={{ color: "#c0503f" }}>Ошибка домашней страны: {homeCountryError}</div>}
+              <div>
+                Полный список стран (worlddetails без фильтра):{" "}
+                {countryIdLookupResult.lookup
+                  ? `используется, стран найдено: ${countryIdLookupResult.countriesFound}`
+                  : "не используется"}
+              </div>
+              {countryIdLookupResult.error && (
+                <div style={{ color: "#c0503f" }}>Причина: {countryIdLookupResult.error}</div>
+              )}
               {debugPlayers.map((p, i) => (
                 <div key={i} style={{ marginTop: 4 }}>
                   Игрок {i + 1} ({p.name}): CountryID={p.countryId} · {p.rawCountryFields}
