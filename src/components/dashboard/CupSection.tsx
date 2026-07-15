@@ -2,7 +2,64 @@
 
 import { useState } from "react";
 import { cupEntries, type CupEntry, type CupKind, type CupOverallStatus, type CupRound } from "@/data/cup";
+import { formatMatchDateTime } from "@/data/dashboard";
+import type { RealCupMatch } from "@/lib/cupMatches";
 import styles from "./Cup.module.css";
+
+// Настоящие матчи кубка (cupmatches.xml), если удалось получить — честный
+// список без сетки/раундов/призовых (этого CHPP не отдаёт), отдельно от
+// демонстрационной сетки ниже, чтобы не выдавать пример за реальность.
+function RealCupMatches({ matches }: { matches: RealCupMatch[] }) {
+  const finished = matches.filter((m) => m.status === "FINISHED").slice(-3).reverse();
+  const upcoming = matches.filter((m) => m.status === "UPCOMING").slice(0, 3);
+
+  if (finished.length === 0 && upcoming.length === 0) return null;
+
+  return (
+    <div className={styles.card}>
+      <div className={styles.cardTitle}>Реальные матчи кубка (Hattrick)</div>
+      <div className={styles.grid2}>
+        <div>
+          <div className={styles.cardTitle}>Сыграно</div>
+          {finished.length === 0 && <p className={styles.prizeNote}>Пока нет сыгранных кубковых матчей.</p>}
+          {finished.map((m) => {
+            const { shortDate } = formatMatchDateTime(m.date);
+            return (
+              <div className={styles.matchRow} key={m.matchId}>
+                <span className={styles.matchDate}>{shortDate}</span>
+                <span className={styles.matchOpponent}>
+                  {m.home ? "vs" : "@"} {m.opponent}
+                </span>
+                <span>
+                  {m.ourScore}:{m.oppScore}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <div>
+          <div className={styles.cardTitle}>Ближайшие</div>
+          {upcoming.length === 0 && <p className={styles.prizeNote}>Ближайших кубковых матчей нет.</p>}
+          {upcoming.map((m) => {
+            const { shortDate, time } = formatMatchDateTime(m.date);
+            return (
+              <div className={styles.matchRow} key={m.matchId}>
+                <span className={styles.matchDate}>
+                  {shortDate}
+                  {time ? ` · ${time}` : ""}
+                </span>
+                <span className={styles.matchOpponent}>
+                  {m.home ? "vs" : "@"} {m.opponent}
+                </span>
+                <span className={styles.homeTag}>{m.home ? "Дома" : "В гостях"}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function formatTenge(value: number): string {
   return `${value.toLocaleString("ru-RU")} тенге`;
@@ -171,7 +228,13 @@ function CupCard({
   );
 }
 
-export default function CupSection({ stillInCup }: { stillInCup?: boolean } = {}) {
+export default function CupSection({
+  stillInCup,
+  realCupMatches,
+}: {
+  stillInCup?: boolean;
+  realCupMatches?: RealCupMatch[];
+} = {}) {
   // Развёрнутые карточки — по умолчанию открыт только активный кубок (как и
   // раньше), остальные разворачиваются по клику. Несколько карточек можно
   // держать открытыми одновременно — открытие одной не закрывает другие.
@@ -188,14 +251,19 @@ export default function CupSection({ stillInCup }: { stillInCup?: boolean } = {}
     });
   }
 
+  const hasRealMatches = realCupMatches !== undefined && realCupMatches.length > 0;
+
   return (
     <div className={styles.stack}>
       {stillInCup !== undefined && (
         <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "0 0 4px" }}>
           По данным Hattrick, команда сейчас {stillInCup ? "участвует в кубковом розыгрыше" : "не участвует ни в одном кубке"}.
-          Точную сетку и историю раундов CHPP этому приложению не отдаёт — ниже показан иллюстративный пример.
+          {hasRealMatches
+            ? " Реальные матчи — ниже; сетка раундов и призовые дальше — иллюстративный пример (CHPP их не отдаёт)."
+            : " Точную сетку и историю раундов CHPP этому приложению не отдаёт — ниже показан иллюстративный пример."}
         </p>
       )}
+      {realCupMatches && <RealCupMatches matches={realCupMatches} />}
       {cupEntries.map((entry) => (
         <CupCard key={entry.kind} entry={entry} isExpanded={expanded.has(entry.kind)} onToggle={() => toggle(entry.kind)} />
       ))}

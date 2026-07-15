@@ -9,21 +9,29 @@ import styles from "./Training.module.css";
 export default function TrainingSection({
   coachName,
   coachLeadership,
+  realTypeKey,
+  realIntensity,
+  realStaminaShare,
 }: {
   coachName?: string;
   coachLeadership?: number;
+  realTypeKey?: string;
+  realIntensity?: number;
+  realStaminaShare?: number;
 } = {}) {
-  const [typeKey, setTypeKey] = useState(trainingDefaults.typeKey);
-  const [intensity, setIntensity] = useState(trainingDefaults.intensity);
-  const [staminaShare, setStaminaShare] = useState(trainingDefaults.staminaShare);
+  const hasRealTraining = realTypeKey !== undefined || realIntensity !== undefined || realStaminaShare !== undefined;
+  const [typeKey, setTypeKey] = useState(realTypeKey ?? trainingDefaults.typeKey);
+  const [intensity, setIntensity] = useState(realIntensity ?? trainingDefaults.intensity);
+  const [staminaShare, setStaminaShare] = useState(realStaminaShare ?? trainingDefaults.staminaShare);
 
   return (
     <>
       {coachName && (
         <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "0 0 12px" }}>
-          Тип тренировки, интенсивность и навык тренера как таковой CHPP не отдаёт (доступ только на чтение) — эта
-          часть остаётся плановым инструментом, не связанным с настоящими настройками команды. Ниже — реальное имя
-          и лидерство тренера.
+          {hasRealTraining
+            ? "Тип тренировки, интенсивность и процент выносливости ниже выставлены по реальным настройкам команды (Hattrick) — можно менять как план, это не влияет на настоящую тренировку."
+            : "Тип тренировки, интенсивность и навык тренера как таковой CHPP не отдаёт (доступ только на чтение) — эта часть остаётся плановым инструментом, не связанным с настоящими настройками команды."}{" "}
+          Ниже — реальное имя и лидерство тренера.
         </p>
       )}
       <div className={styles.card}>

@@ -110,7 +110,9 @@ export function parsePlayersDetailedXml(
 
 // CHPP не даёт "естественное" амплуа напрямую — берём навык с наибольшим
 // значением (полузащитные навыки усредняются) как лучшую доступную оценку.
-function inferPositionGroup(skills: SquadSkills): PositionGroup {
+// Экспортирована, чтобы той же эвристикой пользовался парсер юношеских
+// игроков (см. src/lib/youthPlayers.ts).
+export function inferPositionGroup(skills: SquadSkills): PositionGroup {
   const midScore = (skills.midfield + skills.winger + skills.passing) / 3;
   const candidates: [PositionGroup, number][] = [
     ["GK", skills.goalkeeping],

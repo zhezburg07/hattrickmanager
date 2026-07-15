@@ -1,7 +1,16 @@
-import { positionGroupLabel, skillLabel, skillWord, type SquadSkills } from "@/data/squad";
+import { positionGroupLabel, skillLabel, skillWord, type Country, type PositionGroup, type SquadSkills } from "@/data/squad";
 import { youthPlayers, academyLevel } from "@/data/youth";
 import NationalityTag from "./NationalityTag";
 import styles from "./SquadTable.module.css";
+
+interface RealYouthPlayerRow {
+  id: number;
+  name: string;
+  age: number;
+  nationality: Country;
+  positionGroup: PositionGroup;
+  skills: SquadSkills;
+}
 
 type SkillKey = keyof SquadSkills;
 
@@ -32,7 +41,18 @@ function PromoteButton() {
   );
 }
 
-export default function YouthTable({ realYouthLevel }: { realYouthLevel?: number } = {}) {
+export default function YouthTable({
+  realYouthLevel,
+  realYouthPlayers,
+}: {
+  realYouthLevel?: number;
+  realYouthPlayers?: RealYouthPlayerRow[];
+} = {}) {
+  // Реальный список игроков академии (youthplayerlist.xml), если удалось
+  // получить и он не пуст — иначе тестовые игроки для примера, как раньше.
+  const players = realYouthPlayers && realYouthPlayers.length > 0 ? realYouthPlayers : youthPlayers;
+  const isRealRoster = realYouthPlayers !== undefined && realYouthPlayers.length > 0;
+
   return (
     <>
       <div className={styles.card}>
@@ -50,9 +70,9 @@ export default function YouthTable({ realYouthLevel }: { realYouthLevel?: number
       </div>
 
       <div className={styles.card}>
-        <div className={styles.cardTitle}>Юношеская команда ({youthPlayers.length} игроков)</div>
+        <div className={styles.cardTitle}>Юношеская команда ({players.length} игроков)</div>
         <p className={styles.hint}>Все игроки младше 17 лет — потенциальное пополнение основного состава.</p>
-        {realYouthLevel !== undefined && (
+        {realYouthLevel !== undefined && !isRealRoster && (
           <p className={styles.hint} style={{ marginTop: -8 }}>
             Список игроков академии CHPP не отдаёт этому приложению (доступ ограничен) — ниже тестовые игроки для
             примера.
@@ -94,7 +114,7 @@ export default function YouthTable({ realYouthLevel }: { realYouthLevel?: number
               </tr>
             </thead>
             <tbody>
-              {youthPlayers.map((p) => (
+              {players.map((p) => (
                 <tr key={p.id}>
                   <td className={styles.nameCell}>{p.name}</td>
                   <td>
@@ -119,7 +139,7 @@ export default function YouthTable({ realYouthLevel }: { realYouthLevel?: number
         </div>
 
         <div className={styles.cardList}>
-          {youthPlayers.map((p) => (
+          {players.map((p) => (
             <div className={styles.playerCard} key={p.id}>
               <div className={styles.playerCardHead}>
                 <span className={styles.playerCardName}>{p.name}</span>

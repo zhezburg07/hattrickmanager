@@ -3,9 +3,10 @@ import Footer from "@/components/Footer";
 import TrainingSection from "@/components/dashboard/TrainingSection";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getStoredHattrickTokens, requestChppXmlRaw } from "@/lib/hattrickApi";
+import { getStoredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
 import { parsePlayersDetailedXml } from "@/lib/squadPlayers";
+import { parseTrainingXml, type RealTraining } from "@/lib/training";
 
 interface RealCoach {
   name: string;
@@ -38,9 +39,25 @@ async function resolveCoach(): Promise<{ coach: RealCoach | null; error: string 
   }
 }
 
+// training — ни разу не пробовался в этом проекте живьём до сих пор (см.
+// src/lib/training.ts). Если файла с таким именем нет или CHPP не отдаёт
+// его на чтение — молча остаёмся с тестовыми типом/интенсивностью, как
+// раньше, без отдельного баннера (это второстепенная деталь плановой
+// панели, см. комментарий в TrainingSection.tsx).
+async function resolveTraining(tokens: StoredHattrickTokens): Promise<RealTraining | null> {
+  try {
+    const raw = await requestChppXmlRaw("training", {}, tokens);
+    if (raw.httpStatus < 200 || raw.httpStatus >= 300) return null;
+    return parseTrainingXml(raw.rawXml);
+  } catch {
+    return null;
+  }
+}
+
 export default async function TrainingPage() {
-  const { coach, error } = await resolveCoach();
   const tokens = getStoredHattrickTokens();
+  const { coach, error } = await resolveCoach();
+  const training = tokens ? await resolveTraining(tokens) : null;
 
   return (
     <>
@@ -51,7 +68,13 @@ export default async function TrainingPage() {
           {tokens && error && (
             <DemoModeBanner title="Не удалось определить реального тренера" reasons={[error]} />
           )}
-          <TrainingSection coachName={coach?.name} coachLeadership={coach?.leadership} />
+          <TrainingSection
+            coachName={coach?.name}
+            coachLeadership={coach?.leadership}
+            realTypeKey={training?.typeKey ?? undefined}
+            realIntensity={training?.intensity ?? undefined}
+            realStaminaShare={training?.staminaShare ?? undefined}
+          />
         </div>
       </main>
       <Footer />
