@@ -23,9 +23,12 @@ import {
   chppSupportersPopularityToFanMoodLevel,
 } from "@/data/dashboard";
 import { squadPlayers as demoSquadPlayers } from "@/data/squad";
+import { leagueMatrixTeams, leagueResultsMatrix, type MatrixTeamMeta } from "@/data/leagueMatrix";
 import { getStoredHattrickTokens, requestChppXmlRaw, type ChppRawResponse, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
 import { parseLeagueDetailsXml } from "@/lib/leagueDetails";
+import { parseLeagueFixturesXml } from "@/lib/leagueFixtures";
+import { buildRealLeagueMatrix } from "@/lib/realLeagueMatrix";
 import { parseMatchesXml } from "@/lib/matches";
 import { parseEconomyXml } from "@/lib/economy";
 import { parseClubXml, type RealClubStaff } from "@/lib/clubStaff";
@@ -54,10 +57,13 @@ interface DashboardData {
   leagueRows: LeagueTableRow[];
   leagueName?: string;
   // Сетка результатов между командами и переключатель "Все/Домашние/
-  // Гостевые игры" существуют только для тестовых данных (CHPP не отдаёт
-  // очные результаты всех команд лиги) — true, пока leagueRows не заменили
-  // на реальную таблицу из leaguedetails.xml.
-  leagueIsDemo: boolean;
+  // Гостевые игры" — для тестовых данных всегда (leagueMatrixTeams/
+  // leagueResultsMatrix), для реальных — только если удалось получить и
+  // разобрать leaguefixtures.xml (см. src/lib/realLeagueMatrix.ts). Если нет
+  // ни того ни другого — LeagueTable просто не покажет ни переключатель, ни
+  // сетку, как раньше.
+  resultsMatrixTeams?: MatrixTeamMeta[];
+  resultsMatrix?: (string | null)[][];
   recentMatches: RecentMatchRow[];
   upcomingMatches: UpcomingMatchRow[];
   balance: number;
@@ -107,7 +113,8 @@ function buildDemoData(): Omit<DashboardData, "errors"> {
     powerRatingWorldRank: powerRating.worldRank,
     currencyLabel: defaultCurrency.label,
     isFullyDemo: true,
-    leagueIsDemo: true,
+    resultsMatrixTeams: leagueMatrixTeams,
+    resultsMatrix: leagueResultsMatrix,
   };
 }
 
@@ -143,10 +150,12 @@ async function resolveDashboardData(): Promise<DashboardData> {
   const data: DashboardData = { ...demo, isFullyDemo: true, errors: [] };
 
   // Шаг 1: teamdetails — отдельно и первым, чтобы узнать TeamID (нужен для
-  // определения "своей" строки в таблице лиги и в списке матчей) и LeagueID
-  // (нужен для worlddetails на шаге 2, чтобы узнать валюту страны).
+  // определения "своей" строки в таблице лиги и в списке матчей), LeagueID
+  // (нужен для worlddetails на шаге 2, чтобы узнать валюту страны) и
+  // LeagueLevelUnitID (нужен для leaguefixtures — сетка результатов лиги).
   let teamId = "";
   let leagueId = "";
+  let leagueLevelUnitId = "";
   const teamDetailsRaw = await requestChppXmlRaw("teamdetails", {}, tokens).catch(() => null);
   try {
     if (!teamDetailsRaw) throw new Error("запрос не выполнился");
@@ -156,6 +165,7 @@ async function resolveDashboardData(): Promise<DashboardData> {
     const team = parseTeamDetailsXml(teamDetailsRaw.rawXml);
     teamId = team.teamId;
     leagueId = team.leagueId;
+    leagueLevelUnitId = team.leagueLevelUnitId;
     data.clubName = team.teamName || data.clubName;
     data.clubShortName = team.shortTeamName || data.clubShortName;
     data.badgeLabel = team.teamRank !== null ? `#${team.teamRank}` : team.leagueName || data.badgeLabel;
@@ -166,12 +176,14 @@ async function resolveDashboardData(): Promise<DashboardData> {
     errors.push(`Название команды (teamdetails): ${errorMessage(err)}`);
   }
 
-  // Шаг 2: остальные файлы — параллельно. worlddetails (валюта) добавляется,
-  // только если удалось узнать LeagueID на шаге 1 — без фильтра по лиге этот
-  // файл отдаёт список ВСЕХ лиг мира (сотни записей), не годится.
-  const requests = leagueId
-    ? [...CHPP_REQUESTS, { file: "worlddetails", params: { LeagueID: leagueId } }]
-    : CHPP_REQUESTS;
+  // Шаг 2: остальные файлы — параллельно. worlddetails (валюта) и
+  // leaguefixtures (сетка результатов лиги) добавляются, только если
+  // удалось узнать LeagueID / LeagueLevelUnitID на шаге 1.
+  const requests = [
+    ...CHPP_REQUESTS,
+    ...(leagueId ? [{ file: "worlddetails", params: { LeagueID: leagueId } }] : []),
+    ...(leagueLevelUnitId ? [{ file: "leaguefixtures", params: { LeagueLevelUnitID: leagueLevelUnitId } }] : []),
+  ];
   const raw = await requestAllRaw(requests, tokens);
 
   if (raw.worlddetails) {
@@ -210,7 +222,31 @@ async function resolveDashboardData(): Promise<DashboardData> {
         points: r.points,
         isOurTeam: r.isOurTeam,
       }));
-      data.leagueIsDemo = false;
+      // Реальная таблица заменила демо — демо-сетку результатов больше
+      // показывать нельзя. Ниже, если получится разобрать leaguefixtures,
+      // подставим настоящую; если нет — LeagueTable просто не покажет ни
+      // переключатель, ни сетку (как и раньше, до появления этой функции).
+      data.resultsMatrixTeams = undefined;
+      data.resultsMatrix = undefined;
+
+      try {
+        if (!raw.leaguefixtures) throw new Error("запрос не выполнился");
+        if (raw.leaguefixtures.httpStatus < 200 || raw.leaguefixtures.httpStatus >= 300) {
+          throw new Error(`HTTP ${raw.leaguefixtures.httpStatus}: ${raw.leaguefixtures.rawXml.slice(0, 200)}`);
+        }
+        const fixtures = parseLeagueFixturesXml(raw.leaguefixtures.rawXml);
+        const { teams, matrix } = buildRealLeagueMatrix(league.standings, fixtures);
+        const hasAnyPlayedMatch = matrix.some((row) => row.some((cell) => cell !== null));
+        if (hasAnyPlayedMatch) {
+          data.resultsMatrixTeams = teams;
+          data.resultsMatrix = matrix;
+        }
+      } catch {
+        // Сетка результатов — дополнительная деталь, не первостепенная
+        // таблица лиги: если leaguefixtures недоступен или не разобрался,
+        // молча остаёмся без переключателя/сетки, не блокируем баннером
+        // остальную страницу.
+      }
     }
     data.isFullyDemo = false;
   } catch (err) {
@@ -323,7 +359,12 @@ export default async function DashboardPage() {
           <DashboardHeader clubName={data.clubName} clubShortName={data.clubShortName} badgeLabel={data.badgeLabel} />
 
           <div className={styles.grid}>
-            <LeagueTable rows={data.leagueRows} leagueName={data.leagueName} showResultsMatrix={data.leagueIsDemo} />
+            <LeagueTable
+              rows={data.leagueRows}
+              leagueName={data.leagueName}
+              matrixTeams={data.resultsMatrixTeams}
+              resultsMatrix={data.resultsMatrix}
+            />
             <SquadSummaryPanel
               totalPlayers={data.squadTotal}
               starting={data.squadStarting}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { MatchOutcome } from "@/data/dashboard";
-import { computeLeagueStandings, leagueMatrixTeams, leagueResultsMatrix, type LeagueTableMode } from "@/data/leagueMatrix";
+import { computeStandingsFromMatrix, type LeagueTableMode, type MatrixTeamMeta } from "@/data/leagueMatrix";
 import styles from "./Overview.module.css";
 
 const outcomeIcon: Record<MatchOutcome, { symbol: string; cls: string; title: string }> = {
@@ -49,15 +49,17 @@ const modeTabs: { mode: LeagueTableMode; label: string }[] = [
 // Сетка очных результатов между всеми командами лиги — строки: команда
 // дома, столбцы: команда в гостях, на пересечении — счёт "голы хозяев-голы
 // гостей", как на оригинальной странице лиги в Hattrick. Диагональ пустая.
-// Существует только для тестовых данных (см. showResultsMatrix в LeagueTable).
-function ResultsMatrix() {
+// Работает и с тестовыми данными (src/data/leagueMatrix.ts), и с реальными,
+// построенными из leaguefixtures.xml (src/lib/realLeagueMatrix.ts) — сама
+// таблица не знает, откуда пришли данные.
+function ResultsMatrix({ teams, matrix }: { teams: MatrixTeamMeta[]; matrix: (string | null)[][] }) {
   return (
     <div className={styles.matrixWrap}>
       <table className={styles.matrixTable}>
         <thead>
           <tr>
             <th className={styles.matrixCorner} />
-            {leagueMatrixTeams.map((team) => (
+            {teams.map((team) => (
               <th key={team.name} className={team.isOurTeam ? styles.matrixHeadUs : undefined}>
                 <a href="#" onClick={(e) => e.preventDefault()} title={team.name}>
                   {team.name}
@@ -67,14 +69,14 @@ function ResultsMatrix() {
           </tr>
         </thead>
         <tbody>
-          {leagueMatrixTeams.map((homeTeam, homeIndex) => (
+          {teams.map((homeTeam, homeIndex) => (
             <tr key={homeTeam.name}>
               <th className={homeTeam.isOurTeam ? styles.matrixHeadUs : undefined} scope="row">
                 <a href="#" onClick={(e) => e.preventDefault()} title={homeTeam.name}>
                   {homeTeam.name}
                 </a>
               </th>
-              {leagueMatrixTeams.map((awayTeam, awayIndex) => {
+              {teams.map((awayTeam, awayIndex) => {
                 const isDiagonal = homeIndex === awayIndex;
                 const highlighted = homeTeam.isOurTeam || awayTeam.isOurTeam;
                 return (
@@ -82,7 +84,7 @@ function ResultsMatrix() {
                     key={awayTeam.name}
                     className={`${styles.matrixCell} ${highlighted ? styles.matrixCellUs : ""}`}
                   >
-                    {isDiagonal ? "" : leagueResultsMatrix[homeIndex][awayIndex]}
+                    {isDiagonal ? "" : matrix[homeIndex]?.[awayIndex]}
                   </td>
                 );
               })}
@@ -97,24 +99,29 @@ function ResultsMatrix() {
 export default function LeagueTable({
   rows,
   leagueName,
-  showResultsMatrix,
+  matrixTeams,
+  resultsMatrix,
 }: {
   rows: LeagueTableRow[];
   leagueName?: string;
-  showResultsMatrix?: boolean;
+  // Есть только когда доступна полная сетка очных результатов лиги (тестовые
+  // данные всегда; реальные — если удалось получить и разобрать
+  // leaguefixtures.xml). Без них — обычная таблица, без переключателя и без
+  // сетки под ней, как раньше.
+  matrixTeams?: MatrixTeamMeta[];
+  resultsMatrix?: (string | null)[][];
 }) {
   const [mode, setMode] = useState<LeagueTableMode>("all");
+  const showResultsMatrix = !!matrixTeams && !!resultsMatrix;
 
-  // Переключатель "Все/Домашние/Гостевые игры" пересчитывает таблицу из
-  // сетки результатов (только для тестовых данных — CHPP не отдаёт очные
-  // результаты всех команд лиги, поэтому для реальных данных showResultsMatrix
-  // не передаётся, и здесь всегда используется исходный rows).
-  const displayedRows: LeagueTableRow[] = showResultsMatrix ? computeLeagueStandings(mode) : rows;
+  const displayedRows: LeagueTableRow[] =
+    showResultsMatrix && matrixTeams && resultsMatrix
+      ? computeStandingsFromMatrix(matrixTeams, resultsMatrix, mode)
+      : rows;
 
   // В реальном режиме CHPP не даёт отдельно победы/ничьи/поражения и
-  // "последние 5 матчей" — только общее число игр. Прячем эти столбцы,
-  // если данных для них нет ни у одной строки, вместо того чтобы показывать
-  // пустые ячейки.
+  // "последние 5 матчей". Прячем эти столбцы, если данных для них нет ни у
+  // одной строки, вместо того чтобы показывать пустые ячейки.
   const hasWdl = displayedRows.some((r) => r.wins !== undefined);
   const hasLast5 = displayedRows.some((r) => r.last5 !== undefined);
 
@@ -218,10 +225,10 @@ export default function LeagueTable({
         </table>
       </div>
 
-      {showResultsMatrix && (
+      {showResultsMatrix && matrixTeams && resultsMatrix && (
         <>
           <div className={styles.matrixTitle}>Результаты между командами</div>
-          <ResultsMatrix />
+          <ResultsMatrix teams={matrixTeams} matrix={resultsMatrix} />
         </>
       )}
     </div>

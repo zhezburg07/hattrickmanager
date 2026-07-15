@@ -39,7 +39,7 @@ export interface LeagueRow {
   goalsFor: number; // ГЗ
   goalsAgainst: number; // ГП
   points: number; // О
-  last5: MatchOutcome[]; // от старой к новой игре
+  last5?: MatchOutcome[]; // от старой к новой игре
   isOurTeam?: boolean;
 }
 
