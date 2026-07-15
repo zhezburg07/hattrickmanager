@@ -2,7 +2,6 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
-import ChppDebugPanel, { type ChppDebugEntry } from "@/components/dashboard/ChppDebugPanel";
 import LeagueTable, { type LeagueTableRow } from "@/components/dashboard/LeagueTable";
 import MatchesSection, { type RecentMatchRow, type UpcomingMatchRow } from "@/components/dashboard/MatchesSection";
 import FinanceSummary from "@/components/dashboard/FinanceSummary";
@@ -25,7 +24,6 @@ import {
 } from "@/data/dashboard";
 import { squadPlayers as demoSquadPlayers } from "@/data/squad";
 import { getStoredHattrickTokens, requestChppXmlRaw, type ChppRawResponse, type StoredHattrickTokens } from "@/lib/hattrickApi";
-import { extractChppError } from "@/lib/chppError";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
 import { parseLeagueDetailsXml } from "@/lib/leagueDetails";
 import { parseMatchesXml } from "@/lib/matches";
@@ -33,7 +31,6 @@ import { parseEconomyXml } from "@/lib/economy";
 import { parseClubXml, type RealClubStaff } from "@/lib/clubStaff";
 import { parsePlayersXml } from "@/lib/players";
 import { parseWorldLeagueInfoXml } from "@/lib/worldCurrency";
-import { XMLParser } from "fast-xml-parser";
 import styles from "@/components/dashboard/Overview.module.css";
 
 // Таблица лиги приходит из leaguedetails.xml — но только когда группы на
@@ -75,10 +72,9 @@ interface DashboardData {
   currencyLabel: string;
   isFullyDemo: boolean;
   errors: string[];
-  debugEntries: ChppDebugEntry[];
 }
 
-function buildDemoData(): Omit<DashboardData, "errors" | "debugEntries"> {
+function buildDemoData(): Omit<DashboardData, "errors"> {
   const starting = demoSquadPlayers.filter((p) => p.status === "starting").length;
   const bench = demoSquadPlayers.filter((p) => p.status === "bench").length;
   const injured = demoSquadPlayers.filter((p) => p.status === "injured").length;
@@ -109,20 +105,6 @@ function buildDemoData(): Omit<DashboardData, "errors" | "debugEntries"> {
   };
 }
 
-// Разбирает сырой XML лишь настолько, чтобы вытащить Error/ErrorCode для
-// отладочной панели — не бросает исключение, даже если XML совсем не
-// похож на ответ CHPP (например, HTML-страница ошибки авторизации).
-function tryExtractDebugErrorCode(rawXml: string): number | null {
-  try {
-    const parser = new XMLParser();
-    const parsed = parser.parse(rawXml);
-    const error = extractChppError(parsed?.HattrickData);
-    return error?.code ?? null;
-  } catch {
-    return null;
-  }
-}
-
 async function requestAllRaw(
   requests: { file: string; params: Record<string, string> }[],
   tokens: StoredHattrickTokens,
@@ -134,19 +116,6 @@ async function requestAllRaw(
     result[requests[i].file] = r.status === "fulfilled" ? r.value : null;
   });
   return result;
-}
-
-function buildDebugEntry(file: string, r: ChppRawResponse | null): ChppDebugEntry {
-  if (!r) {
-    return { file, tokenPreview: "—", httpStatus: null, chppErrorCode: null, rawXmlSnippet: "", networkError: "запрос не выполнился" };
-  }
-  return {
-    file,
-    tokenPreview: r.tokenPreview,
-    httpStatus: r.httpStatus,
-    chppErrorCode: tryExtractDebugErrorCode(r.rawXml),
-    rawXmlSnippet: r.rawXml.slice(0, 8000),
-  };
 }
 
 // Пытается получить реальные данные по всем разделам Обзора. teamdetails
@@ -161,12 +130,11 @@ async function resolveDashboardData(): Promise<DashboardData> {
   const demo = buildDemoData();
 
   if (!tokens) {
-    return { ...demo, errors: ["Команда ещё не подключена к Hattrick."], debugEntries: [] };
+    return { ...demo, errors: ["Команда ещё не подключена к Hattrick."] };
   }
 
   const errors: string[] = [];
-  const debugEntries: ChppDebugEntry[] = [];
-  const data: DashboardData = { ...demo, isFullyDemo: true, errors: [], debugEntries: [] };
+  const data: DashboardData = { ...demo, isFullyDemo: true, errors: [] };
 
   // Шаг 1: teamdetails — отдельно и первым, чтобы узнать TeamID (нужен для
   // определения "своей" строки в таблице лиги и в списке матчей) и LeagueID
@@ -174,7 +142,6 @@ async function resolveDashboardData(): Promise<DashboardData> {
   let teamId = "";
   let leagueId = "";
   const teamDetailsRaw = await requestChppXmlRaw("teamdetails", {}, tokens).catch(() => null);
-  debugEntries.push(buildDebugEntry("teamdetails", teamDetailsRaw));
   try {
     if (!teamDetailsRaw) throw new Error("запрос не выполнился");
     if (teamDetailsRaw.httpStatus < 200 || teamDetailsRaw.httpStatus >= 300) {
@@ -200,8 +167,6 @@ async function resolveDashboardData(): Promise<DashboardData> {
     ? [...CHPP_REQUESTS, { file: "worlddetails", params: { LeagueID: leagueId } }]
     : CHPP_REQUESTS;
   const raw = await requestAllRaw(requests, tokens);
-  requests.forEach(({ file }) => debugEntries.push(buildDebugEntry(file, raw[file])));
-  data.debugEntries = debugEntries;
 
   if (raw.worlddetails) {
     try {
@@ -342,7 +307,6 @@ export default async function DashboardPage() {
       <Header />
       <main className={styles.page}>
         <div className="container" style={{ paddingBottom: 48 }}>
-          {data.debugEntries.length > 0 && <ChppDebugPanel entries={data.debugEntries} />}
           {data.errors.length > 0 && (
             <DemoModeBanner
               title={data.isFullyDemo ? "Демо-режим" : "Часть данных не удалось загрузить"}
