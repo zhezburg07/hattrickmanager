@@ -377,6 +377,12 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "неизвестная ошибка";
 }
 
+// Временно скрыто от обычных пользователей — пугающий предупреждающий вид
+// не нужен на публичном экране. Код и сбор данных (data.debugLeague) не
+// трогаем — верните true, когда начнётся сезон лиги и понадобится ещё раз
+// проверить leaguefixtures на реальных сыгранных матчах (см. чат).
+const SHOW_LEAGUE_DEBUG_PANEL = false;
+
 export default async function DashboardPage() {
   const data = await resolveDashboardData();
 
@@ -385,7 +391,7 @@ export default async function DashboardPage() {
       <Header />
       <main className={styles.page}>
         <div className="container" style={{ paddingBottom: 48 }}>
-          {data.debugLeague && (
+          {SHOW_LEAGUE_DEBUG_PANEL && data.debugLeague && (
             <div
               style={{
                 border: "2px dashed #c0503f",
