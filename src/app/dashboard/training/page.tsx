@@ -3,7 +3,7 @@ import Footer from "@/components/Footer";
 import TrainingSection from "@/components/dashboard/TrainingSection";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getStoredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
+import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
 import { parsePlayersDetailedXml } from "@/lib/squadPlayers";
 import { parseTrainingXml, type RealTraining } from "@/lib/training";
@@ -13,10 +13,7 @@ interface RealCoach {
   leadership: number;
 }
 
-async function resolveCoach(): Promise<{ coach: RealCoach | null; error: string | null }> {
-  const tokens = getStoredHattrickTokens();
-  if (!tokens) return { coach: null, error: null };
-
+async function resolveCoach(tokens: StoredHattrickTokens): Promise<{ coach: RealCoach | null; error: string | null }> {
   try {
     const teamRaw = await requestChppXmlRaw("teamdetails", {}, tokens);
     if (teamRaw.httpStatus < 200 || teamRaw.httpStatus >= 300) {
@@ -55,19 +52,15 @@ async function resolveTraining(tokens: StoredHattrickTokens): Promise<RealTraini
 }
 
 export default async function TrainingPage() {
-  const tokens = getStoredHattrickTokens();
-  const { coach, error } = await resolveCoach();
-  const training = tokens ? await resolveTraining(tokens) : null;
+  const tokens = getRequiredHattrickTokens();
+  const [{ coach, error }, training] = await Promise.all([resolveCoach(tokens), resolveTraining(tokens)]);
 
   return (
     <>
       <Header />
       <main className={styles.page}>
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
-          {!tokens && <DemoModeBanner title="Демо-режим" reasons={["Команда ещё не подключена к Hattrick."]} />}
-          {tokens && error && (
-            <DemoModeBanner title="Не удалось определить реального тренера" reasons={[error]} />
-          )}
+          {error && <DemoModeBanner title="Не удалось определить реального тренера" reasons={[error]} />}
           <TrainingSection
             coachName={coach?.name}
             coachLeadership={coach?.leadership}

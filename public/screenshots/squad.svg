@@ -1,0 +1,75 @@
+<svg viewBox="0 0 900 560" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Roboto, Arial, sans-serif">
+  <rect width="900" height="560" rx="14" fill="#0f211c"/>
+  <rect x="0" y="0" width="900" height="40" rx="14" fill="#0f211c"/>
+  <circle cx="22" cy="20" r="6" fill="#c0503f"/>
+  <circle cx="44" cy="20" r="6" fill="#d9a441"/>
+  <circle cx="66" cy="20" r="6" fill="#4caf6f"/>
+  <rect x="280" y="9" width="340" height="22" rx="11" fill="#152c26"/>
+  <text x="450" y="24" font-size="11" fill="#a9bdb5" text-anchor="middle">hattrickmanager.org/dashboard/squad</text>
+
+  <rect x="0" y="40" width="900" height="520" fill="#152c26"/>
+  <text x="32" y="78" font-size="22" font-weight="700" fill="#c9a227">Полный состав (24 игрока)</text>
+
+  <rect x="32" y="98" width="836" height="420" rx="10" fill="#1c3830" stroke="#2c4a40"/>
+
+  <g font-size="11" fill="#a9bdb5" font-weight="700">
+    <text x="52" y="126">Игрок</text>
+    <text x="290" y="126">Возр</text>
+    <text x="340" y="126">Опыт</text>
+    <text x="400" y="126">Форма</text>
+    <text x="470" y="126">Вр</text>
+    <text x="510" y="126">Защ</text>
+    <text x="550" y="126">Пол</text>
+    <text x="590" y="126">Нап</text>
+    <text x="650" y="126">TSI</text>
+    <text x="740" y="126">Рейтинг</text>
+  </g>
+  <line x1="52" y1="136" x2="848" y2="136" stroke="#2c4a40"/>
+
+  <!-- rows -->
+  <g font-size="13" fill="#f2ede1">
+    <circle cx="60" cy="160" r="7" fill="#4caf6f"/>
+    <text x="76" y="164">Иван Соколов</text>
+    <text x="290" y="164">27</text><text x="340" y="164">12</text><text x="400" y="164">6</text>
+    <text x="470" y="164">18</text><text x="510" y="164">13</text><text x="550" y="164">10</text><text x="590" y="164">10</text>
+    <text x="650" y="164">19 600</text><text x="740" y="164" fill="#c9a227">★ 6.9</text>
+  </g>
+  <line x1="52" y1="180" x2="848" y2="180" stroke="#2c4a40" opacity="0.5"/>
+
+  <g font-size="13" fill="#f2ede1">
+    <circle cx="60" cy="204" r="7" fill="#4caf6f"/>
+    <text x="76" y="208">Пётр Волков</text>
+    <text x="290" y="208">24</text><text x="340" y="208">8</text><text x="400" y="208">7</text>
+    <text x="470" y="208">6</text><text x="510" y="208">11</text><text x="550" y="208">6</text><text x="590" y="208">5</text>
+    <text x="650" y="208">7 000</text><text x="740" y="208" fill="#c9a227">★ 5.3</text>
+  </g>
+  <line x1="52" y1="224" x2="848" y2="224" stroke="#2c4a40" opacity="0.5"/>
+
+  <g font-size="13" fill="#f2ede1">
+    <circle cx="60" cy="248" r="7" fill="#d9a441"/>
+    <text x="76" y="252">Роман Соловьёв</text>
+    <text x="290" y="252">22</text><text x="340" y="252">9</text><text x="400" y="252">7</text>
+    <text x="470" y="252">8</text><text x="510" y="252">14</text><text x="550" y="252">20</text><text x="590" y="252">14</text>
+    <text x="650" y="252">26 411</text><text x="740" y="252" fill="#c9a227">★ 7.5</text>
+  </g>
+  <line x1="52" y1="268" x2="848" y2="268" stroke="#2c4a40" opacity="0.5"/>
+
+  <g font-size="13" fill="#f2ede1">
+    <circle cx="60" cy="292" r="7" fill="#4caf6f"/>
+    <text x="76" y="296">Егор Барсуков</text>
+    <text x="290" y="296">26</text><text x="340" y="296">12</text><text x="400" y="296">4</text>
+    <text x="470" y="296">11</text><text x="510" y="296">9</text><text x="550" y="296">14</text><text x="590" y="296">20</text>
+    <text x="650" y="296">27 791</text><text x="740" y="296" fill="#c9a227">★ 5.5</text>
+  </g>
+  <line x1="52" y1="312" x2="848" y2="312" stroke="#2c4a40" opacity="0.5"/>
+
+  <g font-size="13" fill="#f2ede1">
+    <circle cx="60" cy="336" r="7" fill="#a9bdb5"/>
+    <text x="76" y="340">Владимир Ершов</text>
+    <text x="290" y="340">31</text><text x="340" y="340">17</text><text x="400" y="340">5</text>
+    <text x="470" y="340">14</text><text x="510" y="340">9</text><text x="550" y="340">5</text><text x="590" y="340">1</text>
+    <text x="650" y="340">4 178</text><text x="740" y="340" fill="#c9a227">★ 6.7</text>
+  </g>
+
+  <text x="52" y="480" font-size="11" fill="#a9bdb5">Флаги стран · числовые навыки по шкале 0-20 · подсказка словом при наведении · сортировка по клику на заголовок</text>
+</svg>

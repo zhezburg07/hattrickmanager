@@ -3,7 +3,7 @@ import Footer from "@/components/Footer";
 import LineupBoard from "@/components/dashboard/LineupBoard";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getStoredHattrickTokens, getStoredHattrickUserId, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
+import { getRequiredHattrickTokens, getStoredHattrickUserId, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parsePlayersDetailedXml } from "@/lib/squadPlayers";
 import { resolveRealHomeCountry } from "@/lib/worldCurrency";
 import { getCountryIdLookup } from "@/lib/worldCountries";
@@ -16,22 +16,7 @@ async function fetchPlayersRaw(tokens: StoredHattrickTokens) {
 }
 
 export default async function LineupPage() {
-  const tokens = getStoredHattrickTokens();
-
-  if (!tokens) {
-    return (
-      <>
-        <Header />
-        <main className={styles.page}>
-          <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
-            <DemoModeBanner title="Демо-режим" reasons={["Команда ещё не подключена к Hattrick."]} />
-            <LineupBoard />
-          </div>
-        </main>
-        <Footer />
-      </>
-    );
-  }
+  const tokens = getRequiredHattrickTokens();
 
   const [{ homeCountry }, playersRaw, countryIdLookupResult, lastMatchRatingResult] = await Promise.all([
     resolveRealHomeCountry(tokens),
@@ -63,12 +48,14 @@ export default async function LineupPage() {
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
           {error && <DemoModeBanner title="Не удалось загрузить реальный состав" reasons={[error]} />}
           {players && (
-            <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "0 0 12px" }}>
-              CHPP не сообщает, кто сейчас стоит в основе — расставьте игроков сами или нажмите
-              «Рекомендовать состав».
-            </p>
+            <>
+              <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "0 0 12px" }}>
+                CHPP не сообщает, кто сейчас стоит в основе — расставьте игроков сами или нажмите
+                «Рекомендовать состав».
+              </p>
+              <LineupBoard players={players} prevByPlayerId={prevByPlayerId} />
+            </>
           )}
-          <LineupBoard players={players ?? undefined} prevByPlayerId={players ? prevByPlayerId : undefined} />
         </div>
       </main>
       <Footer />

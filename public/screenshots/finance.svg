@@ -1,0 +1,44 @@
+<svg viewBox="0 0 900 560" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Roboto, Arial, sans-serif">
+  <rect width="900" height="560" rx="14" fill="#0f211c"/>
+  <rect x="0" y="0" width="900" height="40" rx="14" fill="#0f211c"/>
+  <circle cx="22" cy="20" r="6" fill="#c0503f"/>
+  <circle cx="44" cy="20" r="6" fill="#d9a441"/>
+  <circle cx="66" cy="20" r="6" fill="#4caf6f"/>
+  <rect x="270" y="9" width="360" height="22" rx="11" fill="#152c26"/>
+  <text x="450" y="24" font-size="11" fill="#a9bdb5" text-anchor="middle">hattrickmanager.org/dashboard/finance</text>
+
+  <rect x="0" y="40" width="900" height="520" fill="#152c26"/>
+  <text x="32" y="78" font-size="22" font-weight="700" fill="#c9a227">Финансы</text>
+
+  <rect x="32" y="98" width="836" height="90" rx="10" fill="#1c3830" stroke="#2c4a40"/>
+  <text x="52" y="128" font-size="12" fill="#a9bdb5">Баланс клуба</text>
+  <text x="52" y="164" font-size="30" font-weight="700" fill="#f2ede1">18 420 000 ₸</text>
+  <text x="420" y="128" font-size="12" fill="#a9bdb5">Изменение за неделю</text>
+  <text x="420" y="164" font-size="24" font-weight="700" fill="#4caf6f">+2 340 000 ₸</text>
+
+  <!-- income -->
+  <rect x="32" y="204" width="404" height="314" rx="10" fill="#1c3830" stroke="#2c4a40"/>
+  <text x="52" y="232" font-size="14" font-weight="700" fill="#4caf6f">Доходы</text>
+  <g font-size="12" fill="#f2ede1">
+    <text x="52" y="264">Билеты</text><rect x="220" y="252" width="150" height="14" rx="3" fill="#4caf6f"/><text x="380" y="264" text-anchor="end">4 120 000</text>
+    <text x="52" y="296">Спонсоры</text><rect x="220" y="284" width="110" height="14" rx="3" fill="#4caf6f" opacity="0.8"/><text x="380" y="296" text-anchor="end">2 600 000</text>
+    <text x="52" y="328">Телевидение</text><rect x="220" y="316" width="90" height="14" rx="3" fill="#4caf6f" opacity="0.65"/><text x="380" y="328" text-anchor="end">1 950 000</text>
+    <text x="52" y="360">Разовые</text><rect x="220" y="348" width="40" height="14" rx="3" fill="#4caf6f" opacity="0.5"/><text x="380" y="360" text-anchor="end">610 000</text>
+  </g>
+  <line x1="52" y1="392" x2="416" y2="392" stroke="#2c4a40"/>
+  <text x="52" y="424" font-size="13" font-weight="700" fill="#f2ede1">Итого</text>
+  <text x="416" y="424" font-size="13" font-weight="700" fill="#4caf6f" text-anchor="end">9 280 000 ₸</text>
+
+  <!-- expense -->
+  <rect x="464" y="204" width="404" height="314" rx="10" fill="#1c3830" stroke="#2c4a40"/>
+  <text x="484" y="232" font-size="14" font-weight="700" fill="#c0503f">Расходы</text>
+  <g font-size="12" fill="#f2ede1">
+    <text x="484" y="264">Зарплаты</text><rect x="652" y="252" width="140" height="14" rx="3" fill="#c0503f"/><text x="812" y="264" text-anchor="end">3 840 000</text>
+    <text x="484" y="296">Тренерский штаб</text><rect x="652" y="284" width="60" height="14" rx="3" fill="#c0503f" opacity="0.8"/><text x="812" y="296" text-anchor="end">1 120 000</text>
+    <text x="484" y="328">Стадион</text><rect x="652" y="316" width="80" height="14" rx="3" fill="#c0503f" opacity="0.65"/><text x="812" y="328" text-anchor="end">1 480 000</text>
+    <text x="484" y="360">Прочее</text><rect x="652" y="348" width="30" height="14" rx="3" fill="#c0503f" opacity="0.5"/><text x="812" y="360" text-anchor="end">500 000</text>
+  </g>
+  <line x1="484" y1="392" x2="848" y2="392" stroke="#2c4a40"/>
+  <text x="484" y="424" font-size="13" font-weight="700" fill="#f2ede1">Итого</text>
+  <text x="848" y="424" font-size="13" font-weight="700" fill="#c0503f" text-anchor="end">6 940 000 ₸</text>
+</svg>

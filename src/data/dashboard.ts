@@ -1,6 +1,3 @@
-import { squadPlayers } from "./squad";
-import { computeLeagueStandings } from "./leagueMatrix";
-
 // Валюта команды — CHPP отдаёт её не в economy.xml/teamdetails.xml (там
 // денежные суммы вообще без указания валюты), а в отдельном файле
 // worlddetails.xml (список всех лиг мира), отфильтрованном по LeagueID
@@ -13,81 +10,11 @@ export interface Currency {
 
 export const defaultCurrency: Currency = { label: "тенге" };
 
-export const club = {
-  name: "FC Заря",
-  shortName: "ЗАР",
-  rating: 5342,
-  currency: defaultCurrency,
-};
-
-// Номер текущей игровой недели — подписывается рядом с блоками, которые
-// сравнивают показатели с прошлой неделей
-export const currentWeek = 13;
-
-// Время последнего обновления данных из Hattrick (тестовое значение)
-export const lastDataUpdate = "04.07.2026, 09:12";
-
 export type MatchOutcome = "win" | "draw" | "loss";
-
-export interface LeagueRow {
-  position: number;
-  name: string;
-  played: number; // М
-  wins: number; // В
-  draws: number; // Н
-  losses: number; // П
-  goalsFor: number; // ГЗ
-  goalsAgainst: number; // ГП
-  points: number; // О
-  last5?: MatchOutcome[]; // от старой к новой игре
-  isOurTeam?: boolean;
-}
-
-// Таблица лиги (тестовые данные) считается из полной сетки результатов
-// между всеми 8 командами (src/data/leagueMatrix.ts) — так таблица "Все
-// игры" на Обзоре и сетка результатов под ней всегда согласованы друг с
-// другом, а режимы "Домашние/Гостевые игры" считаются из того же источника.
-export const leagueTable: LeagueRow[] = computeLeagueStandings("all");
-
 export type MatchResult = "win" | "draw" | "loss";
 
-// Даты хранятся в том же виде, что реально присылает Hattrick (matches.xml,
-// поле MatchDate) — "ГГГГ-ММ-ДД ЧЧ:ММ:СС" — чтобы тестовые и настоящие
-// данные форматировались одной и той же функцией (см. formatMatchDateTime).
-// Настоящее расписание Hattrick: матчи лиги — по воскресеньям в 13:00,
-// кубковые и товарищеские — по средам в 17:10.
-export interface RecentMatch {
-  id: number;
-  date: string;
-  opponent: string;
-  home: boolean;
-  ourScore: number;
-  oppScore: number;
-  result: MatchResult;
-}
-
-export const recentMatches: RecentMatch[] = [
-  { id: 1, date: "2026-06-28 13:00:00", opponent: "Дракон Сити", home: true, ourScore: 3, oppScore: 1, result: "win" },
-  { id: 2, date: "2026-06-21 13:00:00", opponent: "Ред Фалькон", home: false, ourScore: 2, oppScore: 2, result: "draw" },
-  { id: 3, date: "2026-06-14 13:00:00", opponent: "Атлетик Норд", home: true, ourScore: 0, oppScore: 1, result: "loss" },
-];
-
-export interface UpcomingMatch {
-  id: number;
-  date: string;
-  opponent: string;
-  home: boolean;
-  competition?: string;
-}
-
-export const upcomingMatches: UpcomingMatch[] = [
-  { id: 1, date: "2026-07-05 13:00:00", opponent: "Юнион Стар", home: false },
-  { id: 2, date: "2026-07-12 13:00:00", opponent: "Стальные Волки", home: true },
-  { id: 3, date: "2026-07-15 17:10:00", opponent: "Викинг СК", home: false, competition: "Кубок" },
-];
-
-// Разбирает дату вида "ГГГГ-ММ-ДД ЧЧ:ММ:СС" (тот же формат, что и в реальных
-// данных Hattrick) на короткую дату "ДД.ММ" и время "ЧЧ:ММ" для компактного
+// Разбирает дату вида "ГГГГ-ММ-ДД ЧЧ:ММ:СС" (формат Hattrick, matches.xml,
+// поле MatchDate) на короткую дату "ДД.ММ" и время "ЧЧ:ММ" для компактного
 // отображения в календаре матчей.
 export function formatMatchDateTime(raw: string): { shortDate: string; time: string } {
   const [datePart, timePart] = raw.split(" ");
@@ -100,118 +27,6 @@ export interface FinanceLine {
   label: string;
   amount: number;
 }
-
-export const finance = {
-  balance: 2_458_900,
-  income: [
-    { label: "Зрители", amount: 62_000 },
-    { label: "Спонсоры", amount: 45_000 },
-    { label: "Проданные игроки", amount: 58_000 },
-    { label: "Комиссионные", amount: 4_200 },
-    { label: "Разовый", amount: 6_400 },
-  ] as FinanceLine[],
-  expense: [
-    { label: "Зарплата", amount: 96_000 },
-    { label: "Содержание стадиона", amount: 21_500 },
-    { label: "Персонал", amount: 18_300 },
-    { label: "Затраты на молодёжь", amount: 12_000 },
-  ] as FinanceLine[],
-};
-
-// Тренер — отдельная от остального персонала карточка на Обзоре
-export type TacticalPreference = "attacking" | "defensive" | "neutral";
-
-export const tacticalPreferenceLabel: Record<TacticalPreference, string> = {
-  attacking: "Атакующий",
-  defensive: "Защитный",
-  neutral: "Нейтральный",
-};
-
-export const coach = {
-  name: "Марат Ахметов",
-  skillLevel: 14, // 0-20, как обычный навык — выводится через skillWord
-  leadership: 5, // 0-7 — выводится через leadershipWord
-  preference: "attacking" as TacticalPreference,
-};
-
-// Официальная словесная шкала Командного духа Hattrick — 11 уровней (1-11),
-// от лучшего к худшему. В начале сезона дух сбрасывается к нейтральному
-// значению "Равнодушны" и дальше меняется по ходу сезона в зависимости от
-// результатов и лидерства тренера.
-const teamSpiritWordsDesc = [
-  "Рай на земле!",
-  "На седьмом небе",
-  "Счастливы",
-  "Радостны",
-  "Довольны",
-  "Спокойны",
-  "Равнодушны",
-  "Раздражены",
-  "Разгневаны",
-  "В ярости",
-  "Холодная война",
-];
-
-export function teamSpiritWord(level: number): string {
-  const l = Math.max(1, Math.min(11, Math.round(level)));
-  return teamSpiritWordsDesc[11 - l];
-}
-
-export const teamSpirit = 8; // "Радостны"
-
-// Официальная словесная шкала Уверенности в себе Hattrick — 10 уровней (1-10)
-const confidenceWordsDesc = [
-  "Чрезмерная",
-  "Излишняя",
-  "Слегка завышенная",
-  "Превосходная",
-  "Высокая",
-  "Средняя",
-  "Низкая",
-  "Ужасная",
-  "Катастрофическая",
-  "Отсутствует",
-];
-
-export function confidenceWord(level: number): string {
-  const l = Math.max(1, Math.min(10, Math.round(level)));
-  return confidenceWordsDesc[10 - l];
-}
-
-export const teamConfidence = 6; // "Средняя"
-
-// Остальной штаб клуба — просто нанят/не нанят и уровень (0-20), если нанят
-export type StaffRole =
-  | "assistantCoach"
-  | "medic"
-  | "psychologist"
-  | "fitnessCoach"
-  | "financialDirector"
-  | "tacticsCoach";
-
-export const staffRoleLabel: Record<StaffRole, string> = {
-  assistantCoach: "Помощник тренера",
-  medic: "Медик",
-  psychologist: "Спортивный психолог",
-  fitnessCoach: "Тренер по физподготовке",
-  financialDirector: "Финансовый директор",
-  tacticsCoach: "Тренер по тактике",
-};
-
-export interface StaffMember {
-  role: StaffRole;
-  hired: boolean;
-  level: number | null; // 0-20, null если не нанят
-}
-
-export const staff: StaffMember[] = [
-  { role: "assistantCoach", hired: true, level: 9 },
-  { role: "medic", hired: true, level: 12 },
-  { role: "psychologist", hired: false, level: null },
-  { role: "fitnessCoach", hired: true, level: 6 },
-  { role: "financialDirector", hired: false, level: null },
-  { role: "tacticsCoach", hired: false, level: null },
-];
 
 // Официальная словесная шкала настроения болельщиков Hattrick — 12 уровней
 // (1-12), от худшего к лучшему.
@@ -238,8 +53,7 @@ export function fanMoodWord(level: number): string {
 // CHPP (economy.xml, поле SupportersPopularity) отдаёт настроение болельщиков
 // по своей, более короткой шкале — 10 уровней (0-9), без "Разочарованы" и
 // "Рассержены" из полной 12-уровневой шкалы выше. Переводит значение CHPP в
-// соответствующий уровень полной шкалы (1-12), чтобы реальные данные
-// показывались тем же словарём и той же цветовой раскраской, что и тестовые.
+// соответствующий уровень полной шкалы (1-12).
 const chppPopularityToFullScale = [1, 2, 4, 6, 7, 8, 9, 10, 11, 12];
 
 export function chppSupportersPopularityToFanMoodLevel(chppLevel: number): number {
@@ -247,19 +61,16 @@ export function chppSupportersPopularityToFanMoodLevel(chppLevel: number): numbe
   return chppPopularityToFullScale[l];
 }
 
-export const fans = {
-  mood: 7, // "Довольны"
-  clubSize: 18_420,
-  expectation: "Ждут попадания в тройку лидеров и путёвки в еврокубки по итогам сезона",
-};
-
-// Стадион — 4 категории мест
+// Стадион — 4 категории мест. Число мест по категориям приходит из
+// arenadetails.xml (реальное, см. src/components/dashboard/StadiumSection.tsx),
+// но доход/содержание за место CHPP не сообщает — эти ставки остаются
+// ориентировочными для всех клубов.
 export interface StadiumSector {
   key: string;
   label: string;
   seats: number;
-  incomePerSeat: number; // за домашний матч, крон
-  upkeepPerSeat: number; // за неделю, крон
+  incomePerSeat: number;
+  upkeepPerSeat: number;
 }
 
 export const stadiumSectors: StadiumSector[] = [
@@ -269,47 +80,21 @@ export const stadiumSectors: StadiumSector[] = [
   { key: "vip", label: "VIP-ложи", seats: 500, incomePerSeat: 60, upkeepPerSeat: 9.5 },
 ];
 
-// Герой и Ноль недели — сравнение с прошлой неделей (форма/TSI), тестовые данные.
-// prevForm/prevTsi заданы относительно текущих значений игрока, чтобы дельта
-// была правдоподобной независимо от процедурно сгенерированных чисел в squad.ts.
-export interface WeeklyHighlight {
-  playerId: number;
-  rating: number; // условный рейтинг матча, 0-10
-  note: string;
-  prevForm: number;
-  prevTsi: number;
-}
-
-function playerForm(id: number): number {
-  return squadPlayers.find((p) => p.id === id)?.form ?? 0;
-}
-
-function playerTsi(id: number): number {
-  return squadPlayers.find((p) => p.id === id)?.tsi ?? 0;
-}
-
-export const heroOfWeek: WeeklyHighlight = {
-  playerId: 10, // Егор Барсуков
-  rating: 8.7,
-  note: "Оформил дубль в победе над Драконом Сити",
-  prevForm: Math.max(0, playerForm(10) - 2),
-  prevTsi: Math.max(0, playerTsi(10) - 640),
-};
-
-export const zeroOfWeek: WeeklyHighlight = {
-  playerId: 2, // Пётр Волков
-  rating: 3.1,
-  note: "Ошибся перед пропущенным голом от Атлетик Норд",
-  prevForm: Math.min(8, playerForm(2) + 2),
-  prevTsi: playerTsi(2) + 210,
-};
-
-// Рейтинг силы — сводный показатель силы команды (тестовые данные, в CHPP
-// не передаётся напрямую, поэтому раздел всегда демонстрационный).
+// Рейтинг силы — сводный показатель силы команды, реальное значение приходит
+// из teamdetails.xml (см. src/app/dashboard/page.tsx) — это только пояснение,
+// которое CHPP не присылает.
 export const powerRatingHint =
   "Показывает текущую силу команды на основе рейтингов линий, тактики и специализаций игроков за последние 14 официальных матчей, обновляется по понедельникам.";
 
-export const powerRating = {
-  value: 5342,
-  worldRank: 1_847,
-};
+// "Последнее обновление" — раньше был фиксированный тестовый текст; личный
+// кабинет всегда запрашивает у Hattrick свежие данные при каждом открытии
+// страницы, так что честное значение — момент самого рендера.
+export function currentTimestampLabel(): string {
+  return new Date().toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}

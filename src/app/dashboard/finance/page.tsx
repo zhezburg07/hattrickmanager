@@ -3,7 +3,7 @@ import Footer from "@/components/Footer";
 import FinanceSection from "@/components/dashboard/FinanceSection";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getStoredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
+import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseEconomyXml, type RealFinanceLine } from "@/lib/economy";
 import { resolveRealCurrencyLabel } from "@/lib/worldCurrency";
 
@@ -41,22 +41,7 @@ async function resolveFinanceData(
 }
 
 export default async function FinancePage() {
-  const tokens = getStoredHattrickTokens();
-
-  if (!tokens) {
-    return (
-      <>
-        <Header />
-        <main className={styles.page}>
-          <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
-            <DemoModeBanner title="Демо-режим" reasons={["Команда ещё не подключена к Hattrick."]} />
-            <FinanceSection />
-          </div>
-        </main>
-        <Footer />
-      </>
-    );
-  }
+  const tokens = getRequiredHattrickTokens();
 
   const [{ data, error }, { label: currencyLabel }] = await Promise.all([
     resolveFinanceData(tokens),
@@ -69,14 +54,16 @@ export default async function FinancePage() {
       <main className={styles.page}>
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
           {error && <DemoModeBanner title="Не удалось загрузить реальные финансы" reasons={[error]} />}
-          <FinanceSection
-            balance={data?.balance}
-            income={data?.income}
-            expense={data?.expense}
-            totalIncome={data?.totalIncome}
-            totalExpense={data?.totalExpense}
-            currencyLabel={data ? (currencyLabel ?? undefined) : undefined}
-          />
+          {data && (
+            <FinanceSection
+              balance={data.balance}
+              income={data.income}
+              expense={data.expense}
+              totalIncome={data.totalIncome}
+              totalExpense={data.totalExpense}
+              currencyLabel={currencyLabel ?? undefined}
+            />
+          )}
         </div>
       </main>
       <Footer />

@@ -1,0 +1,58 @@
+<svg viewBox="0 0 900 560" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Roboto, Arial, sans-serif">
+  <rect width="900" height="560" rx="14" fill="#0f211c"/>
+  <rect x="0" y="0" width="900" height="40" rx="14" fill="#0f211c"/>
+  <circle cx="22" cy="20" r="6" fill="#c0503f"/>
+  <circle cx="44" cy="20" r="6" fill="#d9a441"/>
+  <circle cx="66" cy="20" r="6" fill="#4caf6f"/>
+  <rect x="270" y="9" width="360" height="22" rx="11" fill="#152c26"/>
+  <text x="450" y="24" font-size="11" fill="#a9bdb5" text-anchor="middle">hattrickmanager.org/dashboard/matches</text>
+
+  <rect x="0" y="40" width="900" height="520" fill="#152c26"/>
+  <text x="32" y="78" font-size="22" font-weight="700" fill="#c9a227">Календарь сезона</text>
+
+  <rect x="32" y="98" width="836" height="420" rx="10" fill="#1c3830" stroke="#2c4a40"/>
+  <g font-size="11" fill="#a9bdb5" font-weight="700">
+    <text x="52" y="126">Тур</text>
+    <text x="150" y="126">Дата</text>
+    <text x="320" y="126">Соперник</text>
+    <text x="560" y="126">Поле</text>
+    <text x="800" y="126" text-anchor="end">Счёт</text>
+  </g>
+  <line x1="52" y1="136" x2="848" y2="136" stroke="#2c4a40"/>
+
+  <g font-size="13" fill="#f2ede1">
+    <rect x="44" y="146" width="812" height="30" fill="#c9a227" opacity="0.1"/>
+    <text x="52" y="166">Тур 25</text><text x="150" y="166">21 июля, 19:00</text><text x="320" y="166">Кайрат</text>
+    <rect x="560" y="152" width="60" height="18" rx="4" fill="#2c4a40"/><text x="590" y="165" text-anchor="middle" font-size="11">Дома</text>
+    <text x="800" y="166" text-anchor="end" fill="#c9a227">Ближайший</text>
+  </g>
+
+  <g font-size="13" fill="#f2ede1">
+    <text x="52" y="204">Тур 24</text><text x="150" y="204">14 июля, 18:00</text><text x="320" y="204">Тобол</text>
+    <rect x="560" y="190" width="70" height="18" rx="4" fill="#2c4a40"/><text x="595" y="203" text-anchor="middle" font-size="11">В гостях</text>
+    <text x="800" y="204" text-anchor="end" font-weight="700">2:1</text>
+  </g>
+  <line x1="52" y1="216" x2="848" y2="216" stroke="#2c4a40" opacity="0.5"/>
+
+  <g font-size="13" fill="#f2ede1">
+    <text x="52" y="244">Тур 23</text><text x="150" y="244">7 июля, 19:00</text><text x="320" y="244">Астана</text>
+    <rect x="560" y="230" width="60" height="18" rx="4" fill="#2c4a40"/><text x="590" y="243" text-anchor="middle" font-size="11">Дома</text>
+    <text x="800" y="244" text-anchor="end" font-weight="700">1:1</text>
+  </g>
+  <line x1="52" y1="256" x2="848" y2="256" stroke="#2c4a40" opacity="0.5"/>
+
+  <g font-size="13" fill="#f2ede1">
+    <text x="52" y="284">Кубок</text><text x="150" y="284">29 июня, 17:00</text><text x="320" y="284">Жетысу</text>
+    <rect x="560" y="270" width="70" height="18" rx="4" fill="#2c4a40"/><text x="595" y="283" text-anchor="middle" font-size="11">В гостях</text>
+    <text x="800" y="284" text-anchor="end" font-weight="700">3:0</text>
+  </g>
+  <line x1="52" y1="296" x2="848" y2="296" stroke="#2c4a40" opacity="0.5"/>
+
+  <g font-size="13" fill="#f2ede1">
+    <text x="52" y="324">Тур 22</text><text x="150" y="324">22 июня, 19:00</text><text x="320" y="324">Ордабасы</text>
+    <rect x="560" y="310" width="60" height="18" rx="4" fill="#2c4a40"/><text x="590" y="323" text-anchor="middle" font-size="11">Дома</text>
+    <text x="800" y="324" text-anchor="end" font-weight="700">2:0</text>
+  </g>
+
+  <text x="52" y="480" font-size="11" fill="#a9bdb5">Нажмите на сыгранный матч, чтобы открыть рейтинги игроков и хронологию голов</text>
+</svg>

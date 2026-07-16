@@ -11,20 +11,15 @@ import SquadSummaryPanel from "@/components/dashboard/SquadSummaryPanel";
 import TsiWeeklyChanges from "@/components/dashboard/TsiWeeklyChanges";
 import WeeklyHighlights from "@/components/dashboard/WeeklyHighlights";
 import PowerRatingPanel from "@/components/dashboard/PowerRatingPanel";
+import { defaultCurrency, chppSupportersPopularityToFanMoodLevel } from "@/data/dashboard";
+import type { MatrixTeamMeta } from "@/data/leagueMatrix";
 import {
-  club as demoClub,
-  leagueTable as demoLeagueTable,
-  recentMatches as demoRecentMatches,
-  upcomingMatches as demoUpcomingMatches,
-  finance as demoFinance,
-  fans as demoFans,
-  powerRating,
-  defaultCurrency,
-  chppSupportersPopularityToFanMoodLevel,
-} from "@/data/dashboard";
-import { squadPlayers as demoSquadPlayers } from "@/data/squad";
-import { leagueMatrixTeams, leagueResultsMatrix, type MatrixTeamMeta } from "@/data/leagueMatrix";
-import { getStoredHattrickTokens, requestChppXmlRaw, type ChppRawResponse, type StoredHattrickTokens } from "@/lib/hattrickApi";
+  getRequiredHattrickTokens,
+  getStoredHattrickUserId,
+  requestChppXmlRaw,
+  type ChppRawResponse,
+  type StoredHattrickTokens,
+} from "@/lib/hattrickApi";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
 import { parseLeagueDetailsXml } from "@/lib/leagueDetails";
 import { parseLeagueFixturesXml } from "@/lib/leagueFixtures";
@@ -33,15 +28,15 @@ import { parseMatchesXml } from "@/lib/matches";
 import { parseEconomyXml } from "@/lib/economy";
 import { parseClubXml, type RealClubStaff } from "@/lib/clubStaff";
 import { parsePlayersXml } from "@/lib/players";
+import { parsePlayersDetailedXml } from "@/lib/squadPlayers";
 import { parseWorldLeagueInfoXml } from "@/lib/worldCurrency";
+import { resolveWeeklyTsiHighlights } from "@/lib/playerHistoryDb";
 import styles from "@/components/dashboard/Overview.module.css";
 
 // Таблица лиги приходит из leaguedetails.xml — но только когда группы на
 // сезон уже сформированы. В межсезонье (до старта нового сезона) этот файл
 // отдаёт лишь название лиги и метаданные тура, без списка команд (проверено
-// на реальном ответе Hattrick) — тогда показываем демо-таблицу. Как только
-// сезон начинается, появляется список <Team> с местом/очками/мячами —
-// именно он и используется ниже.
+// на реальном ответе Hattrick) — тогда таблица просто не показывается.
 const CHPP_REQUESTS: { file: string; params: Record<string, string> }[] = [
   { file: "leaguedetails", params: {} },
   { file: "matches", params: {} },
@@ -51,17 +46,15 @@ const CHPP_REQUESTS: { file: string; params: Record<string, string> }[] = [
 ];
 
 interface DashboardData {
-  clubName: string;
-  clubShortName: string;
-  badgeLabel: string;
-  leagueRows: LeagueTableRow[];
+  clubName?: string;
+  clubShortName?: string;
+  badgeLabel?: string;
+  leagueRows?: LeagueTableRow[];
   leagueName?: string;
   // Сетка результатов между командами и переключатель "Все/Домашние/
-  // Гостевые игры" — для тестовых данных всегда (leagueMatrixTeams/
-  // leagueResultsMatrix), для реальных — только если удалось получить и
-  // разобрать leaguefixtures.xml (см. src/lib/realLeagueMatrix.ts). Если нет
-  // ни того ни другого — LeagueTable просто не покажет ни переключатель, ни
-  // сетку, как раньше.
+  // Гостевые игры" — только если удалось получить и разобрать
+  // leaguefixtures.xml (см. src/lib/realLeagueMatrix.ts). Если нет — LeagueTable
+  // просто не показывает ни переключатель, ни сетку.
   resultsMatrixTeams?: MatrixTeamMeta[];
   resultsMatrix?: (string | null)[][];
   // ВРЕМЕННАЯ диагностика — почему сетка результатов не строится на реальных
@@ -81,58 +74,23 @@ interface DashboardData {
     matrixFilledCells: number | null;
     fixturesError: string | null;
   };
-  recentMatches: RecentMatchRow[];
-  upcomingMatches: UpcomingMatchRow[];
-  balance: number;
-  totalIncome: number;
-  totalExpense: number;
-  realStaff: RealClubStaff | null;
-  fanMood: number;
-  fanClubSize: number;
-  fanExpectation: string;
+  recentMatches?: RecentMatchRow[];
+  upcomingMatches?: UpcomingMatchRow[];
+  balance?: number;
+  totalIncome?: number;
+  totalExpense?: number;
+  realStaff?: RealClubStaff | null;
+  coachName?: string;
+  coachLeadership?: number;
+  fanMood?: number;
+  fanClubSize?: number;
   squadTotal?: number;
-  squadStarting?: number;
-  squadBench?: number;
-  squadInjured: number;
-  squadAvgForm: string;
-  powerRatingValue: number;
-  powerRatingWorldRank: number | null;
+  squadInjured?: number;
+  squadAvgForm?: string;
+  powerRatingValue?: number;
+  powerRatingWorldRank?: number;
   currencyLabel: string;
-  isFullyDemo: boolean;
   errors: string[];
-}
-
-function buildDemoData(): Omit<DashboardData, "errors"> {
-  const starting = demoSquadPlayers.filter((p) => p.status === "starting").length;
-  const bench = demoSquadPlayers.filter((p) => p.status === "bench").length;
-  const injured = demoSquadPlayers.filter((p) => p.status === "injured").length;
-  const avgForm = (demoSquadPlayers.reduce((sum, p) => sum + p.form, 0) / demoSquadPlayers.length).toFixed(1);
-
-  return {
-    clubName: demoClub.name,
-    clubShortName: demoClub.shortName,
-    badgeLabel: demoClub.rating.toLocaleString("ru-RU"),
-    leagueRows: demoLeagueTable.map((r) => ({ ...r })),
-    recentMatches: demoRecentMatches.map((m) => ({ ...m, id: String(m.id) })),
-    upcomingMatches: demoUpcomingMatches.map((m) => ({ ...m, id: String(m.id) })),
-    balance: demoFinance.balance,
-    totalIncome: demoFinance.income.reduce((sum, l) => sum + l.amount, 0),
-    totalExpense: demoFinance.expense.reduce((sum, l) => sum + l.amount, 0),
-    realStaff: null,
-    fanMood: demoFans.mood,
-    fanClubSize: demoFans.clubSize,
-    fanExpectation: demoFans.expectation,
-    squadStarting: starting,
-    squadBench: bench,
-    squadInjured: injured,
-    squadAvgForm: avgForm,
-    powerRatingValue: powerRating.value,
-    powerRatingWorldRank: powerRating.worldRank,
-    currencyLabel: defaultCurrency.label,
-    isFullyDemo: true,
-    resultsMatrixTeams: leagueMatrixTeams,
-    resultsMatrix: leagueResultsMatrix,
-  };
 }
 
 async function requestAllRaw(
@@ -153,26 +111,21 @@ async function requestAllRaw(
 // seriescup), остальные — параллельно. Сырые ответы сразу сохраняются для
 // отладочной панели, а затем каждый по отдельности разбирается в данные для
 // конкретного блока страницы. Если разбор для какого-то файла не удался —
-// блок остаётся демонстрационным, а причина добавляется в список ошибок
-// баннера.
-async function resolveDashboardData(): Promise<DashboardData> {
-  const tokens = getStoredHattrickTokens();
-  const demo = buildDemoData();
-
-  if (!tokens) {
-    return { ...demo, errors: ["Команда ещё не подключена к Hattrick."] };
-  }
-
+// соответствующий блок страницы просто не рендерится, а причина
+// добавляется в список ошибок баннера — никакого демонстрационного
+// значения вместо него больше не подставляется.
+async function resolveDashboardData(tokens: StoredHattrickTokens): Promise<DashboardData> {
   const errors: string[] = [];
-  const data: DashboardData = { ...demo, isFullyDemo: true, errors: [] };
+  const data: DashboardData = { currencyLabel: defaultCurrency.label, errors: [] };
 
   // Шаг 1: teamdetails — отдельно и первым, чтобы узнать TeamID (нужен для
   // определения "своей" строки в таблице лиги и в списке матчей), LeagueID
-  // (нужен для worlddetails на шаге 2, чтобы узнать валюту страны) и
-  // LeagueLevelUnitID (нужен для leaguefixtures — сетка результатов лиги).
+  // (нужен для worlddetails на шаге 2, чтобы узнать валюту страны),
+  // LeagueLevelUnitID (нужен для leaguefixtures) и PlayerID тренера.
   let teamId = "";
   let leagueId = "";
   let leagueLevelUnitId = "";
+  let trainerPlayerId = "";
   const teamDetailsRaw = await requestChppXmlRaw("teamdetails", {}, tokens).catch(() => null);
   try {
     if (!teamDetailsRaw) throw new Error("запрос не выполнился");
@@ -183,12 +136,12 @@ async function resolveDashboardData(): Promise<DashboardData> {
     teamId = team.teamId;
     leagueId = team.leagueId;
     leagueLevelUnitId = team.leagueLevelUnitId;
-    data.clubName = team.teamName || data.clubName;
-    data.clubShortName = team.shortTeamName || data.clubShortName;
-    data.badgeLabel = team.teamRank !== null ? `#${team.teamRank}` : team.leagueName || data.badgeLabel;
+    trainerPlayerId = team.trainerPlayerId;
+    data.clubName = team.teamName || undefined;
+    data.clubShortName = team.shortTeamName || undefined;
+    data.badgeLabel = team.teamRank !== null ? `#${team.teamRank}` : team.leagueName || undefined;
     if (team.powerRatingValue !== null) data.powerRatingValue = team.powerRatingValue;
     if (team.powerRatingGlobalRank !== null) data.powerRatingWorldRank = team.powerRatingGlobalRank;
-    data.isFullyDemo = false;
   } catch (err) {
     errors.push(`Название команды (teamdetails): ${errorMessage(err)}`);
   }
@@ -239,8 +192,8 @@ async function resolveDashboardData(): Promise<DashboardData> {
     };
 
     // Таблица появляется только после старта сезона (см. комментарий у
-    // CHPP_REQUESTS выше) — в межсезонье standings пуст, тогда оставляем
-    // демо-таблицу вместо пустого блока.
+    // CHPP_REQUESTS выше) — в межсезонье standings пуст, тогда таблица лиги
+    // просто не рендерится на странице.
     if (league.standings.length > 0) {
       data.leagueRows = league.standings.map((r) => ({
         position: r.position,
@@ -254,12 +207,6 @@ async function resolveDashboardData(): Promise<DashboardData> {
         points: r.points,
         isOurTeam: r.isOurTeam,
       }));
-      // Реальная таблица заменила демо — демо-сетку результатов больше
-      // показывать нельзя. Ниже, если получится разобрать leaguefixtures,
-      // подставим настоящую; если нет — LeagueTable просто не покажет ни
-      // переключатель, ни сетку (как и раньше, до появления этой функции).
-      data.resultsMatrixTeams = undefined;
-      data.resultsMatrix = undefined;
 
       try {
         if (!raw.leaguefixtures) throw new Error("запрос не выполнился (LeagueLevelUnitID не определён?)");
@@ -283,7 +230,6 @@ async function resolveDashboardData(): Promise<DashboardData> {
         data.debugLeague.fixturesError = errorMessage(fixturesErr);
       }
     }
-    data.isFullyDemo = false;
   } catch (err) {
     errors.push(`Лига и таблица (leaguedetails): ${errorMessage(err)}`);
   }
@@ -322,7 +268,6 @@ async function resolveDashboardData(): Promise<DashboardData> {
         // как официальные, не показывая сам (ничего не значащий на вид) номер.
         competition: m.matchType !== "0" ? "Официальный матч" : undefined,
       }));
-    data.isFullyDemo = false;
   } catch (err) {
     errors.push(`Матчи (matches): ${errorMessage(err)}`);
   }
@@ -338,7 +283,6 @@ async function resolveDashboardData(): Promise<DashboardData> {
     data.totalExpense = economy.lastWeekExpense;
     data.fanMood = chppSupportersPopularityToFanMoodLevel(economy.supportersPopularity);
     data.fanClubSize = economy.fanClubSize;
-    data.isFullyDemo = false;
   } catch (err) {
     errors.push(`Финансы и болельщики (economy): ${errorMessage(err)}`);
   }
@@ -349,7 +293,6 @@ async function resolveDashboardData(): Promise<DashboardData> {
       throw new Error(`HTTP ${raw.club.httpStatus}: ${raw.club.rawXml.slice(0, 200)}`);
     }
     data.realStaff = parseClubXml(raw.club.rawXml);
-    data.isFullyDemo = false;
   } catch (err) {
     errors.push(`Персонал (club): ${errorMessage(err)}`);
   }
@@ -361,11 +304,22 @@ async function resolveDashboardData(): Promise<DashboardData> {
     }
     const summary = parsePlayersXml(raw.players.rawXml);
     data.squadTotal = summary.totalPlayers;
-    data.squadStarting = undefined;
-    data.squadBench = undefined;
     data.squadInjured = summary.injuredCount;
     data.squadAvgForm = summary.averageForm.toFixed(1);
-    data.isFullyDemo = false;
+
+    // Тренер — один из собственных игроков (см. src/lib/teamDetails.ts,
+    // trainerPlayerId), та же схема, что на "Тренировке". Домашняя страна не
+    // нужна здесь (национальность на Обзоре не показывается), поэтому не
+    // тратим отдельный запрос на worlddetails ради неё.
+    if (trainerPlayerId) {
+      const trainer = parsePlayersDetailedXml(raw.players.rawXml, null).find(
+        (p) => String(p.id) === trainerPlayerId,
+      );
+      if (trainer) {
+        data.coachName = trainer.name;
+        data.coachLeadership = trainer.leadership;
+      }
+    }
   } catch (err) {
     errors.push(`Состав (players): ${errorMessage(err)}`);
   }
@@ -384,7 +338,11 @@ function errorMessage(err: unknown): string {
 const SHOW_LEAGUE_DEBUG_PANEL = false;
 
 export default async function DashboardPage() {
-  const data = await resolveDashboardData();
+  const tokens = getRequiredHattrickTokens();
+  const [data, weeklyTsi] = await Promise.all([
+    resolveDashboardData(tokens),
+    resolveWeeklyTsiHighlights(getStoredHattrickUserId()),
+  ]);
 
   return (
     <>
@@ -434,45 +392,63 @@ export default async function DashboardPage() {
             </div>
           )}
           {data.errors.length > 0 && (
-            <DemoModeBanner
-              title={data.isFullyDemo ? "Демо-режим" : "Часть данных не удалось загрузить"}
-              reasons={data.errors}
-            />
+            <DemoModeBanner title="Часть данных не удалось загрузить" reasons={data.errors} />
           )}
-          <DashboardHeader clubName={data.clubName} clubShortName={data.clubShortName} badgeLabel={data.badgeLabel} />
+          <DashboardHeader
+            clubName={data.clubName ?? "—"}
+            clubShortName={data.clubShortName ?? "—"}
+            badgeLabel={data.badgeLabel ?? "—"}
+          />
 
           <div className={styles.grid}>
-            <LeagueTable
-              rows={data.leagueRows}
-              leagueName={data.leagueName}
-              matrixTeams={data.resultsMatrixTeams}
-              resultsMatrix={data.resultsMatrix}
+            {data.leagueRows && (
+              <LeagueTable
+                rows={data.leagueRows}
+                leagueName={data.leagueName}
+                matrixTeams={data.resultsMatrixTeams}
+                resultsMatrix={data.resultsMatrix}
+              />
+            )}
+            {data.squadInjured !== undefined && data.squadAvgForm !== undefined && (
+              <SquadSummaryPanel
+                totalPlayers={data.squadTotal}
+                injured={data.squadInjured}
+                avgForm={data.squadAvgForm}
+              />
+            )}
+            {data.recentMatches && data.upcomingMatches && (
+              <MatchesSection recentMatches={data.recentMatches} upcomingMatches={data.upcomingMatches} />
+            )}
+            {data.balance !== undefined && data.totalIncome !== undefined && data.totalExpense !== undefined && (
+              <FinanceSummary
+                balance={data.balance}
+                totalIncome={data.totalIncome}
+                totalExpense={data.totalExpense}
+                currencyLabel={data.currencyLabel}
+              />
+            )}
+            {(data.realStaff || data.coachName) && (
+              <StaffSection realStaff={data.realStaff} coachName={data.coachName} coachLeadership={data.coachLeadership} />
+            )}
+            {data.fanMood !== undefined && data.fanClubSize !== undefined && (
+              <FansSection mood={data.fanMood} clubSize={data.fanClubSize} />
+            )}
+            {data.powerRatingValue !== undefined && (
+              <PowerRatingPanel value={data.powerRatingValue} worldRank={data.powerRatingWorldRank} />
+            )}
+            <TsiWeeklyChanges
+              topGainers={weeklyTsi.topGainers}
+              topLosers={weeklyTsi.topLosers}
+              hasEnoughHistory={weeklyTsi.hasEnoughHistory}
             />
-            <SquadSummaryPanel
-              totalPlayers={data.squadTotal}
-              starting={data.squadStarting}
-              bench={data.squadBench}
-              injured={data.squadInjured}
-              avgForm={data.squadAvgForm}
-            />
-            <MatchesSection recentMatches={data.recentMatches} upcomingMatches={data.upcomingMatches} />
-            <FinanceSummary
-              balance={data.balance}
-              totalIncome={data.totalIncome}
-              totalExpense={data.totalExpense}
-              currencyLabel={data.currencyLabel}
-            />
-            <StaffSection realStaff={data.realStaff} />
-            <FansSection mood={data.fanMood} clubSize={data.fanClubSize} expectation={data.fanExpectation} />
-            <PowerRatingPanel
-              value={data.powerRatingValue}
-              worldRank={data.powerRatingWorldRank ?? powerRating.worldRank}
-            />
-            <TsiWeeklyChanges />
           </div>
 
           <div style={{ marginTop: 12 }}>
-            <WeeklyHighlights />
+            <WeeklyHighlights
+              gainer={weeklyTsi.gainer}
+              loser={weeklyTsi.loser}
+              hasEnoughHistory={weeklyTsi.hasEnoughHistory}
+            />
           </div>
         </div>
       </main>

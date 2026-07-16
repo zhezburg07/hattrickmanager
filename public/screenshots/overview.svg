@@ -1,0 +1,60 @@
+<svg viewBox="0 0 900 560" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Roboto, Arial, sans-serif">
+  <rect width="900" height="560" rx="14" fill="#0f211c"/>
+  <rect x="0" y="0" width="900" height="40" rx="14" fill="#0f211c"/>
+  <circle cx="22" cy="20" r="6" fill="#c0503f"/>
+  <circle cx="44" cy="20" r="6" fill="#d9a441"/>
+  <circle cx="66" cy="20" r="6" fill="#4caf6f"/>
+  <rect x="300" y="9" width="300" height="22" rx="11" fill="#152c26"/>
+  <text x="450" y="24" font-size="11" fill="#a9bdb5" text-anchor="middle">hattrickmanager.org/dashboard</text>
+
+  <rect x="0" y="40" width="900" height="520" fill="#152c26"/>
+
+  <text x="32" y="78" font-size="22" font-weight="700" fill="#c9a227">Обзор</text>
+  <text x="32" y="100" font-size="13" fill="#a9bdb5">Неделя 24 · обновлено сегодня</text>
+
+  <!-- stat cards -->
+  <g>
+    <rect x="32" y="120" width="252" height="96" rx="10" fill="#1c3830" stroke="#2c4a40"/>
+    <text x="52" y="150" font-size="12" fill="#a9bdb5">Рейтинг силы</text>
+    <text x="52" y="188" font-size="30" font-weight="700" fill="#f2ede1">3 214</text>
+  </g>
+  <g>
+    <rect x="308" y="120" width="252" height="96" rx="10" fill="#1c3830" stroke="#2c4a40"/>
+    <text x="328" y="150" font-size="12" fill="#a9bdb5">TSI команды</text>
+    <text x="328" y="188" font-size="30" font-weight="700" fill="#f2ede1">198 400</text>
+  </g>
+  <g>
+    <rect x="584" y="120" width="284" height="96" rx="10" fill="#1c3830" stroke="#2c4a40"/>
+    <text x="604" y="150" font-size="12" fill="#a9bdb5">Баланс клуба</text>
+    <text x="604" y="188" font-size="30" font-weight="700" fill="#4caf6f">+2 340 000 ₸</text>
+  </g>
+
+  <!-- league table -->
+  <rect x="32" y="236" width="500" height="230" rx="10" fill="#1c3830" stroke="#2c4a40"/>
+  <text x="52" y="264" font-size="14" font-weight="700" fill="#f2ede1">Турнирная таблица</text>
+  <g font-size="12" fill="#a9bdb5">
+    <text x="52" y="290">#</text>
+    <text x="80" y="290">Команда</text>
+    <text x="470" y="290" text-anchor="end">Очки</text>
+  </g>
+  <line x1="52" y1="298" x2="512" y2="298" stroke="#2c4a40"/>
+  <g font-size="13" fill="#f2ede1">
+    <text x="52" y="322">1</text><text x="80" y="322">Жетысу</text><text x="470" y="322" text-anchor="end">54</text>
+    <rect x="44" y="332" width="476" height="26" fill="#c9a227" opacity="0.14" rx="4"/>
+    <text x="52" y="350" font-weight="700">2</text><text x="80" y="350" font-weight="700">Наш клуб</text><text x="470" y="350" text-anchor="end" font-weight="700">49</text>
+    <text x="52" y="378">3</text><text x="80" y="378">Кайрат</text><text x="470" y="378" text-anchor="end">47</text>
+    <text x="52" y="406">4</text><text x="80" y="406">Тобол</text><text x="470" y="406" text-anchor="end">41</text>
+    <text x="52" y="434">5</text><text x="80" y="434">Астана</text><text x="470" y="434" text-anchor="end">38</text>
+  </g>
+
+  <!-- fan mood -->
+  <rect x="552" y="236" width="316" height="230" rx="10" fill="#1c3830" stroke="#2c4a40"/>
+  <text x="572" y="264" font-size="14" font-weight="700" fill="#f2ede1">Настроение болельщиков</text>
+  <rect x="572" y="284" width="276" height="16" rx="8" fill="#0f211c"/>
+  <rect x="572" y="284" width="210" height="16" rx="8" fill="#4caf6f"/>
+  <text x="572" y="322" font-size="12" fill="#a9bdb5">Отлично · посещаемость растёт</text>
+  <text x="572" y="360" font-size="12" fill="#a9bdb5">Средняя явка</text>
+  <text x="572" y="384" font-size="24" font-weight="700" fill="#f2ede1">18 600</text>
+  <text x="572" y="420" font-size="12" fill="#a9bdb5">Доход с матча</text>
+  <text x="572" y="444" font-size="24" font-weight="700" fill="#f2ede1">4 120 000 ₸</text>
+</svg>

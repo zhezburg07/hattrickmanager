@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { seasonMatches, type Competition, type SeasonMatch } from "@/data/matches";
+import type { Competition, SeasonMatch } from "@/data/matches";
 import MatchInstructions from "./MatchInstructions";
 import MatchDetailAnalysis from "./MatchDetailAnalysis";
 import styles from "./Matches.module.css";
@@ -13,8 +13,8 @@ const competitionClass: Record<Competition, string> = {
   Официальный: styles.competitionLeague,
 };
 
-export default function MatchesCalendar({ matches }: { matches?: SeasonMatch[] } = {}) {
-  const matchList = matches ?? seasonMatches;
+export default function MatchesCalendar({ matches }: { matches: SeasonMatch[] }) {
+  const matchList = matches;
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const nextMatch = matchList.find((m) => m.ourScore === null) ?? null;
 

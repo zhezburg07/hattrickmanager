@@ -1,6 +1,6 @@
 import Header from "@/components/Header";
-import SquadSection from "@/components/SquadSection";
 import FeaturesSection from "@/components/FeaturesSection";
+import ProductShowcase from "@/components/ProductShowcase";
 import PricingSection from "@/components/PricingSection";
 import Footer from "@/components/Footer";
 
@@ -14,8 +14,8 @@ export default function Home() {
     <>
       <Header />
       <main>
-        <SquadSection />
         <FeaturesSection />
+        <ProductShowcase />
         {SHOW_PRICING_SECTION && <PricingSection />}
       </main>
       <Footer />

@@ -1,0 +1,54 @@
+<svg viewBox="0 0 900 560" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Roboto, Arial, sans-serif">
+  <rect width="900" height="560" rx="14" fill="#0f211c"/>
+  <rect x="0" y="0" width="900" height="40" rx="14" fill="#0f211c"/>
+  <circle cx="22" cy="20" r="6" fill="#c0503f"/>
+  <circle cx="44" cy="20" r="6" fill="#d9a441"/>
+  <circle cx="66" cy="20" r="6" fill="#4caf6f"/>
+  <rect x="270" y="9" width="360" height="22" rx="11" fill="#152c26"/>
+  <text x="450" y="24" font-size="11" fill="#a9bdb5" text-anchor="middle">hattrickmanager.org/dashboard/lineup</text>
+
+  <rect x="0" y="40" width="900" height="520" fill="#152c26"/>
+  <text x="32" y="76" font-size="22" font-weight="700" fill="#c9a227">Расстановка</text>
+  <text x="32" y="98" font-size="13" fill="#a9bdb5">Формация 4-4-2 · перетащите игрока, чтобы поставить на слот</text>
+
+  <!-- pitch -->
+  <rect x="32" y="114" width="560" height="420" rx="10" fill="#1e4636" stroke="#2c4a40"/>
+  <rect x="52" y="134" width="520" height="380" rx="4" fill="none" stroke="#3c6a54" stroke-width="2"/>
+  <line x1="52" y1="324" x2="572" y2="324" stroke="#3c6a54" stroke-width="2"/>
+  <circle cx="312" cy="324" r="54" fill="none" stroke="#3c6a54" stroke-width="2"/>
+  <rect x="52" y="230" width="90" height="188" fill="none" stroke="#3c6a54" stroke-width="2"/>
+  <rect x="482" y="230" width="90" height="188" fill="none" stroke="#3c6a54" stroke-width="2"/>
+
+  <!-- players: GK, 4 def, 4 mid, 2 fwd -->
+  <g>
+    <circle cx="80" cy="324" r="16" fill="#4caf6f"/><text x="80" y="329" font-size="11" text-anchor="middle" fill="#0f211c" font-weight="700">ВР</text>
+
+    <circle cx="150" cy="180" r="16" fill="#e0913f"/><text x="150" y="185" font-size="11" text-anchor="middle" fill="#0f211c" font-weight="700">ЗАЩ</text>
+    <circle cx="150" cy="270" r="16" fill="#e0913f"/><text x="150" y="275" font-size="11" text-anchor="middle" fill="#0f211c" font-weight="700">ЗАЩ</text>
+    <circle cx="150" cy="380" r="16" fill="#e0913f"/><text x="150" y="385" font-size="11" text-anchor="middle" fill="#0f211c" font-weight="700">ЗАЩ</text>
+    <circle cx="150" cy="470" r="16" fill="#e0913f"/><text x="150" y="475" font-size="11" text-anchor="middle" fill="#0f211c" font-weight="700">ЗАЩ</text>
+
+    <circle cx="320" cy="180" r="16" fill="#e6c94a"/><text x="320" y="185" font-size="11" text-anchor="middle" fill="#0f211c" font-weight="700">ПОЛ</text>
+    <circle cx="320" cy="270" r="16" fill="#e6c94a"/><text x="320" y="275" font-size="11" text-anchor="middle" fill="#0f211c" font-weight="700">ПОЛ</text>
+    <circle cx="320" cy="380" r="16" fill="#e6c94a"/><text x="320" y="385" font-size="11" text-anchor="middle" fill="#0f211c" font-weight="700">ПОЛ</text>
+    <circle cx="320" cy="470" r="16" fill="#e6c94a"/><text x="320" y="475" font-size="11" text-anchor="middle" fill="#0f211c" font-weight="700">ПОЛ</text>
+
+    <circle cx="490" cy="250" r="16" fill="#d9564a"/><text x="490" y="255" font-size="11" text-anchor="middle" fill="#f2ede1" font-weight="700">НАП</text>
+    <circle cx="490" cy="400" r="16" fill="#d9564a"/><text x="490" y="405" font-size="11" text-anchor="middle" fill="#f2ede1" font-weight="700">НАП</text>
+  </g>
+
+  <!-- side panel -->
+  <rect x="608" y="114" width="260" height="420" rx="10" fill="#1c3830" stroke="#2c4a40"/>
+  <text x="628" y="142" font-size="14" font-weight="700" fill="#f2ede1">Скамейка запасных</text>
+  <g font-size="12" fill="#f2ede1">
+    <circle cx="636" cy="168" r="6" fill="#a9bdb5"/><text x="650" y="172">Алексей Крылов</text>
+    <circle cx="636" cy="196" r="6" fill="#a9bdb5"/><text x="650" y="200">Виктор Голубев</text>
+    <circle cx="636" cy="224" r="6" fill="#a9bdb5"/><text x="650" y="228">Олег Комаров</text>
+    <circle cx="636" cy="252" r="6" fill="#a9bdb5"/><text x="650" y="256">Владислав Морозов</text>
+  </g>
+  <line x1="628" y1="272" x2="848" y2="272" stroke="#2c4a40"/>
+  <text x="628" y="298" font-size="12" fill="#a9bdb5">Дух команды</text>
+  <text x="628" y="322" font-size="20" font-weight="700" fill="#4caf6f">Отличный</text>
+  <text x="628" y="352" font-size="12" fill="#a9bdb5">Рекомендованная тактика</text>
+  <text x="628" y="376" font-size="16" font-weight="700" fill="#f2ede1">Атака по флангам</text>
+</svg>

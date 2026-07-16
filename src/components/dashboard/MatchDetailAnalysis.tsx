@@ -1,27 +1,75 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { getMatchAnalysis, eventIcon, type AnalyzableMatch } from "@/data/matchAnalysis";
-import { club } from "@/data/dashboard";
-import { skillWord } from "@/data/squad";
+import { useEffect, useState } from "react";
 import styles from "./MatchAnalysis.module.css";
 
-type ReportTab = "ratings" | "zones" | "timeline" | "attendance";
+export interface AnalyzableMatch {
+  id: number;
+  date: string;
+  opponent: string;
+  home: boolean;
+  ourScore: number;
+  oppScore: number;
+}
+
+type ReportTab = "ratings" | "timeline";
 
 const reportTabs: { key: ReportTab; label: string }[] = [
   { key: "ratings", label: "Рейтинги игроков" },
-  { key: "zones", label: "Командные показатели" },
-  { key: "timeline", label: "Хронология моментов" },
-  { key: "attendance", label: "Посещаемость" },
+  { key: "timeline", label: "Хронология" },
 ];
 
-function formatTenge(value: number): string {
-  return `${value.toLocaleString("ru-RU")} тенге`;
+interface MatchPlayerRating {
+  playerId: number;
+  name: string;
+  rating: number;
 }
 
+interface MatchAnalysisResponse {
+  homeTeamName: string;
+  awayTeamName: string;
+  homeRatings: MatchPlayerRating[];
+  awayRatings: MatchPlayerRating[];
+  error: string | null;
+}
+
+// Реальный рейтинг игроков обеих команд за этот конкретный матч (см.
+// src/lib/matchAnalysis.ts, /api/dashboard/match-analysis) — раньше здесь
+// были 4 вкладки с полностью выдуманными данными (рейтинги на схеме поля,
+// "зоны владения", хронология с фейковыми событиями, посещаемость по
+// секторам). Зоны владения и посещаемость по конкретному матчу CHPP не
+// даёт вообще никак — эти вкладки просто убраны. Хронология голов оставлена
+// как честная заглушка "недоступно", а не выдумка — см. комментарий в
+// src/lib/matchAnalysis.ts.
 export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch }) {
   const [tab, setTab] = useState<ReportTab>("ratings");
-  const analysis = useMemo(() => getMatchAnalysis(match), [match]);
+  const [data, setData] = useState<MatchAnalysisResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/dashboard/match-analysis?matchId=${match.id}`)
+      .then((res) => res.json())
+      .then((json: MatchAnalysisResponse) => {
+        if (!cancelled) setData(json);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setData({ homeTeamName: "", awayTeamName: "", homeRatings: [], awayRatings: [], error: "Не удалось загрузить" });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [match.id]);
+
+  const ourName = "Наша команда";
+  const homeName = match.home ? ourName : match.opponent;
+  const awayName = match.home ? match.opponent : ourName;
 
   return (
     <div className={styles.card}>
@@ -40,132 +88,69 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
 
       <div style={{ marginTop: 18 }}>
         <div className={styles.matchHead}>
-          <span className={styles.matchHeadTeam}>{match.home ? club.name : match.opponent}</span>
+          <span className={styles.matchHeadTeam}>{homeName}</span>
           <span className={styles.matchHeadScore}>
             {match.home ? `${match.ourScore}:${match.oppScore}` : `${match.oppScore}:${match.ourScore}`}
           </span>
-          <span className={styles.matchHeadTeam}>{match.home ? match.opponent : club.name}</span>
+          <span className={styles.matchHeadTeam}>{awayName}</span>
           <span className={styles.matchHeadDate}>{match.date}</span>
         </div>
 
-        {tab === "ratings" && (
-          <>
-            <div className={styles.splitPitch}>
-              <div className={styles.splitDivider} />
-              {analysis.ownRatings.map((p) => (
-                <div
-                  key={p.id}
-                  className={styles.ratingMarker}
-                  style={{ left: `${p.x}%`, top: `${p.y}%` }}
-                  title={`${p.name} — ${p.positionLabel}`}
-                >
-                  <div className={`${styles.ratingBadge} ${styles.ratingBadgeOwn}`}>{p.rating.toFixed(1)}</div>
-                  <span className={styles.ratingName}>{p.name}</span>
+        {tab === "ratings" &&
+          (loading ? (
+            <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none" }}>
+              Загрузка рейтингов…
+            </p>
+          ) : data?.error ? (
+            <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none" }}>
+              Рейтинги игроков за этот матч недоступны.
+            </p>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+              <div>
+                <div className={styles.matchHeadTeam} style={{ marginBottom: 8 }}>
+                  {data?.homeTeamName || homeName}
                 </div>
-              ))}
-              {analysis.oppRatings.map((p) => (
-                <div
-                  key={p.id}
-                  className={styles.ratingMarker}
-                  style={{ left: `${p.x}%`, top: `${p.y}%` }}
-                  title={`${p.name} — ${p.positionLabel}`}
-                >
-                  <div className={`${styles.ratingBadge} ${styles.ratingBadgeOpp}`}>{p.rating.toFixed(1)}</div>
-                  <span className={styles.ratingName}>{p.name}</span>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <tbody>
+                      {data?.homeRatings.map((p) => (
+                        <tr key={p.playerId}>
+                          <td>{p.name}</td>
+                          <td className={styles.numCell}>{p.rating.toFixed(1)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
-            </div>
-            <div className={styles.legendRow}>
-              <span>
-                <span className={styles.legendDot} style={{ background: "var(--color-good)" }} />
-                {club.name}
-              </span>
-              <span>
-                <span className={styles.legendDot} style={{ background: "var(--color-text-muted)" }} />
-                {match.opponent}
-              </span>
-            </div>
-          </>
-        )}
-
-        {tab === "zones" && (
-          <div>
-            {analysis.zones.map((z) => (
-              <div key={z.key} className={styles.zoneRow}>
-                <div className={styles.zoneSide}>
-                  <span className={styles.zoneShare}>{z.ownShare}%</span>
-                  <span className={styles.zoneLevel}>{skillWord(z.ownLevel)}</span>
-                  <div className={styles.zoneBar}>
-                    <div className={styles.zoneBarOwn} style={{ width: `${z.ownShare}%` }} />
-                  </div>
-                </div>
-
-                <div className={styles.zoneLabel}>{z.label}</div>
-
-                <div className={`${styles.zoneSide} ${styles.zoneSideRight}`}>
-                  <span className={styles.zoneShare}>{z.oppShare}%</span>
-                  <span className={styles.zoneLevel}>{skillWord(z.oppLevel)}</span>
-                  <div className={styles.zoneBar} style={{ flexDirection: "row-reverse" }}>
-                    <div className={styles.zoneBarOpp} style={{ width: `${z.oppShare}%` }} />
-                  </div>
-                </div>
+                {(data?.homeRatings.length ?? 0) === 0 && <p>Нет данных.</p>}
               </div>
-            ))}
-          </div>
-        )}
+              <div>
+                <div className={styles.matchHeadTeam} style={{ marginBottom: 8 }}>
+                  {data?.awayTeamName || awayName}
+                </div>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <tbody>
+                      {data?.awayRatings.map((p) => (
+                        <tr key={p.playerId}>
+                          <td>{p.name}</td>
+                          <td className={styles.numCell}>{p.rating.toFixed(1)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {(data?.awayRatings.length ?? 0) === 0 && <p>Нет данных.</p>}
+              </div>
+            </div>
+          ))}
 
         {tab === "timeline" && (
-          <div className={styles.timelineWrap}>
-            <div className={styles.timelineTrack}>
-              {analysis.timeline.map((ev, i) => (
-                <div key={i} className={styles.timelineEvent} style={{ left: `${(ev.minute / 90) * 100}%` }}>
-                  <span className={styles.timelineEventIcon} title={`${ev.minute}' — ${ev.label}`}>
-                    {eventIcon[ev.type]}
-                  </span>
-                  <span className={styles.timelineEventMinute}>{ev.minute}&apos;</span>
-                </div>
-              ))}
-            </div>
-            <div className={styles.timelineEndLabels}>
-              <span>0&apos;</span>
-              <span>45&apos;</span>
-              <span>90&apos;</span>
-            </div>
-            <div className={styles.timelineLegend}>
-              <span>⚽ Гол</span>
-              <span>⚠ Опасный момент</span>
-              <span>🟨 Жёлтая карточка</span>
-            </div>
-          </div>
-        )}
-
-        {tab === "attendance" && (
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Категория</th>
-                  <th style={{ textAlign: "right" }}>Мест</th>
-                  <th style={{ textAlign: "right" }}>Продано билетов</th>
-                  <th style={{ textAlign: "right" }}>Доход</th>
-                </tr>
-              </thead>
-              <tbody>
-                {analysis.attendance.map((row) => (
-                  <tr key={row.key}>
-                    <td>{row.label}</td>
-                    <td className={styles.numCell}>{row.seats.toLocaleString("ru-RU")}</td>
-                    <td className={styles.numCell}>{row.ticketsSold.toLocaleString("ru-RU")}</td>
-                    <td className={styles.numCell}>{formatTenge(row.revenue)}</td>
-                  </tr>
-                ))}
-                <tr className={styles.totalRow}>
-                  <td colSpan={3}>Общий доход от матча</td>
-                  <td className={styles.numCell}>{formatTenge(analysis.totalAttendanceRevenue)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none" }}>
+            Хронология событий матча (голы, карточки) пока недоступна — Hattrick не отдаёт её через открытое CHPP API
+            в подтверждённом виде.
+          </p>
         )}
       </div>
     </div>

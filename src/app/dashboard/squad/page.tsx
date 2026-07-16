@@ -3,7 +3,7 @@ import Footer from "@/components/Footer";
 import SquadTable from "@/components/dashboard/SquadTable";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getStoredHattrickTokens, getStoredHattrickUserId, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
+import { getRequiredHattrickTokens, getStoredHattrickUserId, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parsePlayersDetailedXml, debugRawPlayerCountryIds, type DebugPlayerCountryRaw } from "@/lib/squadPlayers";
 import { resolveRealHomeCountry } from "@/lib/worldCurrency";
 import { getCountryIdLookup } from "@/lib/worldCountries";
@@ -30,29 +30,14 @@ async function resolveTrainerPlayerId(tokens: StoredHattrickTokens): Promise<num
   }
 }
 
-// ВРЕМЕННАЯ диагностика флагов на реальных данных — покажите true, чтобы
-// увидеть, что именно CHPP присылает в поле национальности игрока (сырой
-// CountryID + все похожие поля) и как разрешилась "домашняя страна"
-// команды. Уберите обратно в false, когда причина найдена (см. чат).
-const SHOW_NATIONALITY_DEBUG = true;
+// ВРЕМЕННАЯ диагностика флагов на реальных данных — причина (числовой
+// CountryID без полного справочника) уже найдена и исправлена (см.
+// src/lib/worldCountries.ts). Оставлено на false, легко включить обратно,
+// если снова понадобится посмотреть сырые поля национальности.
+const SHOW_NATIONALITY_DEBUG = false;
 
 export default async function SquadPage() {
-  const tokens = getStoredHattrickTokens();
-
-  if (!tokens) {
-    return (
-      <>
-        <Header />
-        <main className={styles.page}>
-          <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
-            <DemoModeBanner title="Демо-режим" reasons={["Команда ещё не подключена к Hattrick."]} />
-            <SquadTable />
-          </div>
-        </main>
-        <Footer />
-      </>
-    );
-  }
+  const tokens = getRequiredHattrickTokens();
 
   const [{ homeCountry, error: homeCountryError }, playersRaw, countryIdLookupResult, trainerPlayerId, lastMatchRatingResult] =
     await Promise.all([
@@ -134,11 +119,9 @@ export default async function SquadPage() {
             </div>
           )}
           {error && <DemoModeBanner title="Не удалось загрузить реальный состав" reasons={[error]} />}
-          <SquadTable
-            players={players ?? undefined}
-            prevByPlayerId={players ? prevByPlayerId : undefined}
-            trainerPlayerId={trainerPlayerId}
-          />
+          {players && (
+            <SquadTable players={players} prevByPlayerId={prevByPlayerId} trainerPlayerId={trainerPlayerId} />
+          )}
         </div>
       </main>
       <Footer />

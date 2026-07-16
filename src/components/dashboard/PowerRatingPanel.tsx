@@ -6,7 +6,7 @@ export default function PowerRatingPanel({
   worldRank,
 }: {
   value: number;
-  worldRank: number;
+  worldRank?: number;
 }) {
   return (
     <div className={styles.panel}>
@@ -17,7 +17,9 @@ export default function PowerRatingPanel({
         </span>
       </div>
       <div className={styles.powerRatingValue}>{value.toLocaleString("ru-RU")}</div>
-      <div className={styles.powerRatingRank}>{worldRank.toLocaleString("ru-RU")}-е место</div>
+      {worldRank !== undefined && (
+        <div className={styles.powerRatingRank}>{worldRank.toLocaleString("ru-RU")}-е место</div>
+      )}
     </div>
   );
 }

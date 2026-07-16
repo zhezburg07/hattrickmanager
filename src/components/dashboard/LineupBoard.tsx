@@ -11,7 +11,7 @@ import {
   slotCounts,
   type Assignments,
 } from "@/data/pitchBoard";
-import { squadPlayers, type PositionGroup, type SquadPlayer, type PlayerStatSnapshot } from "@/data/squad";
+import type { PositionGroup, SquadPlayer, PlayerStatSnapshot } from "@/data/squad";
 import { applicableInstructions, type PlayerInstruction } from "@/data/playerInstructions";
 import LineupField from "./LineupField";
 import LineupPlayerList from "./LineupPlayerList";
@@ -85,14 +85,12 @@ export default function LineupBoard({
   players,
   prevByPlayerId,
 }: {
-  players?: SquadPlayer[];
-  prevByPlayerId?: Record<number, PlayerStatSnapshot | undefined>;
-} = {}) {
-  const roster = players ?? squadPlayers;
+  players: SquadPlayer[];
+  prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
+}) {
+  const roster = players;
   const playersById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
-  // См. комментарий в SquadTable.tsx: демо-данные уже несут player.prev,
-  // реальные — прошлый снимок приходит с сервера (playerHistoryDb.ts).
-  const resolvedPrevByPlayerId = prevByPlayerId ?? Object.fromEntries(roster.map((p) => [p.id, p.prev]));
+  const resolvedPrevByPlayerId = prevByPlayerId;
   const [assignments, setAssignments] = useState<Assignments>(() => initialAssignments(roster));
   const [subs, setSubs] = useState<(number | null)[]>(() => subCategories.map(() => null));
   const [instructions, setInstructions] = useState<Record<number, PlayerInstruction>>({});

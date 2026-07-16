@@ -9,15 +9,7 @@ function moodClass(level: number): string {
   return styles.moodBad;
 }
 
-export default function FansSection({
-  mood,
-  clubSize,
-  expectation,
-}: {
-  mood: number;
-  clubSize: number;
-  expectation: string;
-}) {
+export default function FansSection({ mood, clubSize }: { mood: number; clubSize: number }) {
   return (
     <div className={styles.panel}>
       <div className={styles.panelTitle}>Болельщики</div>
@@ -28,7 +20,6 @@ export default function FansSection({
         <div>
           Фан-клуб: <b>{clubSize.toLocaleString("ru-RU")}</b>
         </div>
-        <div>Ожидания: {expectation}</div>
       </div>
     </div>
   );

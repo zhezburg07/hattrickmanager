@@ -2,8 +2,6 @@
 
 import { useMemo, useState } from "react";
 import {
-  squadPlayers,
-  demoTrainerPlayerId,
   positionGroupLabel,
   positionGroupAccentColor,
   statusLabel,
@@ -297,27 +295,17 @@ export default function SquadTable({
   prevByPlayerId,
   trainerPlayerId,
 }: {
-  players?: SquadPlayer[];
-  prevByPlayerId?: Record<number, PlayerStatSnapshot | undefined>;
+  players: SquadPlayer[];
+  prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
   trainerPlayerId?: number;
-} = {}) {
-  const roster = players ?? squadPlayers;
-  // В демо-режиме (нет players — используется встроенный тестовый состав)
-  // нет реального тренера, привязанного к конкретному игроку (coach в
-  // src/data/dashboard.ts — отдельный персонаж не из этого списка) — берём
-  // иллюстративный demoTrainerPlayerId, чтобы иконку было видно и на демо.
-  const effectiveTrainerPlayerId = trainerPlayerId ?? (players ? undefined : demoTrainerPlayerId);
+}) {
+  const roster = players;
+  const effectiveTrainerPlayerId = trainerPlayerId;
   const [sortKey, setSortKey] = useState<SortKey>("status");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedPlayer, setSelectedPlayer] = useState<SquadPlayer | null>(null);
   const { overrides, setOverride } = usePositionOverrides();
-  // В демо-режиме сравнение "было → стало" уже встроено в тестовые данные
-  // (player.prev, см. src/data/squad.ts); для реальных данных прошлый снимок
-  // приходит с сервера (см. src/lib/playerHistoryDb.ts) — там, где данные
-  // сервер не запрашивал (например, свой список <SquadTable /> без пропсов),
-  // просто берём player.prev напрямую.
-  const resolvedPrevByPlayerId =
-    prevByPlayerId ?? Object.fromEntries(roster.map((p) => [p.id, p.prev]));
+  const resolvedPrevByPlayerId = prevByPlayerId;
 
   // Прячем столбцы целиком, если ни у одного игрока нет данных, вместо
   // пустых прочерков в каждой строке (реальные "преданность"/"рейтинг" не

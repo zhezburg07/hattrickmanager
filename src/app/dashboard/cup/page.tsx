@@ -3,7 +3,7 @@ import Footer from "@/components/Footer";
 import CupSection from "@/components/dashboard/CupSection";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getStoredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
+import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
 import { parseClubXml } from "@/lib/clubStaff";
 import { parseMatchesXml } from "@/lib/matches";
@@ -71,22 +71,7 @@ async function resolveCupMatches(
 }
 
 export default async function CupPage() {
-  const tokens = getStoredHattrickTokens();
-
-  if (!tokens) {
-    return (
-      <>
-        <Header />
-        <main className={styles.page}>
-          <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
-            <DemoModeBanner title="Демо-режим" reasons={["Команда ещё не подключена к Hattrick."]} />
-            <CupSection />
-          </div>
-        </main>
-        <Footer />
-      </>
-    );
-  }
+  const tokens = getRequiredHattrickTokens();
 
   const { teamId, stillInCup, cupId: cupIdFromTeamDetails, error: teamError } = await resolveTeamCupInfo(tokens);
 

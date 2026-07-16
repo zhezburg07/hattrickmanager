@@ -14,7 +14,7 @@ import {
   type PositionGroup,
   type PlayerStatSnapshot,
 } from "@/data/squad";
-import { lastDataUpdate } from "@/data/dashboard";
+import { currentTimestampLabel } from "@/data/dashboard";
 import NationalityTag from "./NationalityTag";
 import { diffDirection, diffTitle } from "./playerStatChanges";
 import styles from "./PlayerDetailModal.module.css";
@@ -205,7 +205,7 @@ export default function PlayerDetailModal({
         </div>
 
         <div className={styles.footer}>
-          <span>Обновлено: {lastDataUpdate}</span>
+          <span>Обновлено: {currentTimestampLabel()}</span>
           <span title={player.lastMatchRating !== undefined ? "Рейтинг за последний сыгранный матч" : undefined}>
             {player.lastMatchRating !== undefined ? (
               <b>★ {player.lastMatchRating.toFixed(1)}</b>

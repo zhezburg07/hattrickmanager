@@ -8,7 +8,6 @@ import {
   positionGroupAccentColor,
   positionGroupLabel,
   skillWordWithLevel,
-  squadPlayers,
   type PositionGroup,
   type SquadPlayer,
 } from "@/data/squad";
@@ -115,7 +114,7 @@ export default function LineupField({
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const { overrides } = usePositionOverrides();
 
-  const playersById = new Map(squadPlayers.map((p) => [p.id, p]));
+  const playersById = new Map(players.map((p) => [p.id, p]));
   const { ratings: zones, congestionNote } = computeZoneRatings(assignments, playersById);
 
   return (

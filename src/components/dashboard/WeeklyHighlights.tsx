@@ -1,66 +1,62 @@
-import { squadPlayers, positionGroupLabel } from "@/data/squad";
-import { heroOfWeek, zeroOfWeek, type WeeklyHighlight } from "@/data/dashboard";
+import { positionGroupLabel } from "@/data/squad";
+import type { WeeklyTsiEntry } from "@/lib/playerHistoryDb";
 import styles from "./Overview.module.css";
 
-function Trend({ delta, format }: { delta: number; format: (v: number) => string }) {
-  if (delta === 0) return <span className={styles.trendFlat}>—</span>;
-  return delta > 0 ? (
-    <span className={styles.trendUp}>▲ {format(delta)}</span>
-  ) : (
-    <span className={styles.trendDown}>▼ {format(-delta)}</span>
-  );
+function fmtTsi(n: number): string {
+  return n.toLocaleString("ru-RU");
 }
 
-function HighlightCard({
-  title,
-  highlight,
-  tone,
-}: {
-  title: string;
-  highlight: WeeklyHighlight;
-  tone: "hero" | "zero";
-}) {
-  const player = squadPlayers.find((p) => p.id === highlight.playerId);
-  if (!player) return null;
-
-  const formDelta = player.form - highlight.prevForm;
-  const tsiDelta = player.tsi - highlight.prevTsi;
-
+function HighlightCard({ title, entry, tone }: { title: string; entry: WeeklyTsiEntry; tone: "hero" | "zero" }) {
+  const isUp = entry.delta >= 0;
   return (
     <div className={`${styles.highlightCard} ${tone === "hero" ? styles.highlightHero : styles.highlightZero}`}>
       <div className={styles.highlightTitle}>{title}</div>
-      <div className={styles.highlightName}>{player.name}</div>
-      <div className={styles.highlightMeta}>
-        {positionGroupLabel[player.positionGroup]} · Рейтинг матча <b>{highlight.rating.toFixed(1)}</b>
-      </div>
+      <div className={styles.highlightName}>{entry.name}</div>
+      <div className={styles.highlightMeta}>{positionGroupLabel[entry.positionGroup]}</div>
       <div className={styles.highlightStats}>
         <span>
-          Форма {player.form}
-          <Trend delta={formDelta} format={(v) => v.toFixed(0)} />
-        </span>
-        <span>
-          TSI {player.tsi.toLocaleString("ru-RU")}
-          <Trend delta={tsiDelta} format={(v) => v.toLocaleString("ru-RU")} />
+          TSI {fmtTsi(entry.tsiNow)}{" "}
+          <span className={isUp ? styles.trendUp : styles.trendDown}>
+            {isUp ? "▲" : "▼"} {fmtTsi(Math.abs(entry.delta))}
+          </span>
         </span>
       </div>
-      <p className={styles.highlightNote}>{highlight.note}</p>
     </div>
   );
 }
 
-export default function WeeklyHighlights() {
+// Реальный расчёт по накопленной истории TSI (см. src/lib/playerHistoryDb.ts,
+// resolveWeeklyTsiHighlights) — раньше здесь всегда показывались два
+// захардкоженных демо-игрока с выдуманным рейтингом матча и комментарием,
+// даже на подключённых реальных аккаунтах. История копится сама по себе при
+// каждом визите на Состав/Расстановку — если пользователь ни разу не заходил
+// туда неделю назад, сравнивать не с чем, и вместо выдумки честно показываем
+// заглушку.
+export default function WeeklyHighlights({
+  gainer,
+  loser,
+  hasEnoughHistory,
+}: {
+  gainer: WeeklyTsiEntry | null;
+  loser: WeeklyTsiEntry | null;
+  hasEnoughHistory: boolean;
+}) {
   return (
     <div className={styles.panel}>
       <div className={styles.panelHeadRow}>
         <div className={styles.panelTitle} style={{ margin: 0 }}>
           Герой и Ноль недели
         </div>
-        <span className={styles.panelHint}>Сравнение показателей относительно прошлой недели</span>
+        <span className={styles.panelHint}>Изменение TSI за последнюю неделю</span>
       </div>
-      <div className={styles.highlightGrid}>
-        <HighlightCard title="Лучший игрок недели" highlight={heroOfWeek} tone="hero" />
-        <HighlightCard title="Худший игрок недели" highlight={zeroOfWeek} tone="zero" />
-      </div>
+      {hasEnoughHistory && gainer && loser ? (
+        <div className={styles.highlightGrid}>
+          <HighlightCard title="Лучший игрок недели" entry={gainer} tone="hero" />
+          <HighlightCard title="Худший игрок недели" entry={loser} tone="zero" />
+        </div>
+      ) : (
+        <p className={styles.highlightNote}>Пока недостаточно данных для сравнения, приходите через неделю.</p>
+      )}
     </div>
   );
 }

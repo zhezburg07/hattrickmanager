@@ -3,15 +3,14 @@ import Footer from "@/components/Footer";
 import MatchesCalendar from "@/components/dashboard/MatchesCalendar";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getStoredHattrickTokens, requestChppXmlRaw } from "@/lib/hattrickApi";
+import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
 import { parseMatchesXml, toSeasonMatches } from "@/lib/matches";
 import type { SeasonMatch } from "@/data/matches";
 
-async function resolveMatchesData(): Promise<{ matches: SeasonMatch[] | null; error: string | null }> {
-  const tokens = getStoredHattrickTokens();
-  if (!tokens) return { matches: null, error: null };
-
+async function resolveMatchesData(
+  tokens: StoredHattrickTokens,
+): Promise<{ matches: SeasonMatch[] | null; error: string | null }> {
   try {
     const teamRaw = await requestChppXmlRaw("teamdetails", {}, tokens);
     if (teamRaw.httpStatus < 200 || teamRaw.httpStatus >= 300) {
@@ -32,19 +31,16 @@ async function resolveMatchesData(): Promise<{ matches: SeasonMatch[] | null; er
 }
 
 export default async function MatchesPage() {
-  const { matches, error } = await resolveMatchesData();
-  const tokens = getStoredHattrickTokens();
+  const tokens = getRequiredHattrickTokens();
+  const { matches, error } = await resolveMatchesData(tokens);
 
   return (
     <>
       <Header />
       <main className={styles.page}>
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
-          {!tokens && <DemoModeBanner title="Демо-режим" reasons={["Команда ещё не подключена к Hattrick."]} />}
-          {tokens && error && (
-            <DemoModeBanner title="Не удалось загрузить реальные матчи" reasons={[error]} />
-          )}
-          <MatchesCalendar matches={matches ?? undefined} />
+          {error && <DemoModeBanner title="Не удалось загрузить реальные матчи" reasons={[error]} />}
+          {matches && <MatchesCalendar matches={matches} />}
         </div>
       </main>
       <Footer />

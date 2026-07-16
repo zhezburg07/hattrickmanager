@@ -20,13 +20,6 @@ export const trainingTypes: TrainingType[] = [
   { key: "wingWideFwd", label: "Фланг (крайние полузащитники+нападающие)" },
 ];
 
-// Тестовые значения по умолчанию для панели тренировки
-export const trainingDefaults = {
-  typeKey: "winger",
-  intensity: 65,
-  staminaShare: 20,
-};
-
 export interface SkillChangeEntry {
   playerName: string;
   skillKey: keyof SquadSkills;

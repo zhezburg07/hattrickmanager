@@ -1,35 +1,29 @@
-import { finance, defaultCurrency, type FinanceLine } from "@/data/dashboard";
+import { defaultCurrency, type FinanceLine } from "@/data/dashboard";
 import styles from "./Dashboard.module.css";
 
 export default function FinanceSection({
   balance,
   income,
   expense,
-  totalIncome: totalIncomeProp,
-  totalExpense: totalExpenseProp,
+  totalIncome,
+  totalExpense,
   currencyLabel,
 }: {
-  balance?: number;
-  income?: FinanceLine[];
-  expense?: FinanceLine[];
-  // CHPP не разбивает доход/расход на статьи без остатка — official-тотал
-  // (LastIncomeSum/LastCostsSum) может не совпадать с суммой видимых строк
-  // (Hattrick не раскрывает часть категорий через API). Поэтому в реальном
-  // режиме итог передаётся отдельно, а не считается по строкам.
-  totalIncome?: number;
-  totalExpense?: number;
+  balance: number;
+  income: FinanceLine[];
+  expense: FinanceLine[];
+  totalIncome: number;
+  totalExpense: number;
   currencyLabel?: string;
-} = {}) {
+}) {
   const currency = currencyLabel ?? defaultCurrency.label;
   const formatMoney = (value: number) => `${value.toLocaleString("ru-RU")} ${currency}`;
 
   // В реальных данных нулевые статьи (например, "Финансовые операции" за
   // неделю без займов/процентов) просто скрываем — показывать их незачем.
-  const incomeLines = (income ?? finance.income).filter((l) => l.amount !== 0);
-  const expenseLines = (expense ?? finance.expense).filter((l) => l.amount !== 0);
-  const balanceValue = balance ?? finance.balance;
-  const totalIncome = totalIncomeProp ?? incomeLines.reduce((sum, line) => sum + line.amount, 0);
-  const totalExpense = totalExpenseProp ?? expenseLines.reduce((sum, line) => sum + line.amount, 0);
+  const incomeLines = income.filter((l) => l.amount !== 0);
+  const expenseLines = expense.filter((l) => l.amount !== 0);
+  const balanceValue = balance;
 
   return (
     <div className={styles.card}>

@@ -3,14 +3,11 @@ import Footer from "@/components/Footer";
 import YouthTable from "@/components/dashboard/YouthTable";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getStoredHattrickTokens, requestChppXmlRaw } from "@/lib/hattrickApi";
+import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseClubXml } from "@/lib/clubStaff";
 import { parseYouthPlayerListXml, type RealYouthPlayer } from "@/lib/youthPlayers";
 
-async function resolveYouthLevel(): Promise<{ youthLevel: number | null; error: string | null }> {
-  const tokens = getStoredHattrickTokens();
-  if (!tokens) return { youthLevel: null, error: null };
-
+async function resolveYouthLevel(tokens: StoredHattrickTokens): Promise<{ youthLevel: number | null; error: string | null }> {
   try {
     const raw = await requestChppXmlRaw("club", {}, tokens);
     if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
@@ -27,10 +24,7 @@ async function resolveYouthLevel(): Promise<{ youthLevel: number | null; error: 
 // пометка "401" в src/lib/clubStaff.ts относится к другим именам файлов,
 // youthplayers/youthdetails). Если и это упадёт — честно откатываемся на
 // демо-список, как раньше, показывая точную причину в баннере.
-async function resolveYouthPlayers(): Promise<{ players: RealYouthPlayer[] | null; error: string | null }> {
-  const tokens = getStoredHattrickTokens();
-  if (!tokens) return { players: null, error: null };
-
+async function resolveYouthPlayers(tokens: StoredHattrickTokens): Promise<{ players: RealYouthPlayer[] | null; error: string | null }> {
   try {
     const raw = await requestChppXmlRaw("youthplayerlist", {}, tokens);
     if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
@@ -44,10 +38,10 @@ async function resolveYouthPlayers(): Promise<{ players: RealYouthPlayer[] | nul
 }
 
 export default async function YouthPage() {
-  const tokens = getStoredHattrickTokens();
+  const tokens = getRequiredHattrickTokens();
   const [{ youthLevel, error: levelError }, { players, error: playersError }] = await Promise.all([
-    resolveYouthLevel(),
-    resolveYouthPlayers(),
+    resolveYouthLevel(tokens),
+    resolveYouthPlayers(tokens),
   ]);
   const errors = [levelError, playersError].filter((e): e is string => e !== null);
 
@@ -56,11 +50,10 @@ export default async function YouthPage() {
       <Header />
       <main className={styles.page}>
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
-          {!tokens && <DemoModeBanner title="Демо-режим" reasons={["Команда ещё не подключена к Hattrick."]} />}
-          {tokens && errors.length > 0 && (
+          {errors.length > 0 && (
             <DemoModeBanner title="Не удалось загрузить часть данных академии" reasons={errors} />
           )}
-          <YouthTable realYouthLevel={youthLevel ?? undefined} realYouthPlayers={players ?? undefined} />
+          <YouthTable youthLevel={youthLevel ?? undefined} players={players ?? undefined} />
         </div>
       </main>
       <Footer />

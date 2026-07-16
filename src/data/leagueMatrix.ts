@@ -29,9 +29,9 @@ function parseScore(raw: string): [number, number] {
 // Пересчитывает таблицу лиги из сетки очных результатов для одного из трёх
 // режимов: "all" — все игры, "home" — только матчи, сыгранные дома, "away" —
 // только выездные. Позиции (места) каждый раз считаются заново для
-// выбранного режима, а не переносятся из общей таблицы. Не завязана на
-// тестовые данные — используется и для демо-сетки ниже, и для реальной
-// сетки, построенной из leaguefixtures.xml (см. src/lib/leagueFixtures.ts).
+// выбранного режима, а не переносятся из общей таблицы. Используется для
+// реальной сетки, построенной из leaguefixtures.xml (см.
+// src/lib/realLeagueMatrix.ts).
 export function computeStandingsFromMatrix(
   teams: MatrixTeamMeta[],
   matrix: (string | null)[][],
@@ -101,42 +101,3 @@ export function computeStandingsFromMatrix(
   return rows;
 }
 
-// Полная сетка результатов между всеми 8 командами лиги (тестовые данные) —
-// двойной круговой турнир (каждая команда встречается с каждой дважды: раз
-// дома, раз в гостях), как в настоящем дивизионе Hattrick. Строка — команда
-// дома, столбец — команда в гостях, значение — счёт "голы хозяев-голы
-// гостей". На диагонали (команда сама с собой) — null.
-export interface LeagueMatrixTeamMeta extends MatrixTeamMeta {
-  last5: MatchOutcome[]; // последние 5 игр (не зависит от режима "дома/в гостях")
-}
-
-export const leagueMatrixTeams: LeagueMatrixTeamMeta[] = [
-  { name: "Атлетик Норд", last5: ["win", "win", "draw", "win", "win"] },
-  { name: "Юнион Стар", last5: ["draw", "win", "win", "loss", "win"] },
-  { name: "FC Заря", last5: ["win", "draw", "loss", "draw", "win"], isOurTeam: true },
-  { name: "Дракон Сити", last5: ["win", "draw", "win", "draw", "loss"] },
-  { name: "Ред Фалькон", last5: ["loss", "win", "draw", "loss", "draw"] },
-  { name: "Стальные Волки", last5: ["draw", "loss", "win", "draw", "win"] },
-  { name: "Гранит СК", last5: ["loss", "loss", "draw", "loss", "win"] },
-  { name: "Феникс Юнайтед", last5: ["loss", "loss", "loss", "draw", "loss"] },
-];
-
-// results[домашняя][гостевая] = "голыДома-голыГостей"; null — по диагонали
-export const leagueResultsMatrix: (string | null)[][] = [
-  [null, "2-1", "3-1", "3-0", "4-0", "5-1", "5-0", "6-0"],
-  ["1-1", null, "2-1", "3-1", "3-0", "4-1", "4-0", "5-0"],
-  ["1-2", "1-1", null, "2-1", "2-0", "3-1", "3-0", "4-0"],
-  ["0-2", "1-2", "1-1", null, "2-1", "2-0", "3-1", "3-0"],
-  ["0-3", "0-2", "1-2", "1-1", null, "2-1", "2-0", "3-1"],
-  ["0-4", "0-3", "0-2", "1-2", "1-1", null, "2-1", "2-0"],
-  ["0-5", "0-4", "0-3", "1-3", "1-2", "1-1", null, "2-1"],
-  ["0-6", "0-5", "0-4", "0-3", "1-3", "1-2", "1-1", null],
-];
-
-// Обёртка над computeStandingsFromMatrix для тестовых данных — подмешивает
-// last5 (только у демо-команд есть заранее заданные "последние 5 матчей").
-export function computeLeagueStandings(mode: LeagueTableMode): LeagueMatrixRow[] {
-  const rows = computeStandingsFromMatrix(leagueMatrixTeams, leagueResultsMatrix, mode);
-  const last5ByName = new Map(leagueMatrixTeams.map((t) => [t.name, t.last5]));
-  return rows.map((row) => ({ ...row, last5: last5ByName.get(row.name) }));
-}

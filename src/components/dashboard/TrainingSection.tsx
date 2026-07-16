@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { trainingTypes, trainingDefaults, recentSkillChanges } from "@/data/training";
-import { coach, tacticalPreferenceLabel } from "@/data/dashboard";
+import { trainingTypes, recentSkillChanges } from "@/data/training";
 import { skillWord, skillLabel, leadershipWord } from "@/data/squad";
 import styles from "./Training.module.css";
 
@@ -20,9 +19,12 @@ export default function TrainingSection({
   realStaminaShare?: number;
 } = {}) {
   const hasRealTraining = realTypeKey !== undefined || realIntensity !== undefined || realStaminaShare !== undefined;
-  const [typeKey, setTypeKey] = useState(realTypeKey ?? trainingDefaults.typeKey);
-  const [intensity, setIntensity] = useState(realIntensity ?? trainingDefaults.intensity);
-  const [staminaShare, setStaminaShare] = useState(realStaminaShare ?? trainingDefaults.staminaShare);
+  // Нейтральные значения по умолчанию для планового инструмента (не связаны
+  // с реальными настройками команды) — используются, только если CHPP не
+  // отдал реальный тип/интенсивность/процент выносливости.
+  const [typeKey, setTypeKey] = useState(realTypeKey ?? trainingTypes[0].key);
+  const [intensity, setIntensity] = useState(realIntensity ?? 50);
+  const [staminaShare, setStaminaShare] = useState(realStaminaShare ?? 0);
 
   return (
     <>
@@ -111,25 +113,20 @@ export default function TrainingSection({
 
       <div className={styles.card}>
         <div className={styles.cardTitle}>Тренер</div>
-        <div className={styles.coachMetaRow}>
-          <span>
-            {coachName ?? coach.name}
-            {!coachName && (
-              <>
-                {" "}
-                — навык <b>{skillWord(coach.skillLevel)}</b>
-              </>
+        {coachName ? (
+          <div className={styles.coachMetaRow}>
+            <span>{coachName}</span>
+            {coachLeadership !== undefined && (
+              <span>
+                Лидерство <b>{leadershipWord(coachLeadership)}</b>
+              </span>
             )}
-          </span>
-          <span>
-            Лидерство <b>{leadershipWord(coachLeadership ?? coach.leadership)}</b>
-          </span>
-          {!coachName && (
-            <span>
-              Тактика <b>{tacticalPreferenceLabel[coach.preference]}</b>
-            </span>
-          )}
-        </div>
+          </div>
+        ) : (
+          <p className={styles.sliderHint} style={{ margin: 0 }}>
+            Не удалось определить тренера команды.
+          </p>
+        )}
       </div>
 
       <p className={styles.footerHint}>

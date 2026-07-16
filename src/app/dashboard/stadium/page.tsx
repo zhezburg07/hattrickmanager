@@ -3,7 +3,7 @@ import Footer from "@/components/Footer";
 import StadiumSection from "@/components/dashboard/StadiumSection";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getStoredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
+import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseArenaDetailsXml, type RealArenaCapacity } from "@/lib/arena";
 import { resolveRealCurrencyLabel } from "@/lib/worldCurrency";
 
@@ -23,22 +23,7 @@ async function resolveArenaData(
 }
 
 export default async function StadiumPage() {
-  const tokens = getStoredHattrickTokens();
-
-  if (!tokens) {
-    return (
-      <>
-        <Header />
-        <main className={styles.page}>
-          <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
-            <DemoModeBanner title="Демо-режим" reasons={["Команда ещё не подключена к Hattrick."]} />
-            <StadiumSection />
-          </div>
-        </main>
-        <Footer />
-      </>
-    );
-  }
+  const tokens = getRequiredHattrickTokens();
 
   const [{ data, error }, { label: currencyLabel }] = await Promise.all([
     resolveArenaData(tokens),
@@ -51,11 +36,9 @@ export default async function StadiumPage() {
       <main className={styles.page}>
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
           {error && <DemoModeBanner title="Не удалось загрузить реальный стадион" reasons={[error]} />}
-          <StadiumSection
-            arenaName={data?.arenaName}
-            realCapacity={data ?? undefined}
-            currencyLabel={data ? (currencyLabel ?? undefined) : undefined}
-          />
+          {data && (
+            <StadiumSection arenaName={data.arenaName} realCapacity={data} currencyLabel={currencyLabel ?? undefined} />
+          )}
         </div>
       </main>
       <Footer />

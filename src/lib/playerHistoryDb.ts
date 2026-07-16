@@ -1,5 +1,5 @@
 import { neon } from "@neondatabase/serverless";
-import type { PlayerStatSnapshot, SquadPlayer } from "@/data/squad";
+import type { PlayerStatSnapshot, PositionGroup, SquadPlayer } from "@/data/squad";
 
 // Постоянное хранилище истории навыков/TSI игроков — переживает logout и
 // живёт отдельно от cookie сессии, привязано к Hattrick UserID (см.
@@ -107,8 +107,135 @@ export async function resolvePlayerHistory(
   try {
     const previous = await getPreviousSnapshots(hattrickUserId);
     await saveCurrentSnapshots(hattrickUserId, players);
+    // "Побочный эффект": заодно кладём/обновляем недельный снимок TSI (см.
+    // ниже) — Состав и Расстановка уже и так запрашивают полный список
+    // реальных игроков, так что для "Лучшего/худшего игрока недели" на
+    // Обзоре не нужен отдельный запрос к CHPP. Ошибка здесь не должна
+    // портить обычное сравнение "было → стало" выше.
+    saveWeeklyTsiSnapshot(hattrickUserId, players).catch(() => {});
     return previous;
   } catch {
     return {};
+  }
+}
+
+let weeklyTableEnsured = false;
+
+async function ensureWeeklyTable(): Promise<void> {
+  if (weeklyTableEnsured) return;
+  const db = sql();
+  await db`
+    CREATE TABLE IF NOT EXISTS player_weekly_tsi (
+      hattrick_user_id TEXT NOT NULL,
+      player_id BIGINT NOT NULL,
+      week_start DATE NOT NULL,
+      name TEXT NOT NULL,
+      position_group TEXT NOT NULL,
+      tsi INTEGER NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (hattrick_user_id, player_id, week_start)
+    )
+  `;
+  weeklyTableEnsured = true;
+}
+
+// Отдельная от player_stat_snapshots таблица (а не переиспользование той же):
+// player_stat_snapshots хранит РОВНО один снимок на игрока (перезаписывается
+// при каждом визите) — этого достаточно для "было → стало с прошлого раза",
+// но недостаточно для "было → стало РОВНО неделю назад" (два визита в один
+// день стёрли бы вчерашнее значение). Здесь — одна строка на игрока за
+// календарную неделю (week_start = начало недели по date_trunc), которая
+// просто обновляется актуальным значением при каждом визите на этой неделе.
+export async function saveWeeklyTsiSnapshot(hattrickUserId: string, players: SquadPlayer[]): Promise<void> {
+  await ensureWeeklyTable();
+  const db = sql();
+
+  await Promise.all(
+    players.map(
+      (p) => db`
+        INSERT INTO player_weekly_tsi (hattrick_user_id, player_id, week_start, name, position_group, tsi, updated_at)
+        VALUES (${hattrickUserId}, ${p.id}, date_trunc('week', now())::date, ${p.name}, ${p.positionGroup}, ${p.tsi}, now())
+        ON CONFLICT (hattrick_user_id, player_id, week_start)
+        DO UPDATE SET name = EXCLUDED.name, position_group = EXCLUDED.position_group, tsi = EXCLUDED.tsi, updated_at = now()
+      `,
+    ),
+  );
+}
+
+export interface WeeklyTsiEntry {
+  playerId: number;
+  name: string;
+  positionGroup: PositionGroup;
+  tsiNow: number;
+  tsiWeekAgo: number;
+  delta: number;
+}
+
+export interface WeeklyTsiResult {
+  hasEnoughHistory: boolean;
+  gainer: WeeklyTsiEntry | null;
+  loser: WeeklyTsiEntry | null;
+  topGainers: WeeklyTsiEntry[];
+  topLosers: WeeklyTsiEntry[];
+}
+
+const emptyWeeklyResult: WeeklyTsiResult = {
+  hasEnoughHistory: false,
+  gainer: null,
+  loser: null,
+  topGainers: [],
+  topLosers: [],
+};
+
+// Сравнивает снимок TSI текущей календарной недели со снимком недели,
+// начавшейся ровно 7 дней назад — если для пользователя ещё нет снимка той,
+// более ранней недели (например, это первая неделя использования сайта или
+// он ни разу не заходил на Состав/Расстановку неделю назад), сравнивать не с
+// чем — честно возвращается hasEnoughHistory: false.
+export async function resolveWeeklyTsiHighlights(hattrickUserId: string | null): Promise<WeeklyTsiResult> {
+  if (!hattrickUserId) return emptyWeeklyResult;
+
+  try {
+    await ensureWeeklyTable();
+    const db = sql();
+    const rows = await db`
+      WITH cur AS (
+        SELECT player_id, name, position_group, tsi
+        FROM player_weekly_tsi
+        WHERE hattrick_user_id = ${hattrickUserId} AND week_start = date_trunc('week', now())::date
+      ),
+      prev AS (
+        SELECT player_id, tsi
+        FROM player_weekly_tsi
+        WHERE hattrick_user_id = ${hattrickUserId}
+          AND week_start = (date_trunc('week', now())::date - interval '7 days')::date
+      )
+      SELECT cur.player_id, cur.name, cur.position_group, cur.tsi AS tsi_now, prev.tsi AS tsi_prev
+      FROM cur JOIN prev ON cur.player_id = prev.player_id
+    `;
+
+    if (rows.length === 0) return emptyWeeklyResult;
+
+    const entries: WeeklyTsiEntry[] = rows.map((row) => ({
+      playerId: Number(row.player_id),
+      name: row.name,
+      positionGroup: row.position_group as PositionGroup,
+      tsiNow: row.tsi_now,
+      tsiWeekAgo: row.tsi_prev,
+      delta: row.tsi_now - row.tsi_prev,
+    }));
+
+    const byDeltaDesc = [...entries].sort((a, b) => b.delta - a.delta);
+    const byDeltaAsc = [...entries].sort((a, b) => a.delta - b.delta);
+
+    return {
+      hasEnoughHistory: true,
+      gainer: byDeltaDesc[0] ?? null,
+      loser: byDeltaAsc[0] ?? null,
+      topGainers: byDeltaDesc.slice(0, 3),
+      topLosers: byDeltaAsc.slice(0, 3),
+    };
+  } catch {
+    return emptyWeeklyResult;
   }
 }

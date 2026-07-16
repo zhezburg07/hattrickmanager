@@ -1,5 +1,4 @@
 import { positionGroupLabel, skillLabel, skillWord, type Country, type PositionGroup, type SquadSkills } from "@/data/squad";
-import { youthPlayers, academyLevel } from "@/data/youth";
 import NationalityTag from "./NationalityTag";
 import styles from "./SquadTable.module.css";
 
@@ -42,40 +41,36 @@ function PromoteButton() {
 }
 
 export default function YouthTable({
-  realYouthLevel,
-  realYouthPlayers,
+  youthLevel,
+  players,
 }: {
-  realYouthLevel?: number;
-  realYouthPlayers?: RealYouthPlayerRow[];
-} = {}) {
-  // Реальный список игроков академии (youthplayerlist.xml), если удалось
-  // получить и он не пуст — иначе тестовые игроки для примера, как раньше.
-  const players = realYouthPlayers && realYouthPlayers.length > 0 ? realYouthPlayers : youthPlayers;
-  const isRealRoster = realYouthPlayers !== undefined && realYouthPlayers.length > 0;
+  youthLevel?: number;
+  players?: RealYouthPlayerRow[];
+}) {
+  const roster = players ?? [];
 
   return (
     <>
       <div className={styles.card}>
         <div className={styles.cardTitle}>Сеть спортивных школ</div>
-        {realYouthLevel !== undefined ? (
+        {youthLevel !== undefined ? (
           <p className={styles.hint} style={{ margin: 0 }}>
-            Уровень академии (реальные данные Hattrick): <b>{realYouthLevel}</b>
-            {realYouthLevel === 0 && " — инвестиций в академию пока не было"}
+            Уровень академии: <b>{youthLevel}</b>
+            {youthLevel === 0 && " — инвестиций в академию пока не было"}
           </p>
         ) : (
           <p className={styles.hint} style={{ margin: 0 }}>
-            Общий уровень академии: <b>{skillWord(academyLevel)}</b>
+            Не удалось узнать уровень академии.
           </p>
         )}
       </div>
 
       <div className={styles.card}>
-        <div className={styles.cardTitle}>Юношеская команда ({players.length} игроков)</div>
+        <div className={styles.cardTitle}>Юношеская команда ({roster.length} игроков)</div>
         <p className={styles.hint}>Все игроки младше 17 лет — потенциальное пополнение основного состава.</p>
-        {realYouthLevel !== undefined && !isRealRoster && (
+        {roster.length === 0 && (
           <p className={styles.hint} style={{ marginTop: -8 }}>
-            Список игроков академии CHPP не отдаёт этому приложению (доступ ограничен) — ниже тестовые игроки для
-            примера.
+            Список игроков академии не удалось загрузить.
           </p>
         )}
 
@@ -114,7 +109,7 @@ export default function YouthTable({
               </tr>
             </thead>
             <tbody>
-              {players.map((p) => (
+              {roster.map((p) => (
                 <tr key={p.id}>
                   <td className={styles.nameCell}>{p.name}</td>
                   <td>
@@ -139,7 +134,7 @@ export default function YouthTable({
         </div>
 
         <div className={styles.cardList}>
-          {players.map((p) => (
+          {roster.map((p) => (
             <div className={styles.playerCard} key={p.id}>
               <div className={styles.playerCardHead}>
                 <span className={styles.playerCardName}>{p.name}</span>

@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { buildAuthorizationHeader, buildOAuthParams, HATTRICK_OAUTH_URLS } from "./hattrickOAuth";
 
 export interface StoredHattrickTokens {
@@ -7,8 +8,8 @@ export interface StoredHattrickTokens {
 }
 
 // Читает постоянный ключ доступа, сохранённый в cookie на шаге 3 OAuth
-// (см. /api/auth/callback). Если пользователь ещё не подключал команду —
-// вернёт null, и вызывающий код должен показать демо-данные.
+// (см. /api/auth/callback). Возвращает null, если пользователь ещё не
+// подключал команду.
 export function getStoredHattrickTokens(): StoredHattrickTokens | null {
   const cookieStore = cookies();
   const accessToken = cookieStore.get("hattrick_access_token")?.value;
@@ -16,6 +17,19 @@ export function getStoredHattrickTokens(): StoredHattrickTokens | null {
 
   if (!accessToken || !accessTokenSecret) return null;
   return { accessToken, accessTokenSecret };
+}
+
+// Для страниц личного кабинета (/dashboard/**): src/app/dashboard/layout.tsx
+// уже перенаправляет неподключённых пользователей на главную раньше, чем
+// отрендерится любая из этих страниц, так что к моменту вызова здесь токены
+// гарантированно есть. Redirect на всякий случай — защита от прямого вызова
+// без layout (например, из будущего API-роута), а не ожидаемый путь.
+export function getRequiredHattrickTokens(): StoredHattrickTokens {
+  const tokens = getStoredHattrickTokens();
+  if (!tokens) {
+    redirect("/");
+  }
+  return tokens;
 }
 
 // Hattrick UserID, сохранённый в cookie при входе (см. /api/auth/callback) —
