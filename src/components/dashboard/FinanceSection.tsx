@@ -17,39 +17,48 @@ function incomeLines(data: FinanceWeekData): Line[] {
   ];
 }
 
-// Реальный отчёт Hattrick показывает строку "Проценты" отдельно только у уже
-// завершившейся ("прошлой") недели — на текущей неделе showInterestSeparately
-// решает, куда девать эту сумму: отдельной строкой или внутри остатка
-// "Разовый", чтобы сумма показанных строк всегда совпадала с итогом.
-function expenseLines(data: FinanceWeekData, showInterestSeparately: boolean): Line[] {
+// "Проценты" — единственная строка, которая не показывается всегда: она
+// применима только когда у команды есть непогашенный кредит. Явного поля
+// "есть ли долг" CHPP не даёт, поэтому используем сам факт ненулевых
+// процентов как признак долга — если проценты за неделю равны 0, строку
+// просто не показываем (per user: "можно не показывать, раз не всегда
+// применима"). Решается отдельно для каждой недели (this/last), а не только
+// для "прошлой" — экономически проценты могут начисляться в любую неделю.
+function expenseLines(data: FinanceWeekData): Line[] {
   const { players, arena, arenaBuilding, staff, youth, boughtPlayers, interest, other } = data.expense;
-  return [
+  const lines: Line[] = [
     { label: "Зарплата", amount: players },
     { label: "Содержание стадиона", amount: arena },
     { label: "Строительство стадиона", amount: arenaBuilding },
     { label: "Персонал", amount: staff },
     { label: "Затраты на молодёжь", amount: youth },
     { label: "Купленные игроки*", amount: boughtPlayers },
-    ...(showInterestSeparately ? [{ label: "Проценты", amount: interest }] : []),
-    { label: "Разовый", amount: showInterestSeparately ? other : other + interest },
   ];
+  if (interest !== 0) lines.push({ label: "Проценты", amount: interest });
+  lines.push({ label: "Разовый", amount: other });
+  return lines;
+}
+
+// Все статьи (кроме условных "Проценты", уже отфильтрованных в
+// expenseLines) показываются всегда, даже при нулевой сумме — это реальный
+// финансовый отчёт, и отсутствие строки не должно читаться как "нет данных".
+function formatSignedAmount(amount: number, sign: "+" | "−", formatMoney: (value: number) => string): string {
+  return amount === 0 ? formatMoney(0) : `${sign}${formatMoney(amount)}`;
 }
 
 function WeekBlock({
   title,
   data,
-  showInterestSeparately,
   cashAtEnd,
   formatMoney,
 }: {
   title: string;
   data: FinanceWeekData;
-  showInterestSeparately: boolean;
   cashAtEnd?: number;
   formatMoney: (value: number) => string;
 }) {
-  const income = incomeLines(data).filter((l) => l.amount !== 0);
-  const expense = expenseLines(data, showInterestSeparately).filter((l) => l.amount !== 0);
+  const income = incomeLines(data);
+  const expense = expenseLines(data);
   const profit = data.incomeSum - data.expenseSum;
   const isProfit = profit >= 0;
 
@@ -64,7 +73,7 @@ function WeekBlock({
           {income.map((line) => (
             <div className={styles.financeRow} key={line.label}>
               <span className={styles.financeRowLabel}>{line.label}</span>
-              <span className={styles.financeRowValue}>+{formatMoney(line.amount)}</span>
+              <span className={styles.financeRowValue}>{formatSignedAmount(line.amount, "+", formatMoney)}</span>
             </div>
           ))}
         </div>
@@ -73,7 +82,7 @@ function WeekBlock({
           {expense.map((line) => (
             <div className={styles.financeRow} key={line.label}>
               <span className={styles.financeRowLabel}>{line.label}</span>
-              <span className={styles.financeRowValue}>−{formatMoney(line.amount)}</span>
+              <span className={styles.financeRowValue}>{formatSignedAmount(line.amount, "−", formatMoney)}</span>
             </div>
           ))}
         </div>
@@ -124,18 +133,12 @@ export default function FinanceSection({
       <div className={styles.balanceValue}>{formatMoney(cash)}</div>
 
       <div style={{ marginTop: 28 }}>
-        <WeekBlock title="На этой неделе" data={thisWeek} showInterestSeparately={false} formatMoney={formatMoney} />
+        <WeekBlock title="На этой неделе" data={thisWeek} formatMoney={formatMoney} />
       </div>
 
       <div style={{ marginTop: 32, paddingTop: 24, borderTop: "1px solid var(--color-border)" }}>
         {lastWeek ? (
-          <WeekBlock
-            title="На прошлой неделе"
-            data={lastWeek}
-            showInterestSeparately
-            cashAtEnd={lastWeek.cash}
-            formatMoney={formatMoney}
-          />
+          <WeekBlock title="На прошлой неделе" data={lastWeek} cashAtEnd={lastWeek.cash} formatMoney={formatMoney} />
         ) : (
           <>
             <div className={styles.financeGroupTitle} style={{ fontSize: 13, marginBottom: 8 }}>
