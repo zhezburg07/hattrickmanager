@@ -1,4 +1,20 @@
 export type PositionGroup = "GK" | "DEF" | "MID" | "FWD";
+
+// Официальные специализации игроков Hattrick (поле Specialty в players.xml,
+// целое число 0-8 — 0 значит "нет специализации", 7 в нумерации Hattrick не
+// используется). Не проверено на живом ответе — если поле называется иначе,
+// специализация останется undefined и значок просто не покажется.
+export type PlayerSpecialty = "technical" | "quick" | "powerful" | "unpredictable" | "head" | "resilient" | "support";
+
+export const specialtyLabel: Record<PlayerSpecialty, string> = {
+  technical: "Техничный",
+  quick: "Быстрый",
+  powerful: "Мощный",
+  unpredictable: "Непредсказуемый",
+  head: "Игра головой",
+  resilient: "Крепкое здоровье",
+  support: "Командный игрок",
+};
 // "squad" — игрок реально в составе, но CHPP не даёт понятия "в основе/в
 // запасе" на уровне ростера (это тактическое решение по конкретному матчу,
 // см. src/lib/players.ts) — используется для реальных данных вместо
@@ -72,6 +88,19 @@ export interface SquadPlayer {
   // src/lib/lastMatchRating.ts. undefined, если игрок не выходил на поле ни
   // в одном из этих матчей или данные не удалось получить.
   recentBestRating?: number;
+  // Специализация (см. PlayerSpecialty) — undefined, если её нет или поле
+  // не удалось прочитать.
+  specialty?: PlayerSpecialty;
+  // Сколько недель осталось до выздоровления — то же число, что задаёт
+  // status: "injured" (InjuryLevel > 0 в players.xml), только сохранено
+  // отдельно, чтобы показать значок нужной серьёзности (см.
+  // src/lib/squadPlayers.ts). undefined, если игрок не травмирован.
+  injuryWeeksRemaining?: number;
+  // Жёлтые карточки (предупреждения) в текущем сезоне — имя поля CHPP не
+  // проверено на живом ответе, см. src/lib/squadPlayers.ts.
+  yellowCards?: number;
+  // Дисквалификация/красная карточка — то же самое, имя поля не проверено.
+  isSuspended?: boolean;
   tsi: number; // Team Skill Index
   // Значения скиллов/опыта/формы/выносливости/TSI на момент прошлой
   // синхронизации — для подсветки роста/падения. В тестовых данных считается

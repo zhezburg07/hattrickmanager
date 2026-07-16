@@ -5,6 +5,7 @@ import {
   positionGroupLabel,
   positionGroupAccentColor,
   statusLabel,
+  specialtyLabel,
   skillLabel,
   skillWord,
   formWord,
@@ -20,6 +21,7 @@ import { usePositionOverrides, effectivePositionGroup, type PositionOverrides } 
 import NationalityTag from "./NationalityTag";
 import FlagIcon from "./FlagIcon";
 import HeartIcon from "./HeartIcon";
+import { SpecialtyIcon, InjuryIcon, CardIcon } from "./StatusIcons";
 import PlayerDetailModal from "./PlayerDetailModal";
 import { diffDirection, diffTitle, type DiffDirection } from "./playerStatChanges";
 import styles from "./SquadTable.module.css";
@@ -151,18 +153,20 @@ function StatusTag({ status }: { status: PlayerStatus }) {
 
 // Обычная SVG вместо эмодзи-символа 👍 — та же причина, что и у иконки
 // тренера/сердца: не все эмодзи одинаково рисуются как картинка на Windows.
-function ThumbsUpIcon() {
+function ThumbsUpIcon({ title }: { title: string }) {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-      <path d="M4 11h3v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z" fill="var(--color-good)" />
-      <path
-        d="M9 11l3.2-6.4a1.4 1.4 0 0 1 2.6 1l-.9 3.4H18a2 2 0 0 1 1.9 2.6l-1.6 5.6A2 2 0 0 1 16.4 19H9v-8Z"
-        fill="none"
-        stroke="var(--color-good)"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <span title={title} aria-label={title} style={{ display: "inline-flex", flex: "none" }}>
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+        <path d="M4 11h3v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z" fill="var(--color-good)" />
+        <path
+          d="M9 11l3.2-6.4a1.4 1.4 0 0 1 2.6 1l-.9 3.4H18a2 2 0 0 1 1.9 2.6l-1.6 5.6A2 2 0 0 1 16.4 19H9v-8Z"
+          fill="none"
+          stroke="var(--color-good)"
+          strokeWidth="1.6"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
   );
 }
 
@@ -172,9 +176,27 @@ function ThumbsUpIcon() {
 // оставлены текстовой меткой — там сама надпись несёт полезную информацию.
 function StatusIndicator({ status }: { status: PlayerStatus }) {
   if (status === "starting" || status === "squad") {
-    return <ThumbsUpIcon />;
+    return <ThumbsUpIcon title={statusLabel[status]} />;
   }
   return <StatusTag status={status} />;
+}
+
+// Компактный ряд значков в столбце "Статус": базовый статус (👍/травмирован/
+// в запасе) + специализация (если есть) + серьёзность травмы (если есть,
+// доступную по InjuryLevel отдельно от текстового статуса) + карточки
+// (жёлтые с числом предупреждений в сезоне, красная — при дисквалификации).
+function StatusRow({ player }: { player: SquadPlayer }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "nowrap" }}>
+      <StatusIndicator status={player.status} />
+      {player.specialty && <SpecialtyIcon specialty={player.specialty} label={specialtyLabel[player.specialty]} />}
+      {player.injuryWeeksRemaining !== undefined && <InjuryIcon weeksRemaining={player.injuryWeeksRemaining} />}
+      {player.isSuspended && <CardIcon color="red" />}
+      {!player.isSuspended && player.yellowCards !== undefined && player.yellowCards > 0 && (
+        <CardIcon color="yellow" count={player.yellowCards} />
+      )}
+    </span>
+  );
 }
 
 // Навыки (Вратарь/Защита/.../Стандарты), Опыт и Преданность — числом по
@@ -405,8 +427,8 @@ export default function SquadTable({
                 <td className={styles.flagCell}>
                   <FlagIcon country={p.nationality} />
                 </td>
-                <td title={p.status === "starting" || p.status === "squad" ? statusLabel[p.status] : undefined}>
-                  <StatusIndicator status={p.status} />
+                <td>
+                  <StatusRow player={p} />
                 </td>
                 <td
                   className={`${styles.moneyCell} ${diffClass(tsiDiff)}`}
@@ -463,7 +485,7 @@ export default function SquadTable({
                 {p.name}
                 {p.id === effectiveTrainerPlayerId && <TrainerIcon />}
               </span>
-              <StatusIndicator status={p.status} />
+              <StatusRow player={p} />
             </div>
 
             <div className={styles.playerCardMeta}>

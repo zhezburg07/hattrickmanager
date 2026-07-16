@@ -1,6 +1,25 @@
 import { XMLParser } from "fast-xml-parser";
 import { assertNoChppError } from "./chppError";
-import { unknownCountry, type Country, type PositionGroup, type SquadPlayer, type SquadSkills } from "@/data/squad";
+import {
+  unknownCountry,
+  type Country,
+  type PlayerSpecialty,
+  type PositionGroup,
+  type SquadPlayer,
+  type SquadSkills,
+} from "@/data/squad";
+
+// Specialty в players.xml — целое число 0-8, 7 в нумерации Hattrick не
+// используется (историческая особенность игры, не наша ошибка).
+const specialtyById: Record<number, PlayerSpecialty> = {
+  1: "technical",
+  2: "quick",
+  3: "powerful",
+  4: "unpredictable",
+  5: "head",
+  6: "resilient",
+  8: "support",
+};
 
 // Домашняя страна команды (см. src/lib/worldCurrency.ts) — используется,
 // чтобы узнать страну (и флаг) игроков, чей CountryID совпадает с ней.
@@ -26,6 +45,12 @@ export interface HomeCountryInfo {
 //   живом ответе, см. комментарий у соответствующего блока ниже.
 // - Нет понятия "в основе/в запасе" — статус либо "squad" (просто в составе),
 //   либо "injured", если InjuryLevel > 0 (-1 в CHPP означает "не травмирован").
+//   Само значение InjuryLevel (сколько недель осталось) сохраняется отдельно
+//   как injuryWeeksRemaining. Specialty (специализация игрока) — уверенно
+//   известное поле CHPP, 0-8. Жёлтые/красные карточки (yellowCards,
+//   isSuspended) пробуем прочитать по предположительным именам полей — CHPP
+//   вообще может не отдавать дисциплинарную историю в players.xml, тогда оба
+//   останутся undefined и значки просто не покажутся.
 // - StaminaSkill приходит по шкале 0-9 (у Hattrick это отдельная, более
 //   короткая шкала, чем 0-20 у остальных навыков) — переводим в проценты
 //   (0-100%), чтобы не переписывать весь остальной сайт, который уже
@@ -89,6 +114,20 @@ export function parsePlayersDetailedXml(
         ? undefined
         : clubProductRaw === true || clubProductRaw === "true" || clubProductRaw === "Yes" || Number(clubProductRaw) > 0;
 
+    // Специализация — уверенно известное поле CHPP (Specialty, 0-8). Карточки
+    // (предупреждения/дисквалификация) — имена полей ниже НЕ проверены на
+    // живом ответе Hattrick, это лучшее предположение по аналогии с общей
+    // схемой CHPP; если названы иначе, просто останутся undefined и значки
+    // не покажутся, ничего не сломав.
+    const specialty = specialtyById[Number(p.Specialty ?? 0)];
+    const yellowCardsRaw = p.Cards ?? p.YellowCards ?? p.Warnings;
+    const yellowCards = yellowCardsRaw !== undefined ? Number(yellowCardsRaw) : undefined;
+    const suspensionRaw = p.Suspension ?? p.IsSuspended ?? p.RedCard;
+    const isSuspended =
+      suspensionRaw === undefined
+        ? undefined
+        : suspensionRaw === true || suspensionRaw === "true" || suspensionRaw === "Yes" || Number(suspensionRaw) > 0;
+
     const countryId = String(p.CountryID ?? "");
     const isHomeMatch = homeCountry ? countryId === homeCountry.countryId : undefined;
 
@@ -120,6 +159,10 @@ export function parsePlayersDetailedXml(
       // отдельно на клиенте/сервере из matchdetails.xml последнего сыгранного
       // матча (см. src/lib/lastMatchRating.ts, squad/page.tsx).
       lastMatchRating: undefined,
+      specialty,
+      injuryWeeksRemaining: injuryLevel > 0 ? injuryLevel : undefined,
+      yellowCards,
+      isSuspended,
       tsi,
       // Нет истории за прошлую неделю в одном снимке players.xml — заполняется
       // на клиенте из localStorage между синхронизациями, см. usePlayerStatChanges.
