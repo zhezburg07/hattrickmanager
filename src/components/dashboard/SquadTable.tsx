@@ -61,18 +61,18 @@ const skillShortLabel: Record<SkillKey, string> = {
 };
 
 const baseColumns: { key: SortKey; label: string; title?: string }[] = [
-  { key: "flag", label: "Флаг", title: "Национальность" },
+  { key: "positionGroup", label: "Позиция" },
   { key: "name", label: "Имя" },
   { key: "age", label: "Возраст" },
-  { key: "positionGroup", label: "Позиция" },
-  { key: "experience", label: "Опыт" },
+  { key: "flag", label: "Флаг", title: "Национальность" },
+  { key: "status", label: "Статус" },
+  { key: "tsi", label: "TSI" },
   { key: "form", label: "Форма" },
+  { key: "experience", label: "Опыт" },
   { key: "stamina", label: "Вынос-ть" },
   ...skillKeys.map((k) => ({ key: k as SortKey, label: skillShortLabel[k], title: skillLabel[k] })),
   { key: "leadership", label: "Лидер", title: "Лидерство" },
-  { key: "tsi", label: "TSI" },
   { key: "salary", label: "Зарплата" },
-  { key: "status", label: "Статус" },
   { key: "loyalty", label: "Предан.", title: "Преданность клубу" },
   { key: "rating", label: "Рейтинг", title: "Рейтинг за последний сыгранный матч" },
 ];
@@ -92,7 +92,7 @@ function getValue(player: SquadPlayer, key: SortKey, overrides: PositionOverride
     case "name":
       return player.name;
     case "age":
-      return player.age;
+      return player.age + player.ageDays / 112;
     case "positionGroup":
       return positionGroupLabel[effectivePositionGroup(player, overrides)];
     case "form":
@@ -130,6 +130,14 @@ function formatSalary(value: number): string {
   return `${value.toLocaleString("ru-RU")} ₸`;
 }
 
+// Игровой год Hattrick — 112 дней. Дробная часть возраста: округляем дни до
+// десятых доли года (Y = round(дни/112*10)/10), например 23 года и 22 дня →
+// 23.2.
+function formatAge(age: number, ageDays: number): string {
+  const tenths = Math.round((ageDays / 112) * 10);
+  return (age + tenths / 10).toFixed(1);
+}
+
 function StatusTag({ status }: { status: PlayerStatus }) {
   const cls =
     status === "starting"
@@ -143,6 +151,34 @@ function StatusTag({ status }: { status: PlayerStatus }) {
       {statusLabel[status]}
     </span>
   );
+}
+
+// Обычная SVG вместо эмодзи-символа 👍 — та же причина, что и у иконки
+// тренера/сердца: не все эмодзи одинаково рисуются как картинка на Windows.
+function ThumbsUpIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path d="M4 11h3v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z" fill="var(--color-good)" />
+      <path
+        d="M9 11l3.2-6.4a1.4 1.4 0 0 1 2.6 1l-.9 3.4H18a2 2 0 0 1 1.9 2.6l-1.6 5.6A2 2 0 0 1 16.4 19H9v-8Z"
+        fill="none"
+        stroke="var(--color-good)"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// Статус игрока — "в составе"/"в основе" (здоров, ничего особенного)
+// показываем иконкой вместо текста, чтобы не занимать место повторяющейся
+// надписью в каждой строке; остальные статусы (травмирован, в запасе)
+// оставлены текстовой меткой — там сама надпись несёт полезную информацию.
+function StatusIndicator({ status }: { status: PlayerStatus }) {
+  if (status === "starting" || status === "squad") {
+    return <ThumbsUpIcon />;
+  }
+  return <StatusTag status={status} />;
 }
 
 function LevelCell({
@@ -373,28 +409,37 @@ export default function SquadTable({
               const staminaDiff = diffDirection(staminaLevel, prevStaminaLevel);
               return (
               <tr key={p.id} className={styles.rowClickable} onClick={() => setSelectedPlayer(p)}>
-                <td className={styles.flagCell}>
-                  <FlagIcon country={p.nationality} />
+                <td>
+                  <PositionBadge player={p} overrides={overrides} onChange={setOverride} />
                 </td>
                 <td className={styles.nameCell}>
                   <AmpluaAccent player={p} overrides={overrides} />
                   {p.name}
                   {p.id === effectiveTrainerPlayerId && <TrainerIcon />}
                 </td>
-                <td className={styles.numCell}>{p.age}</td>
-                <td>
-                  <PositionBadge player={p} overrides={overrides} onChange={setOverride} />
+                <td className={styles.numCell}>{formatAge(p.age, p.ageDays)}</td>
+                <td className={styles.flagCell}>
+                  <FlagIcon country={p.nationality} />
                 </td>
-                <SkillNumberCell
-                  value={p.experience}
-                  diff={diffDirection(p.experience, prev?.experience)}
-                  hoverWord={diffTitle("Опыт", prev?.experience, p.experience) ?? skillWord(p.experience)}
-                />
+                <td title={p.status === "starting" || p.status === "squad" ? statusLabel[p.status] : undefined}>
+                  <StatusIndicator status={p.status} />
+                </td>
+                <td
+                  className={`${styles.moneyCell} ${diffClass(tsiDiff)}`}
+                  title={diffTitle("TSI", prev?.tsi, p.tsi, (n) => n.toLocaleString("ru-RU"))}
+                >
+                  {p.tsi.toLocaleString("ru-RU")}
+                </td>
                 <SkillNumberCell
                   value={p.form}
                   max={8}
                   diff={diffDirection(p.form, prev?.form)}
                   hoverWord={diffTitle("Форма", prev?.form, p.form) ?? formWord(p.form)}
+                />
+                <SkillNumberCell
+                  value={p.experience}
+                  diff={diffDirection(p.experience, prev?.experience)}
+                  hoverWord={diffTitle("Опыт", prev?.experience, p.experience) ?? skillWord(p.experience)}
                 />
                 <SkillNumberCell
                   value={staminaLevel}
@@ -411,16 +456,7 @@ export default function SquadTable({
                   />
                 ))}
                 <LevelCell word={leadershipWord(p.leadership)} ratio={p.leadership / 7} />
-                <td
-                  className={`${styles.moneyCell} ${diffClass(tsiDiff)}`}
-                  title={diffTitle("TSI", prev?.tsi, p.tsi, (n) => n.toLocaleString("ru-RU"))}
-                >
-                  {p.tsi.toLocaleString("ru-RU")}
-                </td>
                 <td className={styles.moneyCell}>{formatSalary(p.salary)}</td>
-                <td>
-                  <StatusTag status={p.status} />
-                </td>
                 {hasLoyalty && <LoyaltyCell player={p} />}
                 {hasRating && <RatingCell rating={p.lastMatchRating} />}
               </tr>
@@ -443,13 +479,13 @@ export default function SquadTable({
                 {p.name}
                 {p.id === effectiveTrainerPlayerId && <TrainerIcon />}
               </span>
-              <StatusTag status={p.status} />
+              <StatusIndicator status={p.status} />
             </div>
 
             <div className={styles.playerCardMeta}>
               <NationalityTag nationality={p.nationality} />
               <span>
-                <b>{p.age}</b> лет
+                <b>{formatAge(p.age, p.ageDays)}</b> лет
               </span>
               <PositionBadge player={p} overrides={overrides} onChange={setOverride} />
               <span
