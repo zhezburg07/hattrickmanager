@@ -1,5 +1,6 @@
 import type { SquadPlayer, SquadSkills } from "@/data/squad";
 import { emptyAssignments, boardSlots, type Assignments, type BoardSlot, type SlotRole } from "@/data/pitchBoard";
+import type { ZoneKey } from "./zoneRatings";
 
 // Уровни значимости навыка для позиции — в духе официальных приоритетов Hattrick
 const MAIN = 3.0; // главный навык позиции
@@ -39,12 +40,16 @@ interface Candidate {
   score: number;
 }
 
-// Автоматически собирает лучший доступный состав: вратарь + 10 полевых игроков.
-// Для каждого пустого слота подбирается доступный игрок с наибольшим взвешенным
-// баллом по навыкам, важным для этой роли (плюс форма и выносливость), без
+// Общее ядро автоподбора состава: вратарь + 10 полевых игроков. Для каждого
+// пустого слота подбирается доступный игрок с наибольшим взвешенным баллом
+// по навыкам, важным для этой роли (плюс форма и выносливость), без
 // конфликтов "один игрок — один слот". Итоговая формация — это просто то,
 // какие 10 полевых слотов оказались заняты самыми сильными парами игрок/слот.
-export function recommendLineup(allPlayers: SquadPlayer[]): Assignments {
+// slotScoreMultiplier — необязательный множитель балла кандидата по слоту
+// (используется recommendLineupAgainstOpponent ниже, чтобы отдавать
+// приоритет флангам/зонам, где выявлена слабость соперника); по умолчанию 1
+// для всех слотов — обычный, ничем не смещённый подбор.
+function buildLineup(allPlayers: SquadPlayer[], slotScoreMultiplier: (slot: BoardSlot) => number): Assignments {
   const available = allPlayers.filter((p) => p.status !== "injured");
   const assignments = emptyAssignments();
 
@@ -70,10 +75,11 @@ export function recommendLineup(allPlayers: SquadPlayer[]): Assignments {
   const fieldSlots = boardSlots.filter((s) => s.group !== "GK");
   const candidates: Candidate[] = [];
   fieldSlots.forEach((slot) => {
+    const multiplier = slotScoreMultiplier(slot);
     available
       .filter((p) => p.positionGroup === slot.group)
       .forEach((player) => {
-        candidates.push({ slot, player, score: scoreForRole(player, slot.role) });
+        candidates.push({ slot, player, score: scoreForRole(player, slot.role) * multiplier });
       });
   });
   candidates.sort((a, b) => b.score - a.score);
@@ -97,4 +103,45 @@ export function recommendLineup(allPlayers: SquadPlayer[]): Assignments {
   });
 
   return assignments;
+}
+
+export function recommendLineup(allPlayers: SquadPlayer[]): Assignments {
+  return buildLineup(allPlayers, () => 1);
+}
+
+// Для каждой найденной слабой зоны соперника — какие из НАШИХ слотов на поле
+// стоит усилить, чтобы её эксплуатировать. Фланги зеркальны: наша атака
+// слева бьёт по правому флангу обороны соперника (и наоборот) — команды
+// стоят лицом друг к другу, поэтому "правый защитник соперника" встречается
+// с нашим левым нападением/полузащитой. Атакующие зоны соперника (насколько
+// силён его нападение) не используются — они не подсказывают, где у НАС
+// атаковать.
+const exploitSlotIds: Partial<Record<ZoneKey, string[]>> = {
+  defenseRight: ["MID-0", "DEF-0", "FWD-0"],
+  defenseLeft: ["MID-4", "DEF-4", "FWD-2"],
+  defenseCenter: ["FWD-1", "MID-1", "MID-2", "MID-3"],
+  midfield: ["MID-1", "MID-2", "MID-3"],
+};
+
+const OPPONENT_WEAKNESS_BOOST = 1.35;
+// Сколько худших (по рейтингу) зон соперника считать "слабыми" для усиления
+const WEAK_ZONE_COUNT = 2;
+
+// Тот же автоподбор состава, что и recommendLineup, но с приоритетом на
+// слоты, которые эксплуатируют слабые зоны соперника (см. exploitSlotIds
+// выше) — используется кнопкой "Рекомендовать состав против этого
+// соперника" на панели "Анализ соперника" (Pro).
+export function recommendLineupAgainstOpponent(
+  allPlayers: SquadPlayer[],
+  opponentZoneRatings: Partial<Record<ZoneKey, number>>,
+): Assignments {
+  const weakZones = (Object.entries(opponentZoneRatings) as [ZoneKey, number][])
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, WEAK_ZONE_COUNT)
+    .map(([zone]) => zone);
+
+  const boostedSlotIds = new Set<string>();
+  weakZones.forEach((zone) => (exploitSlotIds[zone] ?? []).forEach((id) => boostedSlotIds.add(id)));
+
+  return buildLineup(allPlayers, (slot) => (boostedSlotIds.has(slot.id) ? OPPONENT_WEAKNESS_BOOST : 1));
 }

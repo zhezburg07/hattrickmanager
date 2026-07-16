@@ -9,6 +9,7 @@ import { resolveRealHomeCountry } from "@/lib/worldCurrency";
 import { getCountryIdLookup } from "@/lib/worldCountries";
 import { resolvePlayerHistory } from "@/lib/playerHistoryDb";
 import { resolveLastMatchRatings } from "@/lib/lastMatchRating";
+import { resolveOpponentAnalysis } from "@/lib/opponentAnalysis";
 import type { SquadPlayer } from "@/data/squad";
 
 async function fetchPlayersRaw(tokens: StoredHattrickTokens) {
@@ -18,12 +19,14 @@ async function fetchPlayersRaw(tokens: StoredHattrickTokens) {
 export default async function LineupPage() {
   const tokens = await getRequiredHattrickTokens();
 
-  const [{ homeCountry }, playersRaw, countryIdLookupResult, lastMatchRatingResult] = await Promise.all([
-    resolveRealHomeCountry(tokens),
-    fetchPlayersRaw(tokens).catch(() => null),
-    getCountryIdLookup(tokens),
-    resolveLastMatchRatings(tokens),
-  ]);
+  const [{ homeCountry }, playersRaw, countryIdLookupResult, lastMatchRatingResult, opponentAnalysis] =
+    await Promise.all([
+      resolveRealHomeCountry(tokens),
+      fetchPlayersRaw(tokens).catch(() => null),
+      getCountryIdLookup(tokens),
+      resolveLastMatchRatings(tokens),
+      resolveOpponentAnalysis(tokens),
+    ]);
 
   let players: SquadPlayer[] | null = null;
   let error: string | null = null;
@@ -57,7 +60,7 @@ export default async function LineupPage() {
                 CHPP не сообщает, кто сейчас стоит в основе — расставьте игроков сами или нажмите
                 «Рекомендовать состав».
               </p>
-              <LineupBoard players={players} prevByPlayerId={prevByPlayerId} />
+              <LineupBoard players={players} prevByPlayerId={prevByPlayerId} opponentAnalysis={opponentAnalysis} />
             </>
           )}
         </div>

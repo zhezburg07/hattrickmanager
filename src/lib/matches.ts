@@ -10,6 +10,11 @@ export interface RealMatch {
   date: string; // как прислал Hattrick (ISO-подобная строка)
   home: boolean;
   opponent: string;
+  // TeamID соперника — используется для "Анализа соперника" (см.
+  // src/lib/opponentAnalysis.ts), чтобы запросить matches.xml/matchdetails.xml
+  // уже для ЕГО команды. HomeTeamID/AwayTeamID — те же подтверждённые поля,
+  // что уже используются на строке выше для определения opponent.
+  opponentTeamId: string;
   status: RealMatchStatus;
   ourScore: number | null;
   oppScore: number | null;
@@ -38,6 +43,7 @@ export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
     const awayTeam = m.AwayTeam as Record<string, unknown> | undefined;
     const isHome = String(homeTeam?.HomeTeamID ?? "") === ourTeamId;
     const opponent = isHome ? String(awayTeam?.AwayTeamName ?? "") : String(homeTeam?.HomeTeamName ?? "");
+    const opponentTeamId = String(isHome ? (awayTeam?.AwayTeamID ?? "") : (homeTeam?.HomeTeamID ?? ""));
 
     const homeGoals = m.HomeGoals !== undefined ? Number(m.HomeGoals) : null;
     const awayGoals = m.AwayGoals !== undefined ? Number(m.AwayGoals) : null;
@@ -50,6 +56,7 @@ export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
       date: String(m.MatchDate ?? ""),
       home: isHome,
       opponent,
+      opponentTeamId,
       status: (String(m.Status ?? "UPCOMING").toUpperCase() as RealMatchStatus) || "UPCOMING",
       ourScore: homeGoals === null || awayGoals === null ? null : isHome ? homeGoals : awayGoals,
       oppScore: homeGoals === null || awayGoals === null ? null : isHome ? awayGoals : homeGoals,

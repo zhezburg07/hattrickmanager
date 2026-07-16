@@ -16,9 +16,11 @@ import { applicableInstructions, type PlayerInstruction } from "@/data/playerIns
 import LineupField from "./LineupField";
 import LineupPlayerList from "./LineupPlayerList";
 import LineupPlayerDetails from "./LineupPlayerDetails";
+import OpponentAnalysis from "./OpponentAnalysis";
 import { recommendLineup } from "./recommendLineup";
 import { formationExperienceLevel } from "./formationExperience";
 import type { DragPayload } from "./dragPayload";
+import type { OpponentAnalysisResult } from "@/lib/opponentAnalysis";
 import styles from "./Lineup.module.css";
 
 // Порядок заполнения слотов линии "снаружи внутрь": сначала оба крайних
@@ -84,9 +86,11 @@ const MAX_FIELD_PLAYERS = 10;
 export default function LineupBoard({
   players,
   prevByPlayerId,
+  opponentAnalysis,
 }: {
   players: SquadPlayer[];
   prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
+  opponentAnalysis: OpponentAnalysisResult;
 }) {
   const roster = players;
   const playersById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
@@ -511,6 +515,12 @@ export default function LineupBoard({
       </div>
 
       <LineupPlayerDetails player={selectedPlayer} prev={selectedPlayer ? resolvedPrevByPlayerId[selectedPlayer.id] : undefined} />
+
+      <OpponentAnalysis
+        analysis={opponentAnalysis}
+        roster={roster}
+        onRecommendAgainstOpponent={(next) => setAssignments(next)}
+      />
 
       {toast && <div className={styles.toast}>{toast}</div>}
     </>
