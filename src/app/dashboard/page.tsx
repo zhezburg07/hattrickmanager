@@ -31,6 +31,7 @@ import { parsePlayersXml } from "@/lib/players";
 import { parsePlayersDetailedXml } from "@/lib/squadPlayers";
 import { parseWorldLeagueInfoXml } from "@/lib/worldCurrency";
 import { resolveWeeklyTsiHighlights } from "@/lib/playerHistoryDb";
+import { upsertConnectedUser } from "@/lib/connectedUsersDb";
 import styles from "@/components/dashboard/Overview.module.css";
 
 // Таблица лиги приходит из leaguedetails.xml — но только когда группы на
@@ -339,10 +340,18 @@ const SHOW_LEAGUE_DEBUG_PANEL = false;
 
 export default async function DashboardPage() {
   const tokens = getRequiredHattrickTokens();
+  const hattrickUserId = getStoredHattrickUserId();
   const [data, weeklyTsi] = await Promise.all([
     resolveDashboardData(tokens),
-    resolveWeeklyTsiHighlights(getStoredHattrickUserId()),
+    resolveWeeklyTsiHighlights(hattrickUserId),
   ]);
+
+  // Побочный эффект для админ-панели (/admin, см. src/lib/connectedUsersDb.ts)
+  // — записывает первое подключение / обновляет "последний визит" и название
+  // команды. Не должен блокировать рендер обычной страницы при сбое базы.
+  if (hattrickUserId) {
+    upsertConnectedUser(hattrickUserId, data.clubName ?? null).catch(() => {});
+  }
 
   return (
     <>
