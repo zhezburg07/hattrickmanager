@@ -51,14 +51,25 @@ export interface SquadPlayer {
   ageDays: number; // 0-364 — дни сверх полных лет, для формата "27 лет и 79 дней"
   nationality: Country;
   positionGroup: PositionGroup;
-  form: number; // 0-8, словесно (formWord)
-  stamina: number; // 0-100%
+  form: number; // 0-8, официальная короткая шкала Формы (formWord)
+  stamina: number; // 0-100%, отображается числом 0-8 той же шкалы, что Форма (staminaToLevel)
   skills: SquadSkills;
-  experience: number; // 1-8, словесно (levelWord)
+  experience: number; // 0-20, официальная шкала навыков (skillWord)
   leadership: number; // 0-7, словесно (leadershipWord)
-  // 1-8, словесно ("преданность клубу", levelWord). CHPP не отдаёт это поле
-  // в players.xml — для реальных игроков остаётся undefined.
+  // 0-20, официальная шкала навыков (skillWord). CHPP отдаёт это поле не во
+  // всех ответах — для части реальных игроков может остаться undefined.
   loyalty?: number;
+  // Воспитанник родного клуба ("сердце" в интерфейсе Hattrick) — не путать с
+  // loyalty (числом): это отдельный булевый признак. Точное имя поля в
+  // реальном players.xml не проверялось на живом ответе — если Hattrick
+  // называет его иначе, признак просто останется undefined и сердце не
+  // покажется (см. src/lib/squadPlayers.ts).
+  isClubProduct?: boolean;
+  // Рейтинг за последний сыгранный матч (0-10, звёзды) — для реальных данных
+  // берётся из matchdetails.xml последнего сыгранного матча (см.
+  // src/lib/lastMatchRating.ts); undefined, если игрок не выходил на поле в
+  // этом матче или запрос не удался.
+  lastMatchRating?: number;
   tsi: number; // Team Skill Index
   // Значения скиллов/опыта/формы/выносливости/TSI на момент прошлой
   // синхронизации — для подсветки роста/падения. В тестовых данных считается
@@ -185,11 +196,12 @@ export function staminaWord(percent: number): string {
   return formWordsDesc[idx];
 }
 
-// Выносливость числом по официальной шкале навыков 0-20 (см. skillWord) —
-// используется на "Составе" вместо процентов, см. src/components/dashboard/SquadTable.tsx.
+// Выносливость числом по той же короткой шкале (0-8), что и Форма (см.
+// formWord) — используется вместо процентов в таблицах "Состав" и
+// "Расстановка".
 export function staminaToLevel(percent: number): number {
   const p = Math.max(0, Math.min(100, percent));
-  return Math.round((p / 100) * 20);
+  return Math.round((p / 100) * 8);
 }
 
 // Шкала Лидерства, 8 уровней (0-7), от лучшего к худшему
@@ -207,23 +219,6 @@ const leadershipWordsDesc = [
 export function leadershipWord(level: number): string {
   const l = Math.max(0, Math.min(7, Math.round(level)));
   return leadershipWordsDesc[7 - l];
-}
-
-// Вспомогательная возрастающая шкала (1-8) для Опыта и Преданности клубу,
-// для которых Hattrick не задаёт отдельную официальную словесную шкалу
-const levelWords = [
-  "катастрофично",
-  "слабо",
-  "недостаточно",
-  "сносно",
-  "хорошо",
-  "отлично",
-  "волшебно",
-  "божественно",
-];
-
-export function levelWord(level: number): string {
-  return levelWords[Math.max(1, Math.min(8, Math.round(level))) - 1];
 }
 
 // Детерминированный генератор псевдослучайных чисел (mulberry32).
@@ -252,7 +247,6 @@ const weeklyRandInt = (min: number, max: number) => Math.floor(min + weeklyRand(
 const clampSkillLevel = (v: number) => Math.max(0, Math.min(20, Math.round(v)));
 const clampFormLevel = (v: number) => Math.max(0, Math.min(8, Math.round(v)));
 const clampLeadershipLevel = (v: number) => Math.max(0, Math.min(7, Math.round(v)));
-const clampGenericLevel = (v: number) => Math.max(1, Math.min(8, Math.round(v)));
 
 // Смещения скиллов (шкала 0-20) относительно общего уровня игрока, в зависимости
 // от амплуа. Порядок: [goalkeeping, defending, midfield, winger, passing, scoring, setPieces]
@@ -320,11 +314,20 @@ export const squadPlayers: SquadPlayer[] = roster.map((r, index) => {
   const stamina = r.status === "injured" ? randInt(15, 45) : randInt(55, 96);
   const skills = buildSkills(r.positionGroup, r.level);
 
-  // Опыт растёт с возрастом, лидерство и преданность клубу — более случайны,
-  // чтобы состав выглядел живым, а не однородным
-  const experience = clampGenericLevel(Math.round((r.age - 16) / 2.2) + randInt(-1, 1));
+  // Опыт растёт с возрастом (шкала 0-20, как у скиллов), лидерство и
+  // преданность клубу — более случайны, чтобы состав выглядел живым, а не
+  // однородным
+  const experience = clampSkillLevel(Math.round((r.age - 16) * 1.1) + randInt(-2, 2));
   const leadership = clampLeadershipLevel(randInt(0, 5) + Math.round((r.age - 20) / 10));
-  const loyalty = clampGenericLevel(randInt(1, 8));
+  const loyalty = clampSkillLevel(randInt(2, 20));
+  // Иллюстрация "воспитанник родного клуба" (сердце вместо числа
+  // преданности) — в тестовых данных отмечаем самых молодых игроков
+  const isClubProduct = r.age <= 20;
+  // Рейтинг за последний матч — на реальных данных берётся из matchdetails
+  // последнего сыгранного матча (см. src/lib/lastMatchRating.ts); в демо
+  // такого матча нет, поэтому просто иллюстрируем правдоподобным числом.
+  // Травмированные в последнем матче не играли — рейтинга у них нет.
+  const lastMatchRating = r.status === "injured" ? undefined : Math.round((3 + rand() * 6) * 10) / 10;
 
   const skillSum =
     skills.goalkeeping +
@@ -364,15 +367,17 @@ export const squadPlayers: SquadPlayer[] = roster.map((r, index) => {
     setPieces: prevSkillValue(skills.setPieces),
   };
   const prevExperience =
-    weeklyRand() < 0.85 ? experience : clampGenericLevel(experience - 1); // опыт почти никогда не падает
+    weeklyRand() < 0.85 ? experience : clampSkillLevel(experience - 1); // опыт почти никогда не падает
   const prevForm = weeklyRand() < 0.6 ? form : clampFormLevel(weeklyRand() < 0.5 ? form - 1 : form + 1);
   const prevStamina = Math.max(0, Math.min(100, stamina + weeklyRandInt(-6, 6)));
 
   const ageDays = randInt(0, 364);
 
   // Игр/голов за клуб — чем старше игрок, тем больше матчей он мог сыграть;
-  // доля голов на игру зависит от амплуа (вратари почти не забивают)
-  const gamesPlayed = randInt(3, 20) + experience * randInt(4, 9);
+  // доля голов на игру зависит от амплуа (вратари почти не забивают).
+  // Опыт теперь на шкале 0-20 — переводим обратно в условные "8 уровней",
+  // чтобы количество игр осталось в прежних правдоподобных пределах.
+  const gamesPlayed = randInt(3, 20) + Math.round(experience / 2.5) * randInt(4, 9);
   const goalRatioRange: Record<PositionGroup, [number, number]> = {
     GK: [0, 0.02],
     DEF: [0.02, 0.15],
@@ -396,6 +401,8 @@ export const squadPlayers: SquadPlayer[] = roster.map((r, index) => {
     experience,
     leadership,
     loyalty,
+    isClubProduct,
+    lastMatchRating,
     tsi,
     prev: {
       skills: prevSkills,

@@ -19,9 +19,11 @@ export interface HomeCountryInfo {
 // - Нет отдельного поля "амплуа" — определяем его эвристикой по самому
 //   сильному навыку игрока. Если эвристика ошиблась, это можно поправить
 //   вручную прямо в таблице (кнопка амплуа уже поддерживает переопределение).
-// - Нет "преданности клубу" (loyalty) и числа сыгранных за клуб матчей —
-//   эти поля остаются undefined (соответствующие столбцы/строки в интерфейсе
-//   скрываются автоматически).
+// - Нет числа сыгранных за клуб матчей — поле остаётся undefined
+//   (соответствующая строка в интерфейсе скрывается автоматически).
+//   "Преданность клубу" (loyalty) и признак воспитанника (isClubProduct)
+//   пробуем прочитать по предположительным именам полей — не проверено на
+//   живом ответе, см. комментарий у соответствующего блока ниже.
 // - Нет понятия "в основе/в запасе" — статус либо "squad" (просто в составе),
 //   либо "injured", если InjuryLevel > 0 (-1 в CHPP означает "не травмирован").
 // - StaminaSkill приходит по шкале 0-9 (у Hattrick это отдельная, более
@@ -72,6 +74,21 @@ export function parsePlayersDetailedXml(
     const lastName = String(p.LastName ?? "").trim();
     const injuryLevel = Number(p.InjuryLevel ?? -1);
     const tsi = Number(p.TSI ?? 0);
+
+    // Преданность клубу и статус "воспитанника" (сердце) — имена полей CHPP
+    // не проверялись на живом ответе Hattrick. Loyalty — предположительно
+    // числовое поле на той же шкале 0-20, что и скиллы; "сердце" ищем среди
+    // нескольких правдоподобных названий булевого поля. Если Hattrick
+    // называет их иначе — оба просто останутся undefined и не покажутся,
+    // ничего не сломав (см. чат).
+    const loyaltyRaw = p.Loyalty;
+    const loyalty = loyaltyRaw !== undefined && loyaltyRaw !== "" ? Number(loyaltyRaw) : undefined;
+    const clubProductRaw = p.MotherClubBonus ?? p.OwnerClub ?? p.HomeGrownPlayer;
+    const isClubProduct =
+      clubProductRaw === undefined
+        ? undefined
+        : clubProductRaw === true || clubProductRaw === "true" || clubProductRaw === "Yes" || Number(clubProductRaw) > 0;
+
     const countryId = String(p.CountryID ?? "");
     const isHomeMatch = homeCountry ? countryId === homeCountry.countryId : undefined;
 
@@ -97,7 +114,12 @@ export function parsePlayersDetailedXml(
       skills,
       experience: Number(p.Experience ?? 0),
       leadership: Number(p.Leadership ?? 0),
-      loyalty: undefined,
+      loyalty,
+      isClubProduct,
+      // CHPP не отдаёт рейтинг за конкретный матч в players.xml — заполняется
+      // отдельно на клиенте/сервере из matchdetails.xml последнего сыгранного
+      // матча (см. src/lib/lastMatchRating.ts, squad/page.tsx).
+      lastMatchRating: undefined,
       tsi,
       // Нет истории за прошлую неделю в одном снимке players.xml — заполняется
       // на клиенте из localStorage между синхронизациями, см. usePlayerStatChanges.

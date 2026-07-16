@@ -11,7 +11,6 @@ import {
   skillWord,
   formWord,
   leadershipWord,
-  levelWord,
   staminaToLevel,
   type SquadPlayer,
   type PlayerStatus,
@@ -22,6 +21,7 @@ import {
 import { usePositionOverrides, effectivePositionGroup, type PositionOverrides } from "@/data/positionOverrides";
 import NationalityTag from "./NationalityTag";
 import FlagIcon from "./FlagIcon";
+import HeartIcon from "./HeartIcon";
 import PlayerDetailModal from "./PlayerDetailModal";
 import { diffDirection, diffTitle, type DiffDirection } from "./playerStatChanges";
 import styles from "./SquadTable.module.css";
@@ -42,10 +42,11 @@ type SortKey =
   | "stamina"
   | SkillKey
   | "leadership"
-  | "loyalty"
   | "tsi"
   | "salary"
-  | "status";
+  | "status"
+  | "loyalty"
+  | "rating";
 
 type SortDir = "asc" | "desc";
 
@@ -71,10 +72,11 @@ const baseColumns: { key: SortKey; label: string; title?: string }[] = [
   { key: "stamina", label: "Вынос-ть" },
   ...skillKeys.map((k) => ({ key: k as SortKey, label: skillShortLabel[k], title: skillLabel[k] })),
   { key: "leadership", label: "Лидер", title: "Лидерство" },
-  { key: "loyalty", label: "Предан.", title: "Преданность клубу" },
   { key: "tsi", label: "TSI" },
   { key: "salary", label: "Зарплата" },
   { key: "status", label: "Статус" },
+  { key: "loyalty", label: "Предан.", title: "Преданность клубу" },
+  { key: "rating", label: "Рейтинг", title: "Рейтинг за последний сыгранный матч" },
 ];
 
 // текстовые колонки по умолчанию сортируются от А до Я,
@@ -104,7 +106,9 @@ function getValue(player: SquadPlayer, key: SortKey, overrides: PositionOverride
     case "leadership":
       return player.leadership;
     case "loyalty":
-      return player.loyalty ?? -1;
+      return player.isClubProduct ? 21 : (player.loyalty ?? -1);
+    case "rating":
+      return player.lastMatchRating ?? -1;
     case "tsi":
       return player.tsi;
     case "salary":
@@ -161,21 +165,53 @@ function LevelCell({
   );
 }
 
-// Навыки (Вратарь/Защита/.../Стандарты) — числом по официальной шкале 0-20
-// вместо слова, с подсказкой-словом при наведении (см. чат). Опыт/Форма/
-// Лидерство/Преданность по-прежнему словом — этой ячейки не касаются.
+// Навыки (Вратарь/Защита/.../Стандарты), Опыт и Преданность — числом по
+// официальной шкале 0-20; Форма и Выносливость — по короткой шкале 0-8 (см.
+// чат). max задаёт диапазон для цветовой раскраски (тира) и подсказки.
 function SkillNumberCell({
   value,
+  max = 20,
   diff = "none",
   hoverWord,
 }: {
   value: number;
+  max?: number;
   diff?: DiffDirection;
   hoverWord: string;
 }) {
   return (
     <td className={`${styles.skillCell} ${diffClass(diff)}`} title={hoverWord}>
-      <span className={`${styles.skillWord} ${tierFromRatio(value / 20)}`}>{value}</span>
+      <span className={`${styles.skillWord} ${tierFromRatio(value / max)}`}>{value}</span>
+    </td>
+  );
+}
+
+// Преданность клубу — числом 0-20 (см. SkillNumberCell), либо сердцем у
+// воспитанников родного клуба вместо цифры.
+function LoyaltyCell({ player }: { player: SquadPlayer }) {
+  if (player.isClubProduct) {
+    return (
+      <td className={styles.skillCell} title="Воспитанник родного клуба">
+        <HeartIcon />
+      </td>
+    );
+  }
+  if (player.loyalty === undefined) {
+    return <td className={styles.skillCell}>—</td>;
+  }
+  return <SkillNumberCell value={player.loyalty} hoverWord={skillWord(player.loyalty)} />;
+}
+
+// Рейтинг за последний сыгранный матч (0-10, с десятыми) — реальные данные
+// см. src/lib/lastMatchRating.ts. "—", если игрок не выходил на поле в
+// последнем матче или данные не удалось получить.
+function RatingCell({ rating }: { rating?: number }) {
+  if (rating === undefined) {
+    return <td className={styles.skillCell}>—</td>;
+  }
+  return (
+    <td className={styles.skillCell} title={`${rating.toFixed(1)} из 10`}>
+      <span className={`${styles.skillWord} ${tierFromRatio(rating / 10)}`}>★ {rating.toFixed(1)}</span>
     </td>
   );
 }
@@ -283,10 +319,12 @@ export default function SquadTable({
   const resolvedPrevByPlayerId =
     prevByPlayerId ?? Object.fromEntries(roster.map((p) => [p.id, p.prev]));
 
-  // CHPP не отдаёт "преданность клубу" — прячем столбец целиком, если он не
-  // заполнен ни у одного игрока, вместо пустых прочерков в каждой строке.
-  const hasLoyalty = roster.some((p) => p.loyalty !== undefined);
-  const columns = hasLoyalty ? baseColumns : baseColumns.filter((c) => c.key !== "loyalty");
+  // Прячем столбцы целиком, если ни у одного игрока нет данных, вместо
+  // пустых прочерков в каждой строке (реальные "преданность"/"рейтинг" не
+  // всегда доступны, см. src/lib/squadPlayers.ts, src/lib/lastMatchRating.ts).
+  const hasLoyalty = roster.some((p) => p.loyalty !== undefined || p.isClubProduct);
+  const hasRating = roster.some((p) => p.lastMatchRating !== undefined);
+  const columns = baseColumns.filter((c) => (c.key === "loyalty" ? hasLoyalty : c.key === "rating" ? hasRating : true));
 
   const sorted = useMemo(() => {
     const list = [...roster];
@@ -359,22 +397,22 @@ export default function SquadTable({
                 <td>
                   <PositionBadge player={p} overrides={overrides} onChange={setOverride} />
                 </td>
-                <LevelCell
-                  word={levelWord(p.experience)}
-                  ratio={(p.experience - 1) / 7}
+                <SkillNumberCell
+                  value={p.experience}
                   diff={diffDirection(p.experience, prev?.experience)}
-                  title={diffTitle("Опыт", prev?.experience, p.experience)}
+                  hoverWord={diffTitle("Опыт", prev?.experience, p.experience) ?? skillWord(p.experience)}
                 />
-                <LevelCell
-                  word={formWord(p.form)}
-                  ratio={p.form / 8}
+                <SkillNumberCell
+                  value={p.form}
+                  max={8}
                   diff={diffDirection(p.form, prev?.form)}
-                  title={diffTitle("Форма", prev?.form, p.form)}
+                  hoverWord={diffTitle("Форма", prev?.form, p.form) ?? formWord(p.form)}
                 />
                 <SkillNumberCell
                   value={staminaLevel}
+                  max={8}
                   diff={staminaDiff}
-                  hoverWord={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? skillWord(staminaLevel)}
+                  hoverWord={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? formWord(staminaLevel)}
                 />
                 {skillKeys.map((k) => (
                   <SkillNumberCell
@@ -385,9 +423,6 @@ export default function SquadTable({
                   />
                 ))}
                 <LevelCell word={leadershipWord(p.leadership)} ratio={p.leadership / 7} />
-                {hasLoyalty && (
-                  <LevelCell word={levelWord(p.loyalty ?? 1)} ratio={((p.loyalty ?? 1) - 1) / 7} />
-                )}
                 <td
                   className={`${styles.moneyCell} ${diffClass(tsiDiff)}`}
                   title={diffTitle("TSI", prev?.tsi, p.tsi, (n) => n.toLocaleString("ru-RU"))}
@@ -398,6 +433,8 @@ export default function SquadTable({
                 <td>
                   <StatusTag status={p.status} />
                 </td>
+                {hasLoyalty && <LoyaltyCell player={p} />}
+                {hasRating && <RatingCell rating={p.lastMatchRating} />}
               </tr>
               );
             })}
@@ -429,16 +466,21 @@ export default function SquadTable({
               <PositionBadge player={p} overrides={overrides} onChange={setOverride} />
               <span
                 className={diffClass(diffDirection(p.form, prev?.form))}
-                title={diffTitle("Форма", prev?.form, p.form)}
+                title={diffTitle("Форма", prev?.form, p.form) ?? formWord(p.form)}
               >
-                Форма <b>{formWord(p.form)}</b>
+                Форма <b>{p.form}</b>
               </span>
               <span
                 className={diffClass(diffDirection(staminaLevel, prevStaminaLevel))}
-                title={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? skillWord(staminaLevel)}
+                title={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? formWord(staminaLevel)}
               >
                 Вын-ть <b>{staminaLevel}</b>
               </span>
+              {p.lastMatchRating !== undefined && (
+                <span title={`${p.lastMatchRating.toFixed(1)} из 10`}>
+                  Рейтинг матча <b>★ {p.lastMatchRating.toFixed(1)}</b>
+                </span>
+              )}
               <span
                 className={diffClass(diffDirection(p.tsi, prev?.tsi))}
                 title={diffTitle("TSI", prev?.tsi, p.tsi, (n) => n.toLocaleString("ru-RU"))}
@@ -463,19 +505,24 @@ export default function SquadTable({
               ))}
               <div
                 className={`${styles.playerCardSkillRow} ${diffClass(diffDirection(p.experience, prev?.experience))}`}
-                title={diffTitle("Опыт", prev?.experience, p.experience)}
+                title={diffTitle("Опыт", prev?.experience, p.experience) ?? skillWord(p.experience)}
               >
                 <span className={styles.playerCardSkillLabel}>Опыт</span>
-                <span className={styles.playerCardSkillValue}>{levelWord(p.experience)}</span>
+                <span className={styles.playerCardSkillValue}>{p.experience}</span>
               </div>
               <div className={styles.playerCardSkillRow}>
                 <span className={styles.playerCardSkillLabel}>Лидерство</span>
                 <span className={styles.playerCardSkillValue}>{leadershipWord(p.leadership)}</span>
               </div>
               {hasLoyalty && (
-                <div className={styles.playerCardSkillRow}>
+                <div
+                  className={styles.playerCardSkillRow}
+                  title={p.isClubProduct ? "Воспитанник родного клуба" : p.loyalty !== undefined ? skillWord(p.loyalty) : undefined}
+                >
                   <span className={styles.playerCardSkillLabel}>Преданность</span>
-                  <span className={styles.playerCardSkillValue}>{levelWord(p.loyalty ?? 1)}</span>
+                  <span className={styles.playerCardSkillValue}>
+                    {p.isClubProduct ? <HeartIcon /> : (p.loyalty ?? "—")}
+                  </span>
                 </div>
               )}
             </div>

@@ -9,6 +9,7 @@ import { resolveRealHomeCountry } from "@/lib/worldCurrency";
 import { getCountryIdLookup } from "@/lib/worldCountries";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
 import { resolvePlayerHistory } from "@/lib/playerHistoryDb";
+import { resolveLastMatchRatings } from "@/lib/lastMatchRating";
 import type { SquadPlayer } from "@/data/squad";
 
 async function fetchPlayersRaw(tokens: StoredHattrickTokens) {
@@ -53,12 +54,13 @@ export default async function SquadPage() {
     );
   }
 
-  const [{ homeCountry, error: homeCountryError }, playersRaw, countryIdLookupResult, trainerPlayerId] =
+  const [{ homeCountry, error: homeCountryError }, playersRaw, countryIdLookupResult, trainerPlayerId, lastMatchRatingResult] =
     await Promise.all([
       resolveRealHomeCountry(tokens),
       fetchPlayersRaw(tokens).catch(() => null),
       getCountryIdLookup(tokens),
       resolveTrainerPlayerId(tokens),
+      resolveLastMatchRatings(tokens),
     ]);
 
   let players: SquadPlayer[] | null = null;
@@ -70,6 +72,7 @@ export default async function SquadPage() {
       throw new Error(`HTTP ${playersRaw.httpStatus}: ${playersRaw.rawXml.slice(0, 200)}`);
     }
     players = parsePlayersDetailedXml(playersRaw.rawXml, homeCountry, countryIdLookupResult.lookup ?? undefined);
+    players = players.map((p) => ({ ...p, lastMatchRating: lastMatchRatingResult.ratings[p.id] }));
     if (SHOW_NATIONALITY_DEBUG) debugPlayers = debugRawPlayerCountryIds(playersRaw.rawXml, 3);
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
@@ -113,6 +116,15 @@ export default async function SquadPage() {
               </div>
               {countryIdLookupResult.error && (
                 <div style={{ color: "#c0503f" }}>Причина: {countryIdLookupResult.error}</div>
+              )}
+              <div>
+                Рейтинг последнего матча:{" "}
+                {Object.keys(lastMatchRatingResult.ratings).length
+                  ? `получено, игроков с рейтингом: ${Object.keys(lastMatchRatingResult.ratings).length}`
+                  : "не получено"}
+              </div>
+              {lastMatchRatingResult.error && (
+                <div style={{ color: "#c0503f" }}>Причина: {lastMatchRatingResult.error}</div>
               )}
               {debugPlayers.map((p, i) => (
                 <div key={i} style={{ marginTop: 4 }}>

@@ -5,6 +5,9 @@ import {
   positionGroupShort,
   positionGroupAccentColor,
   skillLabel,
+  skillWord,
+  formWord,
+  staminaToLevel,
   playerBadgeCode,
   type SquadPlayer,
   type SquadSkills,
@@ -14,6 +17,7 @@ import { usePositionOverrides, effectivePositionGroup, type PositionOverrides } 
 import { parsePayload, serializePayload, type DragPayload } from "./dragPayload";
 import { diffDirection, diffTitle } from "./playerStatChanges";
 import FlagIcon from "./FlagIcon";
+import HeartIcon from "./HeartIcon";
 import styles from "./Lineup.module.css";
 import diffStyles from "./StatDiff.module.css";
 
@@ -32,7 +36,18 @@ function AmpluaAccent({ player, overrides }: { player: SquadPlayer; overrides: P
 }
 
 type SkillKey = keyof SquadSkills;
-type SortKey = "nationality" | "name" | "positionGroup" | "age" | "experience" | "form" | "stamina" | SkillKey | "tsi";
+type SortKey =
+  | "nationality"
+  | "name"
+  | "positionGroup"
+  | "age"
+  | "experience"
+  | "form"
+  | "stamina"
+  | SkillKey
+  | "tsi"
+  | "loyalty"
+  | "rating";
 type SortDir = "asc" | "desc";
 
 const skillKeys: SkillKey[] = ["goalkeeping", "defending", "midfield", "winger", "passing", "scoring", "setPieces"];
@@ -47,7 +62,7 @@ const skillShortLabel: Record<SkillKey, string> = {
   setPieces: "СТ",
 };
 
-const columns: { key: SortKey; label: string; title?: string }[] = [
+const baseColumns: { key: SortKey; label: string; title?: string }[] = [
   { key: "nationality", label: "Флаг", title: "Национальность" },
   { key: "name", label: "Имя" },
   { key: "positionGroup", label: "Поз", title: "Позиция" },
@@ -57,6 +72,8 @@ const columns: { key: SortKey; label: string; title?: string }[] = [
   { key: "stamina", label: "Вын", title: "Выносливость" },
   ...skillKeys.map((k) => ({ key: k as SortKey, label: skillShortLabel[k], title: skillLabel[k] })),
   { key: "tsi", label: "TSI" },
+  { key: "loyalty", label: "Предан.", title: "Преданность клубу" },
+  { key: "rating", label: "Рейтинг", title: "Рейтинг за последний сыгранный матч" },
 ];
 
 const textColumns = new Set<SortKey>(["nationality", "name", "positionGroup"]);
@@ -79,6 +96,10 @@ function getValue(player: SquadPlayer, key: SortKey): string | number {
       return player.stamina;
     case "tsi":
       return player.tsi;
+    case "loyalty":
+      return player.isClubProduct ? 21 : (player.loyalty ?? -1);
+    case "rating":
+      return player.lastMatchRating ?? -1;
     default:
       return player.skills[key as SkillKey];
   }
@@ -108,6 +129,12 @@ export default function LineupPlayerList({
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const dragGhostRef = useRef<HTMLSpanElement>(null);
   const { overrides } = usePositionOverrides();
+
+  // Прячем столбцы целиком, если ни у одного игрока нет данных, вместо
+  // пустых прочерков в каждой строке (см. SquadTable.tsx, тот же принцип).
+  const hasLoyalty = players.some((p) => p.loyalty !== undefined || p.isClubProduct);
+  const hasRating = players.some((p) => p.lastMatchRating !== undefined);
+  const columns = baseColumns.filter((c) => (c.key === "loyalty" ? hasLoyalty : c.key === "rating" ? hasRating : true));
 
   const sorted = useMemo(() => {
     if (!sortKey) return players;
@@ -188,6 +215,8 @@ export default function LineupPlayerList({
                   ? styles.gridRowSub
                   : "";
               const prev = prevByPlayerId?.[p.id];
+              const staminaLevel = staminaToLevel(p.stamina);
+              const prevStaminaLevel = prev?.stamina !== undefined ? staminaToLevel(prev.stamina) : undefined;
 
               return (
               <tr
@@ -218,27 +247,27 @@ export default function LineupPlayerList({
                 <td className={styles.gridNumCell}>{p.age}</td>
                 <td
                   className={`${styles.gridNumCell} ${diffClass(diffDirection(p.experience, prev?.experience))}`}
-                  title={diffTitle("Опыт", prev?.experience, p.experience)}
+                  title={diffTitle("Опыт", prev?.experience, p.experience) ?? skillWord(p.experience)}
                 >
                   {p.experience}
                 </td>
                 <td
                   className={`${styles.gridNumCell} ${diffClass(diffDirection(p.form, prev?.form))}`}
-                  title={diffTitle("Форма", prev?.form, p.form)}
+                  title={diffTitle("Форма", prev?.form, p.form) ?? formWord(p.form)}
                 >
                   {p.form}
                 </td>
                 <td
-                  className={`${styles.gridNumCell} ${diffClass(diffDirection(p.stamina, prev?.stamina))}`}
-                  title={diffTitle("Выносливость", prev?.stamina, p.stamina, (n) => `${n}%`)}
+                  className={`${styles.gridNumCell} ${diffClass(diffDirection(staminaLevel, prevStaminaLevel))}`}
+                  title={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? formWord(staminaLevel)}
                 >
-                  {p.stamina}%
+                  {staminaLevel}
                 </td>
                 {skillKeys.map((k) => (
                   <td
                     className={`${styles.gridNumCell} ${diffClass(diffDirection(p.skills[k], prev?.skills[k]))}`}
                     key={k}
-                    title={diffTitle(skillLabel[k], prev?.skills[k], p.skills[k])}
+                    title={diffTitle(skillLabel[k], prev?.skills[k], p.skills[k]) ?? skillWord(p.skills[k])}
                   >
                     {p.skills[k]}
                   </td>
@@ -249,6 +278,16 @@ export default function LineupPlayerList({
                 >
                   {p.tsi.toLocaleString("ru-RU")}
                 </td>
+                {hasLoyalty && (
+                  <td className={styles.gridNumCell} title={p.isClubProduct ? "Воспитанник родного клуба" : p.loyalty !== undefined ? skillWord(p.loyalty) : undefined}>
+                    {p.isClubProduct ? <HeartIcon /> : (p.loyalty ?? "—")}
+                  </td>
+                )}
+                {hasRating && (
+                  <td className={styles.gridNumCell} title={p.lastMatchRating !== undefined ? `${p.lastMatchRating.toFixed(1)} из 10` : undefined}>
+                    {p.lastMatchRating !== undefined ? `★ ${p.lastMatchRating.toFixed(1)}` : "—"}
+                  </td>
+                )}
               </tr>
               );
             })}

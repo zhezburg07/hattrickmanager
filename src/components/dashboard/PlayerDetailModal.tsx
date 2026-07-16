@@ -9,7 +9,6 @@ import {
   formWord,
   staminaToLevel,
   leadershipWord,
-  levelWord,
   type SquadPlayer,
   type SquadSkills,
   type PositionGroup,
@@ -159,13 +158,13 @@ export default function PlayerDetailModal({
           <div className={styles.infoRow}>
             <span
               className={diffClass(diffDirection(player.form, prev?.form))}
-              title={diffTitle("Форма", prev?.form, player.form)}
+              title={diffTitle("Форма", prev?.form, player.form) ?? formWord(player.form)}
             >
-              Форма: <b>{formWord(player.form)}</b>
+              Форма: <b>{player.form}</b>
             </span>
             <span
               className={diffClass(diffDirection(staminaLevel, prevStaminaLevel))}
-              title={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? skillWord(staminaLevel)}
+              title={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? formWord(staminaLevel)}
             >
               Выносливость: <b>{staminaLevel}</b>
             </span>
@@ -173,18 +172,19 @@ export default function PlayerDetailModal({
           <div className={styles.infoRow}>
             <span
               className={diffClass(diffDirection(player.experience, prev?.experience))}
-              title={diffTitle("Опыт", prev?.experience, player.experience)}
+              title={diffTitle("Опыт", prev?.experience, player.experience) ?? skillWord(player.experience)}
             >
-              Опыт: <b>{levelWord(player.experience)}</b>
+              Опыт: <b>{player.experience}</b>
             </span>
             <span>
               Лидерские качества: <b>{leadershipWord(player.leadership)}</b>
             </span>
           </div>
-          {player.loyalty !== undefined && (
+          {(player.loyalty !== undefined || player.isClubProduct) && (
             <div className={styles.infoRow}>
-              <span>
-                Преданность клубу: <b>{levelWord(player.loyalty)}</b>
+              <span title={player.isClubProduct ? undefined : skillWord(player.loyalty ?? 0)}>
+                Преданность клубу:{" "}
+                <b>{player.isClubProduct ? "❤ воспитанник клуба" : player.loyalty}</b>
               </span>
             </div>
           )}
@@ -206,8 +206,13 @@ export default function PlayerDetailModal({
 
         <div className={styles.footer}>
           <span>Обновлено: {lastDataUpdate}</span>
-          <span>
-            <Stars count={starRating(player)} /> ({positionGroupLabel[player.positionGroup]})
+          <span title={player.lastMatchRating !== undefined ? "Рейтинг за последний сыгранный матч" : undefined}>
+            {player.lastMatchRating !== undefined ? (
+              <b>★ {player.lastMatchRating.toFixed(1)}</b>
+            ) : (
+              <Stars count={starRating(player)} />
+            )}{" "}
+            ({positionGroupLabel[player.positionGroup]})
           </span>
         </div>
 

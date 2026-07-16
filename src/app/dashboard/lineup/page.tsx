@@ -8,6 +8,7 @@ import { parsePlayersDetailedXml } from "@/lib/squadPlayers";
 import { resolveRealHomeCountry } from "@/lib/worldCurrency";
 import { getCountryIdLookup } from "@/lib/worldCountries";
 import { resolvePlayerHistory } from "@/lib/playerHistoryDb";
+import { resolveLastMatchRatings } from "@/lib/lastMatchRating";
 import type { SquadPlayer } from "@/data/squad";
 
 async function fetchPlayersRaw(tokens: StoredHattrickTokens) {
@@ -32,10 +33,11 @@ export default async function LineupPage() {
     );
   }
 
-  const [{ homeCountry }, playersRaw, countryIdLookupResult] = await Promise.all([
+  const [{ homeCountry }, playersRaw, countryIdLookupResult, lastMatchRatingResult] = await Promise.all([
     resolveRealHomeCountry(tokens),
     fetchPlayersRaw(tokens).catch(() => null),
     getCountryIdLookup(tokens),
+    resolveLastMatchRatings(tokens),
   ]);
 
   let players: SquadPlayer[] | null = null;
@@ -46,6 +48,7 @@ export default async function LineupPage() {
       throw new Error(`HTTP ${playersRaw.httpStatus}: ${playersRaw.rawXml.slice(0, 200)}`);
     }
     players = parsePlayersDetailedXml(playersRaw.rawXml, homeCountry, countryIdLookupResult.lookup ?? undefined);
+    players = players.map((p) => ({ ...p, lastMatchRating: lastMatchRatingResult.ratings[p.id] }));
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     error = `Состав (players): ${message}`;
