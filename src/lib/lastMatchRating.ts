@@ -4,24 +4,35 @@ import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
 import { parseTeamDetailsXml } from "./teamDetails";
 import { parseMatchesXml } from "./matches";
 
-// Рейтинг игрока за последний сыгранный матч (звёзды, как на карточке
-// игрока) — раньше в проекте таких данных не было: src/data/matchAnalysis.ts
-// для "Обзора матча" целиком иллюстративная детерминированная генерация, а
-// не реальный ответ CHPP.
+// Рейтинг игрока за сыгранные матчи (звёзды, 0-10, как в самой Hattrick) —
+// раньше в проекте таких данных не было: src/data/matchAnalysis.ts (теперь
+// удалён) для "Обзора матча" был целиком иллюстративной детерминированной
+// генерацией, а не реальным ответом CHPP.
 //
-// Схема: 1) teamdetails.xml → наш TeamID; 2) matches.xml → последний матч со
-// статусом FINISHED; 3) matchdetails.xml по его MatchID → состав и рейтинг
-// (RatingStars) каждого нашего игрока, вышедшего на поле.
+// Схема: 1) teamdetails.xml → наш TeamID; 2) matches.xml → последние N
+// матчей со статусом FINISHED; 3) matchdetails.xml по каждому MatchID →
+// состав и рейтинг (RatingStars) наших игроков, вышедших на поле. Из этого
+// же набора считаются два показателя разом (без повторных запросов
+// teamdetails/matches): рейтинг за самый последний матч и лучший рейтинг
+// среди последних RECENT_MATCH_COUNT матчей — "пиковая форма" игрока за
+// это время.
 //
 // Поля matchdetails.xml (Team/Lineup/Player, RatingStars) не проверялись на
 // живом ответе Hattrick — структура предположена по аналогии с уже
 // подтверждённым matches.xml (см. src/lib/matches.ts) и общей схемой CHPP.
-// Если что-то не совпадёт — функция вернёт пустую карту рейтингов через
+// Если что-то не совпадёт — функция вернёт пустые карты рейтингов через
 // error, вызывающий код (squad/page.tsx) честно оставит рейтинг непоказанным
 // у всех игроков, ничего не сломав.
-export async function resolveLastMatchRatings(
-  tokens: StoredHattrickTokens,
-): Promise<{ ratings: Record<number, number>; error: string | null }> {
+const RECENT_MATCH_COUNT = 3;
+
+export interface RecentMatchRatingsResult {
+  lastMatchRatings: Record<number, number>;
+  bestOfRecentRatings: Record<number, number>;
+  error: string | null;
+}
+
+export async function resolveLastMatchRatings(tokens: StoredHattrickTokens): Promise<RecentMatchRatingsResult> {
+  const empty: RecentMatchRatingsResult = { lastMatchRatings: {}, bestOfRecentRatings: {}, error: null };
   try {
     const teamRaw = await requestChppXmlRaw("teamdetails", {}, tokens);
     if (teamRaw.httpStatus < 200 || teamRaw.httpStatus >= 300) {
@@ -34,21 +45,40 @@ export async function resolveLastMatchRatings(
       throw new Error(`matches HTTP ${matchesRaw.httpStatus}`);
     }
     const matches = parseMatchesXml(matchesRaw.rawXml, teamId);
-    const lastFinished = matches
+    const recentFinished = matches
       .filter((m) => m.status === "FINISHED" && m.matchId)
-      .sort((a, b) => b.date.localeCompare(a.date))[0];
-    if (!lastFinished) {
-      return { ratings: {}, error: null };
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, RECENT_MATCH_COUNT);
+    if (recentFinished.length === 0) {
+      return empty;
     }
 
-    const detailsRaw = await requestChppXmlRaw("matchdetails", { matchID: lastFinished.matchId }, tokens);
-    if (detailsRaw.httpStatus < 200 || detailsRaw.httpStatus >= 300) {
-      throw new Error(`matchdetails HTTP ${detailsRaw.httpStatus}: ${detailsRaw.rawXml.slice(0, 200)}`);
+    const detailsRaws = await Promise.all(
+      recentFinished.map((m) => requestChppXmlRaw("matchdetails", { matchID: m.matchId }, tokens)),
+    );
+
+    const perMatchRatings = detailsRaws.map((raw) => {
+      if (raw.httpStatus < 200 || raw.httpStatus >= 300) return {};
+      try {
+        return parseMatchDetailsRatings(raw.rawXml, teamId);
+      } catch {
+        return {};
+      }
+    });
+
+    const lastMatchRatings = perMatchRatings[0] ?? {};
+    const bestOfRecentRatings: Record<number, number> = {};
+    for (const ratings of perMatchRatings) {
+      for (const [playerId, rating] of Object.entries(ratings)) {
+        const id = Number(playerId);
+        bestOfRecentRatings[id] = bestOfRecentRatings[id] !== undefined ? Math.max(bestOfRecentRatings[id], rating) : rating;
+      }
     }
-    return { ratings: parseMatchDetailsRatings(detailsRaw.rawXml, teamId), error: null };
+
+    return { lastMatchRatings, bestOfRecentRatings, error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
-    return { ratings: {}, error: `Рейтинг последнего матча: ${message}` };
+    return { ...empty, error: `Рейтинг последних матчей: ${message}` };
   }
 }
 

@@ -9,6 +9,7 @@ import {
   skillWord,
   formWord,
   staminaToLevel,
+  estimatePotentialRating,
   type SquadPlayer,
   type PlayerStatus,
   type PlayerStatSnapshot,
@@ -41,7 +42,9 @@ type SortKey =
   | "tsi"
   | "status"
   | "loyalty"
-  | "rating";
+  | "rating"
+  | "potential"
+  | "recentBest";
 
 type SortDir = "asc" | "desc";
 
@@ -70,6 +73,8 @@ const baseColumns: { key: SortKey; label: string; title?: string }[] = [
   ...skillKeys.map((k) => ({ key: k as SortKey, label: skillShortLabel[k], title: skillLabel[k] })),
   { key: "loyalty", label: "Предан.", title: "Преданность клубу" },
   { key: "rating", label: "Рейтинг", title: "Рейтинг за последний сыгранный матч" },
+  { key: "potential", label: "Потенциал", title: "Потенциальный рейтинг при текущих навыках и форме" },
+  { key: "recentBest", label: "Посл. 3 матча", title: "Лучший рейтинг из последних 3 сыгранных матчей" },
 ];
 
 // текстовые колонки по умолчанию сортируются от А до Я,
@@ -100,6 +105,10 @@ function getValue(player: SquadPlayer, key: SortKey, overrides: PositionOverride
       return player.isClubProduct ? 21 : (player.loyalty ?? -1);
     case "rating":
       return player.lastMatchRating ?? -1;
+    case "potential":
+      return estimatePotentialRating(player);
+    case "recentBest":
+      return player.recentBestRating ?? -1;
     case "tsi":
       return player.tsi;
     case "status":
@@ -205,9 +214,10 @@ function LoyaltyCell({ player }: { player: SquadPlayer }) {
   return <SkillNumberCell value={player.loyalty} hoverWord={skillWord(player.loyalty)} />;
 }
 
-// Рейтинг за последний сыгранный матч (0-10, с десятыми) — реальные данные
-// см. src/lib/lastMatchRating.ts. "—", если игрок не выходил на поле в
-// последнем матче или данные не удалось получить.
+// Универсальная звёздная ячейка (0-10, с десятыми) — переиспользуется для
+// Рейтинга последнего матча, Потенциала и лучшего из последних 3 матчей (см.
+// src/lib/lastMatchRating.ts, src/data/squad.ts). "—", если значения нет
+// (игрок не выходил на поле / данные не удалось получить).
 function RatingCell({ rating }: { rating?: number }) {
   if (rating === undefined) {
     return <td className={styles.skillCell}>—</td>;
@@ -313,11 +323,16 @@ export default function SquadTable({
   const resolvedPrevByPlayerId = prevByPlayerId;
 
   // Прячем столбцы целиком, если ни у одного игрока нет данных, вместо
-  // пустых прочерков в каждой строке (реальные "преданность"/"рейтинг" не
-  // всегда доступны, см. src/lib/squadPlayers.ts, src/lib/lastMatchRating.ts).
+  // пустых прочерков в каждой строке (реальные "преданность"/"рейтинг"/
+  // "последние 3 матча" не всегда доступны, см. src/lib/squadPlayers.ts,
+  // src/lib/lastMatchRating.ts). "Потенциал" считается локально из уже
+  // известных навыков/формы игрока, поэтому доступен всегда.
   const hasLoyalty = roster.some((p) => p.loyalty !== undefined || p.isClubProduct);
   const hasRating = roster.some((p) => p.lastMatchRating !== undefined);
-  const columns = baseColumns.filter((c) => (c.key === "loyalty" ? hasLoyalty : c.key === "rating" ? hasRating : true));
+  const hasRecentBest = roster.some((p) => p.recentBestRating !== undefined);
+  const columns = baseColumns.filter((c) =>
+    c.key === "loyalty" ? hasLoyalty : c.key === "rating" ? hasRating : c.key === "recentBest" ? hasRecentBest : true,
+  );
 
   const sorted = useMemo(() => {
     const list = [...roster];
@@ -426,6 +441,8 @@ export default function SquadTable({
                 ))}
                 {hasLoyalty && <LoyaltyCell player={p} />}
                 {hasRating && <RatingCell rating={p.lastMatchRating} />}
+                <RatingCell rating={estimatePotentialRating(p)} />
+                {hasRecentBest && <RatingCell rating={p.recentBestRating} />}
               </tr>
               );
             })}
@@ -470,6 +487,14 @@ export default function SquadTable({
               {p.lastMatchRating !== undefined && (
                 <span title={`${p.lastMatchRating.toFixed(1)} из 10`}>
                   Рейтинг матча <b>★ {p.lastMatchRating.toFixed(1)}</b>
+                </span>
+              )}
+              <span title="Потенциальный рейтинг при текущих навыках и форме">
+                Потенциал <b>★ {estimatePotentialRating(p).toFixed(1)}</b>
+              </span>
+              {p.recentBestRating !== undefined && (
+                <span title="Лучший рейтинг из последних 3 сыгранных матчей">
+                  Посл. 3 матча <b>★ {p.recentBestRating.toFixed(1)}</b>
                 </span>
               )}
               <span

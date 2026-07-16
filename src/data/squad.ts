@@ -68,6 +68,10 @@ export interface SquadPlayer {
   // src/lib/lastMatchRating.ts); undefined, если игрок не выходил на поле в
   // этом матче или запрос не удался.
   lastMatchRating?: number;
+  // Лучший рейтинг (0-10) среди последних 3 сыгранных матчей игрока — см.
+  // src/lib/lastMatchRating.ts. undefined, если игрок не выходил на поле ни
+  // в одном из этих матчей или данные не удалось получить.
+  recentBestRating?: number;
   tsi: number; // Team Skill Index
   // Значения скиллов/опыта/формы/выносливости/TSI на момент прошлой
   // синхронизации — для подсветки роста/падения. В тестовых данных считается
@@ -209,4 +213,30 @@ const leadershipWordsDesc = [
 export function leadershipWord(level: number): string {
   const l = Math.max(0, Math.min(7, Math.round(level)));
   return leadershipWordsDesc[7 - l];
+}
+
+// Главный навык амплуа — тот, что сильнее всего определяет рейтинг игрока
+// на его естественной позиции (та же логика, что и раньше использовалась
+// в PlayerDetailModal для иллюстративного рейтинга).
+const mainSkillByGroup: Record<PositionGroup, keyof SquadSkills> = {
+  GK: "goalkeeping",
+  DEF: "defending",
+  MID: "midfield",
+  FWD: "scoring",
+};
+
+// "Потенциал" — сколько звёзд (0-10, та же шкала, что у Рейтинга последнего
+// матча) игрок способен набрать в матче при текущем состоянии навыков и
+// формы, если сыграет на своей естественной позиции в свою силу. Hattrick
+// не отдаёт такое значение напрямую ни в одном файле CHPP (в игре это
+// вообще скрытая величина, доступная только через отчёты скаута) — это наша
+// собственная формула, посчитанная из уже реальных данных игрока (навыки и
+// форма приходят из players.xml), а не выдуманное число: главный навык
+// амплуа задаёт основу (0-8.5), текущая форма добавляет до 1.5 звезды
+// сверху при отличной форме.
+export function estimatePotentialRating(player: Pick<SquadPlayer, "skills" | "form" | "positionGroup">): number {
+  const mainSkill = player.skills[mainSkillByGroup[player.positionGroup]];
+  const base = (mainSkill / 20) * 8.5;
+  const formBonus = (player.form / 8) * 1.5;
+  return Math.max(0, Math.min(10, base + formBonus));
 }

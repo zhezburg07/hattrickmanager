@@ -57,7 +57,11 @@ export default async function SquadPage() {
       throw new Error(`HTTP ${playersRaw.httpStatus}: ${playersRaw.rawXml.slice(0, 200)}`);
     }
     players = parsePlayersDetailedXml(playersRaw.rawXml, homeCountry, countryIdLookupResult.lookup ?? undefined);
-    players = players.map((p) => ({ ...p, lastMatchRating: lastMatchRatingResult.ratings[p.id] }));
+    players = players.map((p) => ({
+      ...p,
+      lastMatchRating: lastMatchRatingResult.lastMatchRatings[p.id],
+      recentBestRating: lastMatchRatingResult.bestOfRecentRatings[p.id],
+    }));
     if (SHOW_NATIONALITY_DEBUG) debugPlayers = debugRawPlayerCountryIds(playersRaw.rawXml, 3);
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
@@ -104,8 +108,12 @@ export default async function SquadPage() {
               )}
               <div>
                 Рейтинг последнего матча:{" "}
-                {Object.keys(lastMatchRatingResult.ratings).length
-                  ? `получено, игроков с рейтингом: ${Object.keys(lastMatchRatingResult.ratings).length}`
+                {Object.keys(lastMatchRatingResult.lastMatchRatings).length
+                  ? `получено, игроков с рейтингом: ${Object.keys(lastMatchRatingResult.lastMatchRatings).length}`
+                  : "не получено"}
+                {" · "}Лучший из последних матчей:{" "}
+                {Object.keys(lastMatchRatingResult.bestOfRecentRatings).length
+                  ? `получено, игроков: ${Object.keys(lastMatchRatingResult.bestOfRecentRatings).length}`
                   : "не получено"}
               </div>
               {lastMatchRatingResult.error && (

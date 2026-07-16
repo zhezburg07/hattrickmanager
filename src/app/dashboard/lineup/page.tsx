@@ -33,7 +33,11 @@ export default async function LineupPage() {
       throw new Error(`HTTP ${playersRaw.httpStatus}: ${playersRaw.rawXml.slice(0, 200)}`);
     }
     players = parsePlayersDetailedXml(playersRaw.rawXml, homeCountry, countryIdLookupResult.lookup ?? undefined);
-    players = players.map((p) => ({ ...p, lastMatchRating: lastMatchRatingResult.ratings[p.id] }));
+    players = players.map((p) => ({
+      ...p,
+      lastMatchRating: lastMatchRatingResult.lastMatchRatings[p.id],
+      recentBestRating: lastMatchRatingResult.bestOfRecentRatings[p.id],
+    }));
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     error = `Состав (players): ${message}`;
