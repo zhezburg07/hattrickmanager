@@ -1,4 +1,7 @@
 import Header from "@/components/Header";
+import TopInfoBar from "@/components/TopInfoBar";
+import HeroBanner from "@/components/HeroBanner";
+import WelcomeSection from "@/components/WelcomeSection";
 import FeaturesSection from "@/components/FeaturesSection";
 import ProductShowcase from "@/components/ProductShowcase";
 import PricingSection from "@/components/PricingSection";
@@ -12,8 +15,11 @@ const SHOW_PRICING_SECTION = false;
 export default function Home() {
   return (
     <>
+      <TopInfoBar />
       <Header />
       <main>
+        <HeroBanner />
+        <WelcomeSection />
         <FeaturesSection />
         <ProductShowcase />
         {SHOW_PRICING_SECTION && <PricingSection />}

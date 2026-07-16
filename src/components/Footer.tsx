@@ -12,6 +12,9 @@ export default function Footer() {
           <Link href="/how-it-works" className={styles.link}>
             Как это работает
           </Link>
+          <Link href="/contact" className={styles.link}>
+            Контакты
+          </Link>
           <Link href="/privacy" className={styles.link}>
             Политика конфиденциальности
           </Link>

@@ -1,0 +1,75 @@
+.banner {
+  position: relative;
+  background-image: url("/hero-stadium.svg");
+  background-size: cover;
+  background-position: center;
+  border-bottom: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(15, 33, 28, 0.35) 0%, rgba(15, 33, 28, 0.75) 100%);
+}
+
+.inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 64px 24px;
+  text-align: center;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.logoMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 12px;
+  background: var(--color-accent);
+  color: var(--color-bg-darker);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.logoText strong {
+  color: var(--color-accent);
+}
+
+.tagline {
+  font-size: 15px;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+@media (max-width: 560px) {
+  .inner {
+    padding: 44px 20px;
+  }
+
+  .logo {
+    font-size: 26px;
+    gap: 10px;
+  }
+
+  .logoMark {
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+    border-radius: 10px;
+  }
+}

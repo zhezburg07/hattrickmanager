@@ -1,0 +1,71 @@
+<svg viewBox="0 0 1600 520" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f211c" />
+      <stop offset="65%" stop-color="#152c26" />
+      <stop offset="100%" stop-color="#1c3830" />
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="0%" r="75%">
+      <stop offset="0%" stop-color="#c9a227" stop-opacity="0.16" />
+      <stop offset="100%" stop-color="#c9a227" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="pitch" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#234d3c" />
+      <stop offset="100%" stop-color="#16352a" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="520" fill="url(#sky)" />
+  <rect width="1600" height="520" fill="url(#glow)" />
+
+  <!-- floodlight pylons -->
+  <g opacity="0.9">
+    <rect x="70" y="60" width="8" height="230" fill="#2c4a40" />
+    <g>
+      <circle cx="74" cy="55" r="26" fill="#c9a227" opacity="0.18" />
+      <rect x="34" y="30" width="80" height="26" rx="4" fill="#2c4a40" />
+      <circle cx="50" cy="43" r="5" fill="#e0b830" />
+      <circle cx="68" cy="43" r="5" fill="#e0b830" />
+      <circle cx="86" cy="43" r="5" fill="#e0b830" />
+      <circle cx="104" cy="43" r="5" fill="#e0b830" />
+    </g>
+  </g>
+  <g opacity="0.9">
+    <rect x="1522" y="60" width="8" height="230" fill="#2c4a40" />
+    <g>
+      <circle cx="1526" cy="55" r="26" fill="#c9a227" opacity="0.18" />
+      <rect x="1486" y="30" width="80" height="26" rx="4" fill="#2c4a40" />
+      <circle cx="1502" cy="43" r="5" fill="#e0b830" />
+      <circle cx="1520" cy="43" r="5" fill="#e0b830" />
+      <circle cx="1538" cy="43" r="5" fill="#e0b830" />
+      <circle cx="1556" cy="43" r="5" fill="#e0b830" />
+    </g>
+  </g>
+
+  <!-- stand bowl silhouette (back) -->
+  <path d="M-40 340 C 300 230, 1300 230, 1640 340 L 1640 260 C 1300 160, 300 160, -40 260 Z" fill="#1c3830" opacity="0.9" />
+  <!-- seating tier hatch lines -->
+  <g stroke="#2c4a40" stroke-width="2" opacity="0.6">
+    <path d="M-20 330 C 320 225, 1280 225, 1620 330" fill="none" />
+    <path d="M-10 305 C 320 205, 1280 205, 1610 305" fill="none" />
+    <path d="M0 280 C 320 188, 1280 188, 1600 280" fill="none" />
+  </g>
+
+  <!-- pitch -->
+  <ellipse cx="800" cy="470" rx="900" ry="140" fill="url(#pitch)" />
+  <ellipse cx="800" cy="470" rx="900" ry="140" fill="none" stroke="#2c4a40" stroke-width="3" opacity="0.7" />
+  <ellipse cx="800" cy="470" rx="140" ry="34" fill="none" stroke="#3c6a54" stroke-width="2" opacity="0.7" />
+  <line x1="800" y1="345" x2="800" y2="595" stroke="#3c6a54" stroke-width="2" opacity="0.5" />
+
+  <!-- crowd stand front (foreground, darkest) -->
+  <path d="M-40 420 C 300 330, 1300 330, 1640 420 L 1640 520 L -40 520 Z" fill="#0f211c" />
+  <g fill="#c9a227" opacity="0.35">
+    <circle cx="120" cy="400" r="2.5" /><circle cx="160" cy="392" r="2.5" /><circle cx="200" cy="386" r="2.5" />
+    <circle cx="260" cy="378" r="2.5" /><circle cx="330" cy="368" r="2.5" /><circle cx="410" cy="360" r="2.5" />
+    <circle cx="500" cy="352" r="2.5" /><circle cx="600" cy="346" r="2.5" /><circle cx="700" cy="342" r="2.5" />
+    <circle cx="800" cy="340" r="2.5" /><circle cx="900" cy="342" r="2.5" /><circle cx="1000" cy="346" r="2.5" />
+    <circle cx="1100" cy="352" r="2.5" /><circle cx="1190" cy="360" r="2.5" /><circle cx="1270" cy="368" r="2.5" />
+    <circle cx="1340" cy="378" r="2.5" /><circle cx="1400" cy="386" r="2.5" /><circle cx="1440" cy="392" r="2.5" />
+    <circle cx="1480" cy="400" r="2.5" />
+  </g>
+</svg>
