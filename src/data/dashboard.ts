@@ -23,11 +23,6 @@ export function formatMatchDateTime(raw: string): { shortDate: string; time: str
   return { shortDate: day && month ? `${day}.${month}` : raw, time };
 }
 
-export interface FinanceLine {
-  label: string;
-  amount: number;
-}
-
 // Официальная словесная шкала настроения болельщиков Hattrick — 12 уровней
 // (1-12), от худшего к лучшему.
 const fanMoodWordsDesc = [
