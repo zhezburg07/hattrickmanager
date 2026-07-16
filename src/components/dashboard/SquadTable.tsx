@@ -8,7 +8,6 @@ import {
   skillLabel,
   skillWord,
   formWord,
-  leadershipWord,
   staminaToLevel,
   type SquadPlayer,
   type PlayerStatus,
@@ -39,9 +38,7 @@ type SortKey =
   | "form"
   | "stamina"
   | SkillKey
-  | "leadership"
   | "tsi"
-  | "salary"
   | "status"
   | "loyalty"
   | "rating";
@@ -71,8 +68,6 @@ const baseColumns: { key: SortKey; label: string; title?: string }[] = [
   { key: "experience", label: "Опыт" },
   { key: "stamina", label: "Вынос-ть" },
   ...skillKeys.map((k) => ({ key: k as SortKey, label: skillShortLabel[k], title: skillLabel[k] })),
-  { key: "leadership", label: "Лидер", title: "Лидерство" },
-  { key: "salary", label: "Зарплата" },
   { key: "loyalty", label: "Предан.", title: "Преданность клубу" },
   { key: "rating", label: "Рейтинг", title: "Рейтинг за последний сыгранный матч" },
 ];
@@ -101,16 +96,12 @@ function getValue(player: SquadPlayer, key: SortKey, overrides: PositionOverride
       return player.stamina;
     case "experience":
       return player.experience;
-    case "leadership":
-      return player.leadership;
     case "loyalty":
       return player.isClubProduct ? 21 : (player.loyalty ?? -1);
     case "rating":
       return player.lastMatchRating ?? -1;
     case "tsi":
       return player.tsi;
-    case "salary":
-      return player.salary;
     case "status":
       return statusRank[player.status];
     default:
@@ -124,10 +115,6 @@ function tierFromRatio(ratio: number): string {
   if (ratio >= 0.65) return styles.skillTierHigh;
   if (ratio >= 0.3) return styles.skillTierMid;
   return styles.skillTierLow;
-}
-
-function formatSalary(value: number): string {
-  return `${value.toLocaleString("ru-RU")} ₸`;
 }
 
 // Игровой год Hattrick — 112 дней. Дробная часть возраста: округляем дни до
@@ -179,24 +166,6 @@ function StatusIndicator({ status }: { status: PlayerStatus }) {
     return <ThumbsUpIcon />;
   }
   return <StatusTag status={status} />;
-}
-
-function LevelCell({
-  word,
-  ratio,
-  diff = "none",
-  title,
-}: {
-  word: string;
-  ratio: number;
-  diff?: DiffDirection;
-  title?: string;
-}) {
-  return (
-    <td className={`${styles.skillCell} ${diffClass(diff)}`} title={title}>
-      <span className={`${styles.skillWord} ${tierFromRatio(ratio)}`}>{word}</span>
-    </td>
-  );
 }
 
 // Навыки (Вратарь/Защита/.../Стандарты), Опыт и Преданность — числом по
@@ -455,8 +424,6 @@ export default function SquadTable({
                     hoverWord={diffTitle(skillLabel[k], prev?.skills[k], p.skills[k]) ?? skillWord(p.skills[k])}
                   />
                 ))}
-                <LevelCell word={leadershipWord(p.leadership)} ratio={p.leadership / 7} />
-                <td className={styles.moneyCell}>{formatSalary(p.salary)}</td>
                 {hasLoyalty && <LoyaltyCell player={p} />}
                 {hasRating && <RatingCell rating={p.lastMatchRating} />}
               </tr>
@@ -511,9 +478,6 @@ export default function SquadTable({
               >
                 TSI <b>{p.tsi.toLocaleString("ru-RU")}</b>
               </span>
-              <span>
-                Зарплата <b>{formatSalary(p.salary)}</b>
-              </span>
             </div>
 
             <div className={styles.playerCardSkills}>
@@ -533,10 +497,6 @@ export default function SquadTable({
               >
                 <span className={styles.playerCardSkillLabel}>Опыт</span>
                 <span className={styles.playerCardSkillValue}>{p.experience}</span>
-              </div>
-              <div className={styles.playerCardSkillRow}>
-                <span className={styles.playerCardSkillLabel}>Лидерство</span>
-                <span className={styles.playerCardSkillValue}>{leadershipWord(p.leadership)}</span>
               </div>
               {hasLoyalty && (
                 <div
