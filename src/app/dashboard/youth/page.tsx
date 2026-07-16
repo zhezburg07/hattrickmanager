@@ -38,7 +38,7 @@ async function resolveYouthPlayers(tokens: StoredHattrickTokens): Promise<{ play
 }
 
 export default async function YouthPage() {
-  const tokens = getRequiredHattrickTokens();
+  const tokens = await getRequiredHattrickTokens();
   const [{ youthLevel, error: levelError }, { players, error: playersError }] = await Promise.all([
     resolveYouthLevel(tokens),
     resolveYouthPlayers(tokens),

@@ -16,7 +16,7 @@ async function fetchPlayersRaw(tokens: StoredHattrickTokens) {
 }
 
 export default async function LineupPage() {
-  const tokens = getRequiredHattrickTokens();
+  const tokens = await getRequiredHattrickTokens();
 
   const [{ homeCountry }, playersRaw, countryIdLookupResult, lastMatchRatingResult] = await Promise.all([
     resolveRealHomeCountry(tokens),

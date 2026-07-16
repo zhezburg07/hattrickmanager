@@ -339,7 +339,7 @@ function errorMessage(err: unknown): string {
 const SHOW_LEAGUE_DEBUG_PANEL = false;
 
 export default async function DashboardPage() {
-  const tokens = getRequiredHattrickTokens();
+  const tokens = await getRequiredHattrickTokens();
   const hattrickUserId = getStoredHattrickUserId();
   const [data, weeklyTsi] = await Promise.all([
     resolveDashboardData(tokens),

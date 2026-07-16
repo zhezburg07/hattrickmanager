@@ -37,7 +37,7 @@ async function resolveEconomy(
 }
 
 export default async function FinancePage() {
-  const tokens = getRequiredHattrickTokens();
+  const tokens = await getRequiredHattrickTokens();
   const hattrickUserId = getStoredHattrickUserId();
 
   const [{ data: economy, error }, { label: currencyLabel }] = await Promise.all([

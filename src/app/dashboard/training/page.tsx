@@ -52,7 +52,7 @@ async function resolveTraining(tokens: StoredHattrickTokens): Promise<RealTraini
 }
 
 export default async function TrainingPage() {
-  const tokens = getRequiredHattrickTokens();
+  const tokens = await getRequiredHattrickTokens();
   const [{ coach, error }, training] = await Promise.all([resolveCoach(tokens), resolveTraining(tokens)]);
 
   return (

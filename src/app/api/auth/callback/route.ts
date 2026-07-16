@@ -2,6 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildAuthorizationHeader, buildOAuthParams, HATTRICK_OAUTH_URLS } from "@/lib/hattrickOAuth";
 import { requestChppXmlRaw } from "@/lib/hattrickApi";
 import { parseManagerXml } from "@/lib/manager";
+import { saveHattrickTokens } from "@/lib/hattrickTokensDb";
+import { SESSION_COOKIE, buildSessionCookieValue } from "@/lib/siteSession";
+
+// Manager.xml обычно отвечает с первого раза — но раньше сбой здесь просто
+// пропускался молча (UserID был нужен только для необязательной истории
+// навыков). Теперь UserID ещё и ключ, под которым токен сохраняется в базу
+// (см. src/lib/hattrickTokensDb.ts) — без него нельзя выдать долгоживущую
+// сессию, поэтому пробуем дважды, прежде чем сдаться.
+async function fetchManagerUserId(accessToken: string, accessTokenSecret: string): Promise<string | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const managerRaw = await requestChppXmlRaw("manager", {}, { accessToken, accessTokenSecret });
+      if (managerRaw.httpStatus >= 200 && managerRaw.httpStatus < 300) {
+        return parseManagerXml(managerRaw.rawXml).userId;
+      }
+    } catch {
+      // попробуем ещё раз — см. цикл
+    }
+  }
+  return null;
+}
 
 // Шаг 3 из 3 подключения к Hattrick: "Access Token".
 //
@@ -100,49 +121,45 @@ export async function GET(request: NextRequest) {
   }
 
   // Hattrick UserID — стабильный идентификатор менеджера (в отличие от
-  // access-токена, не меняется), нужен как ключ для истории навыков между
-  // визитами (см. src/lib/playerHistoryDb.ts). Если запрос не удался — не
-  // блокируем вход из-за этого, просто история между визитами не будет
-  // сохраняться для этой сессии.
-  let managerUserId: string | null = null;
+  // access-токена, не меняется) — теперь это ключ, под которым токен
+  // сохраняется в базе (см. fetchManagerUserId выше и src/lib/hattrickTokensDb.ts),
+  // так что без него нельзя выдать долгоживущую сессию сайта.
+  const managerUserId = await fetchManagerUserId(accessToken, accessTokenSecret);
+
+  if (!managerUserId) {
+    return NextResponse.json(
+      {
+        error:
+          "Hattrick подтвердил доступ, но не удалось определить ваш UserID (manager.xml не ответил дважды подряд) — без него нельзя сохранить долгоживущую сессию. Попробуйте подключиться ещё раз.",
+      },
+      { status: 502 },
+    );
+  }
+
   try {
-    const managerRaw = await requestChppXmlRaw("manager", {}, { accessToken, accessTokenSecret });
-    if (managerRaw.httpStatus >= 200 && managerRaw.httpStatus < 300) {
-      managerUserId = parseManagerXml(managerRaw.rawXml).userId;
-    }
-  } catch {
-    // см. комментарий выше — не блокируем вход
+    await saveHattrickTokens(managerUserId, accessToken, accessTokenSecret);
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error: `Не удалось сохранить токен доступа в базе данных: ${err instanceof Error ? err.message : "неизвестная ошибка"}`,
+      },
+      { status: 500 },
+    );
   }
 
   const redirectResponse = NextResponse.redirect(new URL("/dashboard", request.url));
 
-  // Постоянный ключ доступа — сохраняем его надолго (Hattrick не ограничивает
-  // срок жизни access token, он живёт, пока пользователь сам не отзовёт
-  // доступ в настройках Hattrick). httpOnly — недоступен для чтения из
-  // JavaScript в браузере, виден только серверу.
-  redirectResponse.cookies.set("hattrick_access_token", accessToken, {
+  // Собственная долгоживущая cookie сессии сайта (см. src/lib/siteSession.ts)
+  // — содержит только подписанный Hattrick UserID, а не сам OAuth-токен (тот
+  // теперь в базе). При следующих визитах src/lib/hattrickApi.ts находит
+  // токен по этой cookie без повторного прохождения OAuth-флоу.
+  redirectResponse.cookies.set(SESSION_COOKIE, buildSessionCookieValue(managerUserId), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 400, // ~400 дней — максимум, который разрешают браузеры
     path: "/",
   });
-  redirectResponse.cookies.set("hattrick_access_token_secret", accessTokenSecret, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 400,
-    path: "/",
-  });
-  if (managerUserId) {
-    redirectResponse.cookies.set("hattrick_user_id", managerUserId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 400,
-      path: "/",
-    });
-  }
 
   // Временный пропуск больше не нужен — убираем за собой.
   redirectResponse.cookies.delete("hattrick_request_token");

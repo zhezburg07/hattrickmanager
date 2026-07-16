@@ -71,7 +71,7 @@ async function resolveCupMatches(
 }
 
 export default async function CupPage() {
-  const tokens = getRequiredHattrickTokens();
+  const tokens = await getRequiredHattrickTokens();
 
   const { teamId, stillInCup, cupId: cupIdFromTeamDetails, error: teamError } = await resolveTeamCupInfo(tokens);
 

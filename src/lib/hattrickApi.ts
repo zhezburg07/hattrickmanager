@@ -1,22 +1,34 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { buildAuthorizationHeader, buildOAuthParams, HATTRICK_OAUTH_URLS } from "./hattrickOAuth";
+import { SESSION_COOKIE, verifySessionCookieValue } from "./siteSession";
+import { getHattrickTokens } from "./hattrickTokensDb";
 
 export interface StoredHattrickTokens {
   accessToken: string;
   accessTokenSecret: string;
 }
 
-// Читает постоянный ключ доступа, сохранённый в cookie на шаге 3 OAuth
-// (см. /api/auth/callback). Возвращает null, если пользователь ещё не
-// подключал команду.
-export function getStoredHattrickTokens(): StoredHattrickTokens | null {
-  const cookieStore = cookies();
-  const accessToken = cookieStore.get("hattrick_access_token")?.value;
-  const accessTokenSecret = cookieStore.get("hattrick_access_token_secret")?.value;
+// Читает собственную долгоживущую cookie сессии сайта (см.
+// src/lib/siteSession.ts), проверяет подпись и по извлечённому из неё
+// Hattrick UserID достаёт сохранённый в базе OAuth-токен (см.
+// src/lib/hattrickTokensDb.ts) — так пользователю не нужно заново проходить
+// OAuth-авторизацию Hattrick на каждом визите, пока он сам не выйдет
+// (/api/auth/logout) или не отзовёт доступ на самом Hattrick. Возвращает
+// null, если cookie отсутствует/недействительна, либо токен не нашёлся в
+// базе (например, база временно недоступна).
+export async function getStoredHattrickTokens(): Promise<StoredHattrickTokens | null> {
+  const cookieValue = cookies().get(SESSION_COOKIE)?.value;
+  if (!cookieValue) return null;
 
-  if (!accessToken || !accessTokenSecret) return null;
-  return { accessToken, accessTokenSecret };
+  const userId = verifySessionCookieValue(cookieValue);
+  if (!userId) return null;
+
+  try {
+    return await getHattrickTokens(userId);
+  } catch {
+    return null;
+  }
 }
 
 // Для страниц личного кабинета (/dashboard/**): src/app/dashboard/layout.tsx
@@ -24,22 +36,21 @@ export function getStoredHattrickTokens(): StoredHattrickTokens | null {
 // отрендерится любая из этих страниц, так что к моменту вызова здесь токены
 // гарантированно есть. Redirect на всякий случай — защита от прямого вызова
 // без layout (например, из будущего API-роута), а не ожидаемый путь.
-export function getRequiredHattrickTokens(): StoredHattrickTokens {
-  const tokens = getStoredHattrickTokens();
+export async function getRequiredHattrickTokens(): Promise<StoredHattrickTokens> {
+  const tokens = await getStoredHattrickTokens();
   if (!tokens) {
     redirect("/");
   }
   return tokens;
 }
 
-// Hattrick UserID, сохранённый в cookie при входе (см. /api/auth/callback) —
-// стабильный ключ для истории навыков между визитами (см.
-// src/lib/playerHistoryDb.ts). Может отсутствовать, даже если пользователь
-// подключён (например, если запрос manager.xml не удался при входе) — тогда
-// история между визитами просто не сохраняется, остальной сайт работает как
-// обычно.
+// Hattrick UserID зашит (подписанным) внутрь cookie сессии сайта — отдельной
+// cookie для него больше не заводим. В отличие от getStoredHattrickTokens
+// выше, здесь не нужен поход в базу, поэтому функция остаётся синхронной.
 export function getStoredHattrickUserId(): string | null {
-  return cookies().get("hattrick_user_id")?.value ?? null;
+  const cookieValue = cookies().get(SESSION_COOKIE)?.value;
+  if (!cookieValue) return null;
+  return verifySessionCookieValue(cookieValue);
 }
 
 export interface ChppRawResponse {

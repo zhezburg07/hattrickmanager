@@ -31,7 +31,7 @@ async function resolveMatchesData(
 }
 
 export default async function MatchesPage() {
-  const tokens = getRequiredHattrickTokens();
+  const tokens = await getRequiredHattrickTokens();
   const { matches, error } = await resolveMatchesData(tokens);
 
   return (

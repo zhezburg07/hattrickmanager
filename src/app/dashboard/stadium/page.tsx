@@ -23,7 +23,7 @@ async function resolveArenaData(
 }
 
 export default async function StadiumPage() {
-  const tokens = getRequiredHattrickTokens();
+  const tokens = await getRequiredHattrickTokens();
 
   const [{ data, error }, { label: currencyLabel }] = await Promise.all([
     resolveArenaData(tokens),

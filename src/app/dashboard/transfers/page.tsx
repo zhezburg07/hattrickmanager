@@ -6,7 +6,7 @@ import { getRequiredHattrickTokens } from "@/lib/hattrickApi";
 import { resolveTransferListings } from "@/lib/transferMarket";
 
 export default async function TransfersPage() {
-  const tokens = getRequiredHattrickTokens();
+  const tokens = await getRequiredHattrickTokens();
   const { listings, error } = await resolveTransferListings(tokens);
 
   return (

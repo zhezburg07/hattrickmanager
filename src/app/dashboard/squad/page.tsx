@@ -37,7 +37,7 @@ async function resolveTrainerPlayerId(tokens: StoredHattrickTokens): Promise<num
 const SHOW_NATIONALITY_DEBUG = false;
 
 export default async function SquadPage() {
-  const tokens = getRequiredHattrickTokens();
+  const tokens = await getRequiredHattrickTokens();
 
   const [{ homeCountry, error: homeCountryError }, playersRaw, countryIdLookupResult, trainerPlayerId, lastMatchRatingResult] =
     await Promise.all([

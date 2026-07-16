@@ -5,8 +5,8 @@ import { getStoredHattrickTokens } from "@/lib/hattrickApi";
 // страница внутри /dashboard сама проверяла токены и показывала демо-данные
 // вместо реальных; теперь демо-режима нет, и вход в раздел без подключённой
 // команды просто ведёт на главную с призывом "Подключить команду".
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const tokens = getStoredHattrickTokens();
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const tokens = await getStoredHattrickTokens();
   if (!tokens) {
     redirect("/");
   }

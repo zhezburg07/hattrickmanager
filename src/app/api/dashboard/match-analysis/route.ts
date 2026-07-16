@@ -8,7 +8,7 @@ import { resolveMatchAnalysis } from "@/lib/matchAnalysis";
 // сразу (это был бы десяток лишних обращений к CHPP на одну загрузку
 // страницы).
 export async function GET(request: NextRequest) {
-  const tokens = getStoredHattrickTokens();
+  const tokens = await getStoredHattrickTokens();
   if (!tokens) {
     return NextResponse.json({ error: "Не авторизовано" }, { status: 401 });
   }
