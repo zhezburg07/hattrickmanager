@@ -6,10 +6,10 @@ import { SESSION_COOKIE, buildSessionCookieValue } from "@/lib/siteSession";
 // Вызывается один раз при каждом заходе в личный кабинет (см.
 // src/components/SessionUpgrader.tsx, подключён в dashboard/layout.tsx).
 // Если пользователь вошёл через "мягкий" откат (см. /api/auth/callback —
-// manager.xml не ответил при входе, поэтому долгоживущая сессия не была
-// выдана), здесь мы пробуем получить UserID ещё раз и, если получилось,
-// "дозаписываем" долгоживущую сессию — без этого при каждом закрытии
-// браузера пришлось бы заново проходить OAuth.
+// managercompendium.xml не ответил при входе, поэтому долгоживущая сессия
+// не была выдана), здесь мы пробуем получить UserID ещё раз и, если
+// получилось, "дозаписываем" долгоживущую сессию — без этого при каждом
+// закрытии браузера пришлось бы заново проходить OAuth.
 export async function POST(request: NextRequest) {
   if (request.cookies.get(SESSION_COOKIE)?.value) {
     return NextResponse.json({ upgraded: false, reason: "already-upgraded" });

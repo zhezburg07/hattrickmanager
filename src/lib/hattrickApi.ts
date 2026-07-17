@@ -17,11 +17,12 @@ export interface StoredHattrickTokens {
 // (/api/auth/logout) или не отзовёт доступ на самом Hattrick.
 //
 // Запасной путь ("мягкий" вход, см. /api/auth/callback): если при входе не
-// удалось определить Hattrick UserID (manager.xml не ответил) — долгоживущая
-// cookie сессии сайта не выдаётся вообще, но токен всё равно кладётся прямо
-// в обычную cookie браузера (без базы данных). Здесь мы проверяем и её —
-// иначе такой вход вообще не работал бы. Апгрейд до долгоживущей сессии,
-// если manager.xml сработает позже, — см. /api/auth/session-upgrade.
+// удалось определить Hattrick UserID (managercompendium.xml не ответил) —
+// долгоживущая cookie сессии сайта не выдаётся вообще, но токен всё равно
+// кладётся прямо в обычную cookie браузера (без базы данных). Здесь мы
+// проверяем и её — иначе такой вход вообще не работал бы. Апгрейд до
+// долгоживущей сессии, если managercompendium.xml сработает позже, — см.
+// /api/auth/session-upgrade.
 export async function getStoredHattrickTokens(): Promise<StoredHattrickTokens | null> {
   const cookieStore = cookies();
   const cookieValue = cookieStore.get(SESSION_COOKIE)?.value;

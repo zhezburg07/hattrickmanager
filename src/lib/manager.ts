@@ -7,24 +7,35 @@ export interface RealManagerInfo {
   loginName: string;
 }
 
-// Разбирает XML-ответ CHPP на файл manager.xml — это единственный файл CHPP,
-// который отдаёт стабильный идентификатор именно МЕНЕДЖЕРА (UserID), а не
-// команды (TeamID из teamdetails.xml может однажды отличаться, если у
-// пользователя несколько команд). UserID и нужен как ключ для хранения
-// истории навыков между визитами (см. src/lib/playerHistoryDb.ts) — в
-// отличие от access-токена, он не меняется и не истекает.
+// Разбирает XML-ответ CHPP на файл managercompendium.xml — это единственный
+// файл CHPP, который отдаёт стабильный идентификатор именно МЕНЕДЖЕРА
+// (UserID), а не команды (TeamID из teamdetails.xml может однажды
+// отличаться, если у пользователя несколько команд). UserID и нужен как
+// ключ для хранения истории навыков между визитами (см.
+// src/lib/playerHistoryDb.ts) — в отличие от access-токена, он не меняется
+// и не истекает.
+//
+// ВАЖНО: файл называется "managercompendium", а не "manager" — прежнее имя
+// было неверным и стабильно давало HTTP 401 (CHPP не распознаёт
+// несуществующий файл как валидный запрос). Подтверждено по официальной
+// схеме CHPP: константа имени файла — "managercompendium", версия "1.7".
+// Структура ответа тоже отличается от того, что предполагалось раньше:
+// UserID встречается ДВАЖДЫ — как <User> прямо в корне (ID пользователя,
+// от чьего имени выполнен запрос) и как <Manager><UserID> внутри контейнера
+// Manager (тот же менеджер, но внутри его собственных данных). Проверяем
+// оба варианта на случай различий в конкретном ответе.
 export function parseManagerXml(xml: string): RealManagerInfo {
   const parser = new XMLParser();
   const data = parser.parse(xml);
 
   const root = data?.HattrickData;
-  assertNoChppError(root, "manager");
+  assertNoChppError(root, "managercompendium");
 
   const manager = root?.Manager;
-  const userId = String(manager?.UserID ?? root?.UserID ?? "");
+  const userId = String(manager?.UserID ?? root?.User ?? root?.UserID ?? "");
 
   if (!userId) {
-    throw new Error("В ответе manager.xml нет UserID.");
+    throw new Error("В ответе managercompendium.xml нет UserID.");
   }
 
   return {
@@ -45,11 +56,11 @@ export interface ManagerUserIdResult {
 
 // UserID нужен, чтобы выдать долгоживущую сессию сайта (см.
 // src/lib/hattrickTokensDb.ts) — но получение UserID НЕ должно блокировать
-// сам вход: если manager.xml не отвечает, /api/auth/callback всё равно
-// пускает пользователя внутрь по обычной (не долгоживущей) сессии. Пробуем
-// несколько раз подряд на случай временного сбоя/задержки сразу после
-// обмена токена, но при неудаче — просто честно возвращаем причину, а не
-// бросаем исключение.
+// сам вход: если managercompendium.xml не отвечает, /api/auth/callback всё
+// равно пускает пользователя внутрь по обычной (не долгоживущей) сессии.
+// Пробуем несколько раз подряд на случай временного сбоя/задержки сразу
+// после обмена токена, но при неудаче — просто честно возвращаем причину, а
+// не бросаем исключение.
 export async function resolveManagerUserId(
   tokens: StoredHattrickTokens,
   attempts = 2,
@@ -57,7 +68,7 @@ export async function resolveManagerUserId(
   const diagnostics: string[] = [];
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const raw = await requestChppXmlRaw("manager", {}, tokens);
+      const raw = await requestChppXmlRaw("managercompendium", {}, tokens);
       if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
         diagnostics.push(`Попытка ${attempt}: HTTP ${raw.httpStatus} — ${raw.rawXml.slice(0, 200)}`);
         continue;

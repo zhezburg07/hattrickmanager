@@ -15,9 +15,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   // Если при входе не удалось выдать долгоживущую сессию (см.
-  // /api/auth/callback — manager.xml не ответил), там же ставится короткая
-  // cookie с точной причиной — показываем её один раз прямо здесь, а
-  // SessionUpgrader параллельно пробует "дозаписать" долгоживущую сессию.
+  // /api/auth/callback — managercompendium.xml не ответил), там же ставится
+  // короткая cookie с точной причиной — показываем её один раз прямо здесь,
+  // а SessionUpgrader параллельно пробует "дозаписать" долгоживущую сессию.
   const warningRaw = cookies().get("session_warning")?.value;
   const warning = warningRaw ? decodeURIComponent(warningRaw) : null;
 
