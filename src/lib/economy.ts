@@ -53,6 +53,19 @@ function num(value: unknown): number {
   return Number(value ?? 0);
 }
 
+// ПОДТВЕРЖДЁННЫЙ БАГ (сравнение с реальным отображением на hattrick.org):
+// все денежные поля economy.xml (Income*, Costs*, Cash, ...) приходят от
+// CHPP в внутренних единицах, равных 1/10 от реальной суммы в валюте — то
+// есть сырое значение нужно умножать на 10. Проверено на прямом сравнении:
+// raw IncomeSum×10 и raw CostsSum×10 точно совпали с "Общий доход"/"Общий
+// расход" на реальной странице финансов, как и raw ExpectedWeeksTotal×10 с
+// "Ожидаемые убытки". money() — как num(), но с этим множителем; используется
+// для ЛЮБОГО денежного поля economy.xml, тогда как num() остаётся для
+// неденежных счётчиков (FanClubSize, SupportersPopularity).
+function money(value: unknown): number {
+  return num(value) * 10;
+}
+
 // Названия полей ниже подтверждены на реальном ответе economy.xml (см.
 // диагностику в чате): IncomeSpectators, IncomeSponsors, IncomeTemporary,
 // IncomeFinancial, CostsArena, CostsPlayers, CostsStaff, CostsYouth,
@@ -62,18 +75,18 @@ function num(value: unknown): number {
 // показывается только то, что реально можно разделить, а "Разовый"
 // остаётся единой строкой без дальнейшего дробления.
 function parseWeekData(team: Record<string, unknown>): FinanceWeekData {
-  const spectators = num(team.IncomeSpectators);
-  const sponsors = num(team.IncomeSponsors);
-  const commission = num(team.IncomeFinancial);
-  const temporaryIncome = num(team.IncomeTemporary);
+  const spectators = money(team.IncomeSpectators);
+  const sponsors = money(team.IncomeSponsors);
+  const commission = money(team.IncomeFinancial);
+  const temporaryIncome = money(team.IncomeTemporary);
   const incomeSum = spectators + sponsors + commission + temporaryIncome;
 
-  const players = num(team.CostsPlayers);
-  const arena = num(team.CostsArena);
-  const staff = num(team.CostsStaff);
-  const youth = num(team.CostsYouth);
-  const interest = num(team.CostsFinancial);
-  const temporaryExpense = num(team.CostsTemporary);
+  const players = money(team.CostsPlayers);
+  const arena = money(team.CostsArena);
+  const staff = money(team.CostsStaff);
+  const youth = money(team.CostsYouth);
+  const interest = money(team.CostsFinancial);
+  const temporaryExpense = money(team.CostsTemporary);
   const expenseSum = players + arena + staff + youth + interest + temporaryExpense;
 
   return {
@@ -81,7 +94,7 @@ function parseWeekData(team: Record<string, unknown>): FinanceWeekData {
     incomeSum,
     expense: { players, arena, staff, youth, interest, temporary: temporaryExpense },
     expenseSum,
-    cash: num(team.Cash),
+    cash: money(team.Cash),
   };
 }
 
@@ -104,7 +117,7 @@ export function parseEconomyXml(xml: string): RealEconomy {
   const thisWeek = parseWeekData(team);
 
   return {
-    cash: num(team.Cash),
+    cash: money(team.Cash),
     fanClubSize: num(team.FanClubSize),
     supportersPopularity: num(popularityRaw),
     thisWeek,

@@ -167,7 +167,10 @@ export function parsePlayersDetailedXml(
       // Нет истории за прошлую неделю в одном снимке players.xml — заполняется
       // на клиенте из localStorage между синхронизациями, см. usePlayerStatChanges.
       prev: undefined,
-      salary: Number(p.Salary ?? 0),
+      // ×10 — тот же подтверждённый баг единиц измерения денег в CHPP, что
+      // и в economy.xml (см. src/lib/economy.ts): сырое значение Salary в
+      // players.xml тоже приходит в 1/10 от реальной суммы в валюте.
+      salary: Number(p.Salary ?? 0) * 10,
       status: injuryLevel > 0 ? "injured" : "squad",
       gamesPlayed: undefined,
       goalsScored: Number(p.LeagueGoals ?? 0) + Number(p.CupGoals ?? 0) + Number(p.FriendliesGoals ?? 0),
