@@ -33,16 +33,11 @@ export function parseTransfersXml(xml: string): RealTransferListing[] {
   const rawListings = root?.TransferListings?.TransferListing ?? root?.Team?.TransferList?.Transfer;
   const listings = asArray(rawListings);
 
-  // ×10 на денежных полях — тот же подтверждённый баг единиц измерения
-  // денег в CHPP, что и в economy.xml/players.xml (см. src/lib/economy.ts):
-  // сырые суммы приходят в 1/10 от реальной валюты. Само название полей
-  // (AskingPrice/MinimumBid, CurrentBid/HighestBid) здесь всё ещё
-  // предположение — это неизменившаяся часть общей осторожности этого файла.
   return listings.map((t) => ({
     playerId: Number(t.PlayerID ?? 0),
     playerName: String(t.PlayerName ?? ""),
-    askingPrice: Number(t.AskingPrice ?? t.MinimumBid ?? 0) * 10,
-    currentBid: Number(t.CurrentBid ?? t.HighestBid ?? 0) * 10,
+    askingPrice: Number(t.AskingPrice ?? t.MinimumBid ?? 0),
+    currentBid: Number(t.CurrentBid ?? t.HighestBid ?? 0),
     bidCount: Number(t.NumberOfBids ?? t.Bids ?? 0),
     deadline: String(t.Deadline ?? ""),
   }));
