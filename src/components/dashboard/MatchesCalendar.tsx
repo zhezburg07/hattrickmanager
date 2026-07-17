@@ -16,14 +16,20 @@ const competitionClass: Record<Competition, string> = {
 export default function MatchesCalendar({ matches }: { matches: SeasonMatch[] }) {
   const matchList = matches;
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const nextMatch = matchList.find((m) => m.ourScore === null) ?? null;
+  // matchList отсортирован от новых/ближайших к старым (сверху вниз) — все
+  // ещё не сыгранные матчи оказываются одним сплошным блоком в начале
+  // списка, и среди них ближайший по времени идёт ПОСЛЕДНИМ (у него
+  // наименьшая дата среди будущих) — поэтому берём последний элемент среди
+  // несыгранных, а не первый.
+  const upcomingMatches = matchList.filter((m) => m.ourScore === null);
+  const nextMatch = upcomingMatches.length > 0 ? upcomingMatches[upcomingMatches.length - 1] : null;
 
   return (
     <div className={styles.card}>
       <div className={styles.cardTitle}>Календарь сезона</div>
       <p className={styles.hint}>
-        Полный список игр сезона — лига, кубок и товарищеские матчи по порядку. Нажмите на сыгранный матч, чтобы
-        открыть полный анализ, или на предстоящий — чтобы задать указания на игру.
+        Полный список игр — лига, кубок и товарищеские матчи, от ближайших/недавних к самым старым. Нажмите на
+        сыгранный матч, чтобы открыть полный анализ, или на предстоящий — чтобы задать указания на игру.
       </p>
 
       <div className={styles.tableWrap}>

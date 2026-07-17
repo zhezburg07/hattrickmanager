@@ -25,9 +25,12 @@ export interface RealMatch {
   cupId: string | null;
 }
 
-// Разбирает XML-ответ CHPP на файл matches.xml — последние и ближайшие
-// матчи команды. Hattrick сам решает, что считать "нашей" и "чужой"
-// стороной по HomeTeamID/AwayTeamID — здесь просто сравниваем с ourTeamId.
+// Разбирает XML-ответ CHPP на файл matches.xml (или matchesarchive.xml —
+// более длинная история сезонов; Hattrick переиспользует ту же структуру
+// <Match>, см. аналогичный приём в src/lib/cupMatches.ts) — последние и
+// ближайшие матчи команды. Hattrick сам решает, что считать "нашей" и
+// "чужой" стороной по HomeTeamID/AwayTeamID — здесь просто сравниваем с
+// ourTeamId.
 export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
   const parser = new XMLParser();
   const data = parser.parse(xml);
@@ -35,7 +38,7 @@ export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
   const root = data?.HattrickData;
   assertNoChppError(root, "matches");
 
-  const rawMatches = root?.Team?.MatchList?.Match;
+  const rawMatches = root?.Team?.MatchList?.Match ?? root?.MatchList?.Match;
   const matches = Array.isArray(rawMatches) ? rawMatches : rawMatches ? [rawMatches] : [];
 
   return matches.map((m: Record<string, unknown>) => {
@@ -66,19 +69,36 @@ export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
   });
 }
 
+// Убирает дубликаты при объединении matches.xml (текущий сезон) и
+// matchesarchive.xml (более длинная история) — оба файла могут вернуть один
+// и тот же матч текущего сезона, оставляем только одну запись на MatchID.
+export function dedupeMatches(matches: RealMatch[]): RealMatch[] {
+  const seen = new Map<string, RealMatch>();
+  for (const m of matches) {
+    if (m.matchId) seen.set(m.matchId, m);
+  }
+  return [...seen.values()];
+}
+
 // Приводит реальные матчи к тому же виду, что и полный календарь сезона
-// (SeasonMatch) — для страницы "Матчи". CHPP не даёт номер тура лиги и не
-// позволяет надёжно отличить кубок от лиги (см. RealMatch.matchType) —
-// поэтому round всегда null, а соревнование — либо "Товарищеский" (matchType
-// "0", единственное достоверное значение), либо нейтральный "Официальный".
+// (SeasonMatch) — для страницы "Матчи". Сортировка — от новых/ближайших к
+// старым (сверху вниз), а не наоборот. CHPP не даёт номер тура лиги —
+// round всегда null. Соревнование: "Товарищеский" — единственное
+// достоверное значение (matchType "0"); "Кубок" — определяется по CupID
+// (см. RealMatch.cupId, не проверено на живом ответе); всё остальное
+// помечается "Лига" как наиболее вероятный вариант для обычного клуба, хотя
+// MatchType в CHPP на самом деле — контекстный ID турнира, а не простая
+// категория, так что для редких случаев (например, международные товарищеские
+// турниры) эта метка может быть неточной.
 export function toSeasonMatches(matches: RealMatch[]): SeasonMatch[] {
-  const sorted = [...matches].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = [...matches].sort((a, b) => b.date.localeCompare(a.date));
   return sorted.map((m, i) => {
     const { shortDate, time } = formatMatchDateTime(m.date);
+    const competition = m.matchType === "0" ? "Товарищеский" : m.cupId !== null ? "Кубок" : "Лига";
     return {
       id: Number(m.matchId) || i + 1,
       round: null,
-      competition: m.matchType === "0" ? "Товарищеский" : "Официальный",
+      competition,
       date: time ? `${shortDate} · ${time}` : shortDate,
       opponent: m.opponent,
       home: m.home,
