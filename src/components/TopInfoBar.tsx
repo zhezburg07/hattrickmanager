@@ -1,15 +1,16 @@
+import { resolveVisitStats } from "@/lib/vercelAnalytics";
 import styles from "./TopInfoBar.module.css";
 
-// Тестовые числа — реальная аналитика посещений пока не подключена.
-// Замените на реальные значения, когда появится счётчик (см. чат).
-const visitStats: { label: string; value: number }[] = [
-  { label: "Сегодня", value: 214 },
-  { label: "За неделю", value: 1_386 },
-  { label: "За месяц", value: 5_042 },
-  { label: "Всего", value: 28_957 },
-];
+function formatValue(value: number | null): string {
+  return value === null ? "—" : value.toLocaleString("ru-RU");
+}
 
-export default function TopInfoBar() {
+export default async function TopInfoBar() {
+  const { stats: visitStats, error } = await resolveVisitStats();
+  // Причина показывается только в серверных логах — на публичной странице
+  // не стоит светить детали настройки токенов перед посетителями сайта.
+  if (error) console.error("Счётчик посещений (Vercel Web Analytics):", error);
+
   return (
     <div className={styles.bar}>
       <div className={`container ${styles.inner}`}>
@@ -33,7 +34,7 @@ export default function TopInfoBar() {
           {visitStats.map((s) => (
             <span className={styles.stat} key={s.label}>
               <span className={styles.statLabel}>{s.label}</span>
-              <span className={styles.statValue}>{s.value.toLocaleString("ru-RU")}</span>
+              <span className={styles.statValue}>{formatValue(s.value)}</span>
             </span>
           ))}
         </div>

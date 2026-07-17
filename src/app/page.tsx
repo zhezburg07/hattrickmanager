@@ -12,6 +12,15 @@ import Footer from "@/components/Footer";
 // снова true.
 const SHOW_PRICING_SECTION = false;
 
+// Главная — иначе полностью статическая страница, но счётчик посещений в
+// TopInfoBar ходит за реальными данными (см. src/lib/vercelAnalytics.ts) —
+// без этого Next.js вшил бы числа один раз при сборке и больше не обновлял
+// их. Пока VERCEL_ANALYTICS_TOKEN не задан, этот запрос не выполняется
+// вовсе — явный revalidate здесь гарантирует, что счётчик начнёт
+// обновляться сам, как только переменные окружения появятся, без нового
+// деплоя ради этого.
+export const revalidate = 60;
+
 export default function Home() {
   return (
     <>
