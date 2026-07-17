@@ -19,14 +19,15 @@
 
 .badge {
   flex: 1;
-  text-align: center;
-  color: var(--color-text-muted);
-  font-weight: 700;
-  letter-spacing: 0.6px;
-  font-size: 10.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.badgeImg {
+  height: 24px;
+  width: auto;
+  max-width: 100%;
 }
 
 .stats {

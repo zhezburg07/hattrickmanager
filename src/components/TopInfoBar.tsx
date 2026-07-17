@@ -18,8 +18,15 @@ export default function TopInfoBar() {
             появится второй язык. */}
         <div className={styles.lang} aria-hidden="true" />
 
-        <div className={styles.badge} title="Логотип CHPP появится здесь после подключения">
-          CHPP CERTIFIED HATTRICK PRODUCT PROVIDER
+        <div className={styles.badge}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- маленький статичный логотип в 34px полосе, next/image избыточен */}
+          <img
+            src="/chpp-badge.png"
+            alt="CHPP Certified Hattrick Product Provider"
+            width={87}
+            height={50}
+            className={styles.badgeImg}
+          />
         </div>
 
         <div className={styles.stats}>
