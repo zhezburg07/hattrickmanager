@@ -112,11 +112,20 @@ export function filterTrainingRelevantMatches(matches: RealMatch[]): RealMatch[]
 
 // Убирает дубликаты при объединении matches.xml (текущий сезон) и
 // matchesarchive.xml (более длинная история) — оба файла могут вернуть один
-// и тот же матч текущего сезона, оставляем только одну запись на MatchID.
+// и тот же матч текущего сезона. ВАЖНО: побеждает ПЕРВОЕ вхождение, не
+// последнее — вызывающий код (matches/page.tsx) должен передавать
+// currentSeasonMatches (matches.xml, разбор которого подтверждён на живых
+// данных) первым аргументом, а archiveMatches вторым. Раньше было наоборот
+// (последнее вхождение побеждало) — из-за этого, если matchesarchive.xml
+// отвечал успешно, но его структура (ни разу не проверенная на живом
+// ответе) разбиралась чуть иначе, его версия того же MatchID тихо
+// перезаписывала уже правильно разобранную запись из matches.xml, портя
+// status/счёт у реально сыгранных матчей и превращая их в пустой список
+// после фильтрации.
 export function dedupeMatches(matches: RealMatch[]): RealMatch[] {
   const seen = new Map<string, RealMatch>();
   for (const m of matches) {
-    if (m.matchId) seen.set(m.matchId, m);
+    if (m.matchId && !seen.has(m.matchId)) seen.set(m.matchId, m);
   }
   return [...seen.values()];
 }
