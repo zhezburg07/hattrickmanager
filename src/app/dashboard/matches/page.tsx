@@ -6,7 +6,7 @@ import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
 import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
-import { parseMatchesXml, toSeasonMatches, dedupeMatches, type RealMatch } from "@/lib/matches";
+import { parseMatchesXml, toSeasonMatches, dedupeMatches, filterTrainingRelevantMatches, type RealMatch } from "@/lib/matches";
 import { resolveArenaChallenges } from "@/lib/hattrickArena";
 import type { SeasonMatch } from "@/data/matches";
 
@@ -54,7 +54,11 @@ async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<Matches
     }
 
     const merged = dedupeMatches([...currentSeasonMatches, ...archiveMatches]);
-    return { matches: toSeasonMatches(merged), error: null, archiveWarning };
+    // Только сыгранные матчи основной команды (лига/кубок/товарищеские) —
+    // без предстоящих, без юношеской команды, без Hattrick Arena/Masters/
+    // лестниц/приватных турниров (см. filterTrainingRelevantMatches).
+    const trainingRelevant = filterTrainingRelevantMatches(merged);
+    return { matches: toSeasonMatches(trainingRelevant), error: null, archiveWarning };
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     return { matches: null, error: `Матчи (matches): ${message}`, archiveWarning: null };

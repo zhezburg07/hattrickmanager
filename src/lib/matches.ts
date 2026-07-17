@@ -23,6 +23,21 @@ export interface RealMatch {
   // кладёт это поле сюда (не проверено на живом ответе; нужно для
   // cupmatches.xml, см. src/lib/cupMatches.ts).
   cupId: string | null;
+  // Какая игровая система сгенерировала матч — по независимому CHPP-клиенту
+  // (github.com/lucianoq/hattrick), поле <SourceSystem> принимает одно из
+  // трёх строковых значений: "hattrick" (основная команда, обычные лига/
+  // кубок/квалификация/товарищеские), "youth" (юношеская команда), или
+  // "htointegrated" (внешние интегрированные турниры — сюда попадают
+  // Hattrick Arena/Masters/лестницы/приватные турниры). Не проверено на
+  // живом ответе этого проекта — если поле отсутствует, остаётся null и
+  // матч по умолчанию считается относящимся к основной команде (см.
+  // filterTrainingRelevantMatches), чтобы отсутствие поля не обнулило весь
+  // список.
+  sourceSystem: string | null;
+  // Правила проведения товарищеского матча — 0 обычные, 1 по кубковым
+  // правилам, 12 матч сборной (нам, клубу, встретиться не должен, но
+  // проверяем на всякий случай) — тоже не проверено на живом ответе.
+  matchRuleId: string | null;
 }
 
 // Разбирает XML-ответ CHPP на файл matches.xml (или matchesarchive.xml —
@@ -54,6 +69,12 @@ export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
     const cupIdRaw = m.CupID ?? m.CupId;
     const cupId = cupIdRaw !== undefined && String(cupIdRaw) !== "" && String(cupIdRaw) !== "0" ? String(cupIdRaw) : null;
 
+    const sourceSystemRaw = m.SourceSystem;
+    const sourceSystem = sourceSystemRaw !== undefined ? String(sourceSystemRaw).toLowerCase() : null;
+
+    const matchRuleRaw = m.MatchRuleId ?? m.MatchRuleID;
+    const matchRuleId = matchRuleRaw !== undefined ? String(matchRuleRaw) : null;
+
     return {
       matchId: String(m.MatchID ?? ""),
       date: String(m.MatchDate ?? ""),
@@ -65,7 +86,27 @@ export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
       oppScore: homeGoals === null || awayGoals === null ? null : isHome ? awayGoals : homeGoals,
       matchType: String(m.MatchType ?? ""),
       cupId,
+      sourceSystem,
+      matchRuleId,
     };
+  });
+}
+
+// Оставляет только сыгранные матчи основной команды, реально учитываемые
+// Hattrick для тренировки: обычная игровая система ("hattrick" в
+// SourceSystem), исключая юношескую команду ("youth") и интегрированные
+// внешние турниры ("htointegrated" — Hattrick Arena, Masters, лестницы,
+// приватные турниры, которые правилами Hattrick не дают тренировки). Если
+// SourceSystem у матча не пришёл вовсе — матч по умолчанию считается
+// относящимся к основной команде (см. комментарий у RealMatch.sourceSystem),
+// чтобы отсутствие поля не срезало всю историю. matchRuleId "12" (товарищеский
+// матч сборной) исключается отдельно, на случай прямого совпадения.
+export function filterTrainingRelevantMatches(matches: RealMatch[]): RealMatch[] {
+  return matches.filter((m) => {
+    if (m.status !== "FINISHED" || m.ourScore === null || m.oppScore === null) return false;
+    if (m.sourceSystem !== null && m.sourceSystem !== "hattrick") return false;
+    if (m.matchRuleId === "12") return false;
+    return true;
   });
 }
 
