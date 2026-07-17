@@ -2,34 +2,32 @@ import { XMLParser } from "fast-xml-parser";
 import { assertNoChppError } from "./chppError";
 
 export interface FinanceIncomeBreakdown {
-  spectators: number;
-  sponsors: number;
-  soldPlayers: number;
-  commission: number;
-  // Остаток: incomeSum минус все статьи выше. Гарантирует, что сумма
-  // показанных строк всегда точно совпадает с реальным итогом Hattrick,
-  // даже если какое-то из предполагаемых названий полей ниже (see comment
-  // above parseWeekData) в вашем ответе отсутствует или называется иначе.
-  other: number;
+  spectators: number; // IncomeSpectators
+  sponsors: number; // IncomeSponsors
+  commission: number; // IncomeFinancial
+  // IncomeTemporary — Hattrick не делит эту сумму на "проданные игроки",
+  // "разовые бонусы" и т.п. отдельными полями, так что показываем её одной
+  // строкой, не пытаясь угадать дальнейшую разбивку.
+  temporary: number;
 }
 
 export interface FinanceExpenseBreakdown {
-  players: number; // Зарплата
-  arena: number; // Содержание стадиона
-  arenaBuilding: number; // Строительство стадиона
-  staff: number; // Персонал
-  youth: number; // Затраты на молодёжь
-  boughtPlayers: number; // Купленные игроки (включает ЗП за 1-ю неделю в клубе)
-  interest: number; // Проценты по кредиту
-  // Остаток — см. комментарий у FinanceIncomeBreakdown.other.
-  other: number;
+  players: number; // CostsPlayers — Зарплата
+  arena: number; // CostsArena — Содержание стадиона
+  staff: number; // CostsStaff — Персонал
+  youth: number; // CostsYouth — Затраты на молодёжь
+  interest: number; // CostsFinancial — Проценты по кредиту
+  // CostsTemporary — сюда же входят "купленные игроки" и "строительство
+  // стадиона" (отдельных полей под них Hattrick не даёт) — одна строка, без
+  // дальнейшего дробления.
+  temporary: number;
 }
 
 export interface FinanceWeekData {
   income: FinanceIncomeBreakdown;
-  incomeSum: number;
+  incomeSum: number; // = сумма всех статей income выше
   expense: FinanceExpenseBreakdown;
-  expenseSum: number;
+  expenseSum: number; // = сумма всех статей expense выше
   cash: number;
 }
 
@@ -43,10 +41,11 @@ export interface RealEconomy {
   // (Обзор) и dashboard/page.tsx, которые ждут именно эти имена.
   lastWeekIncome: number;
   lastWeekExpense: number;
-  // Сырые поля <Team> из economy.xml — только для временной диагностической
-  // панели (см. SHOW_ECONOMY_DEBUG в dashboard/finance/page.tsx), чтобы
-  // можно было свериться с реальными названиями полей, если какие-то из
-  // предположений ниже окажутся не теми на живом аккаунте.
+  // Сырые поля <Team> из economy.xml — раньше показывались во временной
+  // диагностической панели (см. историю SHOW_ECONOMY_DEBUG в
+  // dashboard/finance/page.tsx), пока названия полей ниже не были сверены с
+  // живым ответом. Сейчас сверены — оставлено на будущее, если понадобится
+  // диагностировать что-то ещё в этом файле.
   rawTeamFields: Record<string, unknown>;
 }
 
@@ -54,44 +53,33 @@ function num(value: unknown): number {
   return Number(value ?? 0);
 }
 
-// Подтверждённые на реальном ответе economy.xml названия полей (см.
-// git-историю, задача "Wire Финансы page to real economy.xml data"): Cash,
-// SupportersPopularityID, FanClubSize, LastIncomeSpectators,
-// LastIncomeSponsors, LastIncomeTemporary, LastIncomeFinancial,
-// LastIncomeSum, LastCostsPlayers, LastCostsArena, LastCostsStaff,
-// LastCostsYouth, LastCostsTemporary, LastCostsFinancial, LastCostsSum.
-//
-// Более детальные статьи (проданные/купленные игроки отдельно, строительство
-// стадиона отдельно от содержания, комиссионные, проценты по кредиту)
-// открытая документация CHPP не описывает — ниже лучшие предположения по
-// правдоподобным названиям полей. Если поле не нашлось, остаётся 0, а
-// разница уходит в статью "Разовый" (FinanceIncomeBreakdown.other /
-// FinanceExpenseBreakdown.other) — поэтому итоговые суммы дохода/расхода
-// (incomeSum/expenseSum, из подтверждённых LastIncomeSum/LastCostsSum)
-// всегда верны независимо от того, угаданы ли более мелкие статьи.
+// Названия полей ниже подтверждены на реальном ответе economy.xml (см.
+// диагностику в чате): IncomeSpectators, IncomeSponsors, IncomeTemporary,
+// IncomeFinancial, CostsArena, CostsPlayers, CostsStaff, CostsYouth,
+// CostsTemporary, CostsFinancial, Cash. Hattrick не отдаёт отдельные поля
+// для "проданных"/"купленных игроков" и "строительства стадиона" — эти
+// суммы физически входят в IncomeTemporary/CostsTemporary, поэтому здесь
+// показывается только то, что реально можно разделить, а "Разовый"
+// остаётся единой строкой без дальнейшего дробления.
 function parseWeekData(team: Record<string, unknown>): FinanceWeekData {
-  const incomeSum = num(team.LastIncomeSum);
-  const expenseSum = num(team.LastCostsSum);
+  const spectators = num(team.IncomeSpectators);
+  const sponsors = num(team.IncomeSponsors);
+  const commission = num(team.IncomeFinancial);
+  const temporaryIncome = num(team.IncomeTemporary);
+  const incomeSum = spectators + sponsors + commission + temporaryIncome;
 
-  const spectators = num(team.LastIncomeSpectators);
-  const sponsors = num(team.LastIncomeSponsors);
-  const soldPlayers = num(team.LastIncomeSoldPlayers);
-  const commission = num(team.LastIncomeCommission ?? team.LastIncomeFinancial);
-  const incomeOther = incomeSum - spectators - sponsors - soldPlayers - commission;
-
-  const players = num(team.LastCostsPlayers);
-  const arena = num(team.LastCostsArena);
-  const arenaBuilding = num(team.LastCostsArenaBuilding ?? team.LastCostsStadiumBuilding);
-  const staff = num(team.LastCostsStaff);
-  const youth = num(team.LastCostsYouth);
-  const boughtPlayers = num(team.LastCostsBoughtPlayers ?? team.LastCostsTransfer);
-  const interest = num(team.LastCostsInterest ?? team.LastCostsFinancial);
-  const expenseOther = expenseSum - players - arena - arenaBuilding - staff - youth - boughtPlayers - interest;
+  const players = num(team.CostsPlayers);
+  const arena = num(team.CostsArena);
+  const staff = num(team.CostsStaff);
+  const youth = num(team.CostsYouth);
+  const interest = num(team.CostsFinancial);
+  const temporaryExpense = num(team.CostsTemporary);
+  const expenseSum = players + arena + staff + youth + interest + temporaryExpense;
 
   return {
-    income: { spectators, sponsors, soldPlayers, commission, other: incomeOther },
+    income: { spectators, sponsors, commission, temporary: temporaryIncome },
     incomeSum,
-    expense: { players, arena, arenaBuilding, staff, youth, boughtPlayers, interest, other: expenseOther },
+    expense: { players, arena, staff, youth, interest, temporary: temporaryExpense },
     expenseSum,
     cash: num(team.Cash),
   };
@@ -99,8 +87,7 @@ function parseWeekData(team: Record<string, unknown>): FinanceWeekData {
 
 // Разбирает XML-ответ CHPP на файл economy.xml — оттуда же берутся и
 // финансы, и данные о болельщиках (в CHPP нет отдельного файла fans.xml,
-// всё нужное уже есть здесь: Cash, LastIncomeSum/LastCostsSum, FanClubSize,
-// SupportersPopularity).
+// всё нужное уже есть здесь: Cash, FanClubSize, SupportersPopularity).
 export function parseEconomyXml(xml: string): RealEconomy {
   const parser = new XMLParser();
   const data = parser.parse(xml);

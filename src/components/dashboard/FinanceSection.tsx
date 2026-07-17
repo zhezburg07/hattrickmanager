@@ -11,9 +11,8 @@ function incomeLines(data: FinanceWeekData): Line[] {
   return [
     { label: "Зрители", amount: data.income.spectators },
     { label: "Спонсоры", amount: data.income.sponsors },
-    { label: "Проданные игроки", amount: data.income.soldPlayers },
     { label: "Комиссионные", amount: data.income.commission },
-    { label: "Разовый", amount: data.income.other },
+    { label: "Разовый", amount: data.income.temporary },
   ];
 }
 
@@ -25,17 +24,15 @@ function incomeLines(data: FinanceWeekData): Line[] {
 // применима"). Решается отдельно для каждой недели (this/last), а не только
 // для "прошлой" — экономически проценты могут начисляться в любую неделю.
 function expenseLines(data: FinanceWeekData): Line[] {
-  const { players, arena, arenaBuilding, staff, youth, boughtPlayers, interest, other } = data.expense;
+  const { players, arena, staff, youth, interest, temporary } = data.expense;
   const lines: Line[] = [
     { label: "Зарплата", amount: players },
     { label: "Содержание стадиона", amount: arena },
-    { label: "Строительство стадиона", amount: arenaBuilding },
     { label: "Персонал", amount: staff },
     { label: "Затраты на молодёжь", amount: youth },
-    { label: "Купленные игроки*", amount: boughtPlayers },
   ];
   if (interest !== 0) lines.push({ label: "Проценты", amount: interest });
-  lines.push({ label: "Разовый", amount: other });
+  lines.push({ label: "Разовый", amount: temporary });
   return lines;
 }
 
@@ -150,11 +147,6 @@ export default function FinanceSection({
           </>
         )}
       </div>
-
-      <p className={styles.financeSummaryHint} style={{ marginTop: 20 }}>
-        * «Купленные игроки» также включает зарплату игрока за первую неделю в клубе, так как она является частью
-        трансферной сделки.
-      </p>
     </div>
   );
 }

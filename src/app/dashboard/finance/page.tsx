@@ -13,13 +13,11 @@ import { parseEconomyXml, type RealEconomy } from "@/lib/economy";
 import { resolveRealCurrencyLabel } from "@/lib/worldCurrency";
 import { resolveLastWeekFinance } from "@/lib/financeHistoryDb";
 
-// ВРЕМЕННАЯ диагностика — экономика теперь разбита на более мелкие статьи
-// (проданные/купленные игроки, строительство стадиона, комиссионные,
-// проценты), часть которых основана на предположениях о названиях полей
-// (см. комментарии в src/lib/economy.ts). Пока не свёрено с реальным ответом
-// на живом аккаунте — показываем сырые поля <Team>, чтобы легко было
-// поправить угаданные названия. Затем поставить false.
-const SHOW_ECONOMY_DEBUG = true;
+// Названия полей в src/lib/economy.ts сверены с реальным ответом на живом
+// аккаунте — диагностика сырых полей <Team> больше не нужна на экране.
+// Поставьте true, если снова понадобится свериться с CHPP (например, если
+// Hattrick изменит схему economy.xml).
+const SHOW_ECONOMY_DEBUG = false;
 
 async function resolveEconomy(
   tokens: StoredHattrickTokens,
