@@ -25,9 +25,9 @@ export default function MatchesCalendar({ matches }: { matches: SeasonMatch[] })
     <div className={styles.card}>
       <div className={styles.cardTitle}>Сыгранные матчи</div>
       <p className={styles.hint}>
-        Матчи основной команды, влияющие на тренировку игроков — лига, кубок и товарищеские, от недавних к самым
-        старым. Предстоящие матчи, юношеская команда и Hattrick Arena/Masters/лестницы сюда не входят. Нажмите на
-        матч, чтобы открыть полный анализ.
+        Последние {matchList.length === 25 ? "25" : matchList.length} матчей основной команды, влияющие на тренировку
+        игроков — лига, кубок и товарищеские, от недавних к самым старым. Предстоящие матчи, юношеская команда и
+        Hattrick Arena/Masters/лестницы сюда не входят. Нажмите на матч, чтобы открыть полный анализ.
       </p>
 
       <div className={styles.tableWrap}>

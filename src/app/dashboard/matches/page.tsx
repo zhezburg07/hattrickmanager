@@ -10,15 +10,15 @@ import { parseMatchesXml, toSeasonMatches, dedupeMatches, filterTrainingRelevant
 import { resolveArenaChallenges } from "@/lib/hattrickArena";
 import type { SeasonMatch } from "@/data/matches";
 
+const MAX_MATCHES_SHOWN = 25;
+
 interface MatchesResult {
   matches: SeasonMatch[] | null;
   error: string | null;
-  // Необязательное предупреждение — matches.xml (текущий сезон) загрузился,
-  // но matchesarchive.xml (более длинная история) не удалось получить, так
-  // что список показан не полностью. Не блокирует страницу — тот же принцип
-  // "второстепенный шаг не должен ломать основной результат", что и при
-  // мягком входе (см. /api/auth/callback).
-  archiveWarning: string | null;
+  // Необязательное предупреждение (не блокирует страницу) — например,
+  // matchesarchive не подключился, или строгий фильтр по SourceSystem
+  // отсеял всё и пришлось откатиться к более мягкому условию.
+  warning: string | null;
 }
 
 async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<MatchesResult> {
@@ -54,20 +54,44 @@ async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<Matches
     }
 
     const merged = dedupeMatches([...currentSeasonMatches, ...archiveMatches]);
-    // Только сыгранные матчи основной команды (лига/кубок/товарищеские) —
-    // без предстоящих, без юношеской команды, без Hattrick Arena/Masters/
-    // лестниц/приватных турниров (см. filterTrainingRelevantMatches).
-    const trainingRelevant = filterTrainingRelevantMatches(merged);
-    return { matches: toSeasonMatches(trainingRelevant), error: null, archiveWarning };
+
+    if (merged.length === 0) {
+      const archiveNote = archiveMatches.length === 0 ? " и matchesarchive" : "";
+      return {
+        matches: null,
+        error: `Матчи (matches${archiveNote}): запрос выполнился (HTTP ${raw.httpStatus}), но вернул пустой список матчей — либо у команды ещё нет ни одного матча в ответе CHPP, либо структура ответа отличается от ожидаемой (см. RealMatch в src/lib/matches.ts).`,
+        warning: null,
+      };
+    }
+
+    // Строгий фильтр (см. filterTrainingRelevantMatches в src/lib/matches.ts)
+    // отличает матчи основной команды от юношеских/Hattrick Arena по полю
+    // SourceSystem — оно ни разу не проверялось на живом ответе. Если из-за
+    // этого список стал пустым, откатываемся к более мягкому условию
+    // (просто "сыграно") — список не должен молча пропадать из-за одной
+    // непроверенной догадки.
+    let trainingRelevant = filterTrainingRelevantMatches(merged);
+    let filterWarning: string | null = null;
+    if (trainingRelevant.length === 0) {
+      trainingRelevant = merged.filter((m) => m.status === "FINISHED" && m.ourScore !== null && m.oppScore !== null);
+      if (trainingRelevant.length > 0) {
+        filterWarning =
+          "Не удалось надёжно отличить матчи основной команды от юношеских/Hattrick Arena по данным CHPP (поле SourceSystem) — показаны все сыгранные матчи без этой фильтрации.";
+      }
+    }
+
+    const shown = toSeasonMatches(trainingRelevant).slice(0, MAX_MATCHES_SHOWN);
+    const warning = [archiveWarning, filterWarning].filter(Boolean).join(" ") || null;
+    return { matches: shown, error: null, warning };
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
-    return { matches: null, error: `Матчи (matches): ${message}`, archiveWarning: null };
+    return { matches: null, error: `Матчи (matches): ${message}`, warning: null };
   }
 }
 
 export default async function MatchesPage() {
   const tokens = await getRequiredHattrickTokens();
-  const [{ matches, error, archiveWarning }, challenges] = await Promise.all([
+  const [{ matches, error, warning }, challenges] = await Promise.all([
     resolveMatchesData(tokens),
     resolveArenaChallenges(tokens),
   ]);
@@ -78,7 +102,7 @@ export default async function MatchesPage() {
       <main className={styles.page}>
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
           {error && <DemoModeBanner title="Не удалось загрузить реальные матчи" reasons={[error]} />}
-          {archiveWarning && <DemoModeBanner title="Показана не вся история" reasons={[archiveWarning]} showConnectAction={false} />}
+          {warning && <DemoModeBanner title="Показана не вся история" reasons={[warning]} showConnectAction={false} />}
           {matches && <MatchesCalendar matches={matches} />}
           <HattrickArenaSection challenges={challenges} />
         </div>

@@ -1,9 +1,14 @@
 import Link from "next/link";
 import styles from "./WelcomeSection.module.css";
 
+// Пункт "Тарифы" скрыт вместе с самой секцией тарифов (см.
+// SHOW_PRICING_SECTION в src/app/page.tsx) — монетизация пока отложена,
+// ссылка вела бы в никуда. Верните true, когда вернёте секцию тарифов.
+const SHOW_PRICING_NAV_LINK = false;
+
 const navLinks: { href: string; label: string }[] = [
   { href: "/how-it-works", label: "Как это работает" },
-  { href: "/#pricing", label: "Тарифы" },
+  ...(SHOW_PRICING_NAV_LINK ? [{ href: "/#pricing", label: "Тарифы" }] : []),
   { href: "/contact", label: "Контакты" },
 ];
 
