@@ -1,6 +1,14 @@
 import styles from "./Overview.module.css";
 
-export default function DemoModeBanner({ title, reasons }: { title: string; reasons: string[] }) {
+export default function DemoModeBanner({
+  title,
+  reasons,
+  showConnectAction = true,
+}: {
+  title: string;
+  reasons: string[];
+  showConnectAction?: boolean;
+}) {
   return (
     <div className={styles.demoBanner}>
       <span className={styles.demoBannerIcon}>ⓘ</span>
@@ -14,9 +22,11 @@ export default function DemoModeBanner({ title, reasons }: { title: string; reas
           </ul>
         )}
       </div>
-      <a href="/api/auth/request-token" className={`btnPrimary ${styles.demoBannerAction}`}>
-        Подключить команду
-      </a>
+      {showConnectAction && (
+        <a href="/api/auth/request-token" className={`btnPrimary ${styles.demoBannerAction}`}>
+          Подключить команду
+        </a>
+      )}
     </div>
   );
 }

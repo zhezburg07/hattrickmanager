@@ -14,21 +14,37 @@ export interface StoredHattrickTokens {
 // Hattrick UserID достаёт сохранённый в базе OAuth-токен (см.
 // src/lib/hattrickTokensDb.ts) — так пользователю не нужно заново проходить
 // OAuth-авторизацию Hattrick на каждом визите, пока он сам не выйдет
-// (/api/auth/logout) или не отзовёт доступ на самом Hattrick. Возвращает
-// null, если cookie отсутствует/недействительна, либо токен не нашёлся в
-// базе (например, база временно недоступна).
+// (/api/auth/logout) или не отзовёт доступ на самом Hattrick.
+//
+// Запасной путь ("мягкий" вход, см. /api/auth/callback): если при входе не
+// удалось определить Hattrick UserID (manager.xml не ответил) — долгоживущая
+// cookie сессии сайта не выдаётся вообще, но токен всё равно кладётся прямо
+// в обычную cookie браузера (без базы данных). Здесь мы проверяем и её —
+// иначе такой вход вообще не работал бы. Апгрейд до долгоживущей сессии,
+// если manager.xml сработает позже, — см. /api/auth/session-upgrade.
 export async function getStoredHattrickTokens(): Promise<StoredHattrickTokens | null> {
-  const cookieValue = cookies().get(SESSION_COOKIE)?.value;
-  if (!cookieValue) return null;
+  const cookieStore = cookies();
+  const cookieValue = cookieStore.get(SESSION_COOKIE)?.value;
 
-  const userId = verifySessionCookieValue(cookieValue);
-  if (!userId) return null;
-
-  try {
-    return await getHattrickTokens(userId);
-  } catch {
-    return null;
+  if (cookieValue) {
+    const userId = verifySessionCookieValue(cookieValue);
+    if (userId) {
+      try {
+        const tokens = await getHattrickTokens(userId);
+        if (tokens) return tokens;
+      } catch {
+        // база недоступна — попробуем запасную cookie ниже
+      }
+    }
   }
+
+  const legacyToken = cookieStore.get("hattrick_access_token")?.value;
+  const legacyTokenSecret = cookieStore.get("hattrick_access_token_secret")?.value;
+  if (legacyToken && legacyTokenSecret) {
+    return { accessToken: legacyToken, accessTokenSecret: legacyTokenSecret };
+  }
+
+  return null;
 }
 
 // Для страниц личного кабинета (/dashboard/**): src/app/dashboard/layout.tsx
