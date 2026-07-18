@@ -12,6 +12,7 @@ import {
   dedupeMatches,
   filterTrainingRelevantMatches,
   debugRawMatchFields,
+  parseArchiveEchoedRange,
   type RealMatch,
 } from "@/lib/matches";
 import { resolveArenaChallenges } from "@/lib/hattrickArena";
@@ -70,26 +71,57 @@ async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<Matches
     // проверен на живом ответе этого проекта. Диапазон нарочно не длиннее
     // "2 сезонов назад" — по документации более широкий интервал CHPP сам
     // молча урежет обратно до 3-месячного дефолта.
+    //
+    // ИСПРАВЛЕНО: все даты CHPP — это "Hattrick Time" (HTT), официально
+    // всегда равное шведскому времени (CET/CEST), а НЕ UTC и не времени
+    // сервера — этот момент подтверждён комментарием в независимом
+    // CHPP-клиенте (github.com/lucianoq/hattrick, type_hattrick_time.go),
+    // который сверял это с живым ответом реального аккаунта. Предыдущая
+    // версия форматировала даты в UTC, что могло сдвигать границу диапазона
+    // на 1-2 часа — не хватило бы для потери матчей, но исправлено заодно.
+    // Ниже также добавлено эхо: matchesarchive.xml возвращает Team/
+    // FirstMatchDate и Team/LastMatchDate — тот диапазон, который CHPP
+    // реально применил. Если он окажется у́же запрошенного — значит CHPP
+    // молча подрезал его сам (see parseArchiveEchoedRange в matches.ts), и
+    // тогда дело не в нашем коде, а в серверном ограничении диапазона.
+    const toHattrickTimeString = (d: Date) => {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/Stockholm",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(d);
+      const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+      return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
+    };
     const archiveLastDate = new Date();
     const archiveFirstDate = new Date(archiveLastDate.getTime() - 270 * 24 * 60 * 60 * 1000);
-    const toChppDateTime = (d: Date) => d.toISOString().slice(0, 19).replace("T", " ");
+    const requestedFirst = toHattrickTimeString(archiveFirstDate);
+    const requestedLast = toHattrickTimeString(archiveLastDate);
 
     let archiveMatches: RealMatch[] = [];
     let archiveWarning: string | null = null;
     try {
       const archiveRaw = await requestChppXmlRaw(
         "matchesarchive",
-        {
-          FirstMatchDate: toChppDateTime(archiveFirstDate),
-          LastMatchDate: toChppDateTime(archiveLastDate),
-        },
+        { FirstMatchDate: requestedFirst, LastMatchDate: requestedLast },
         tokens,
       );
       if (archiveRaw.httpStatus < 200 || archiveRaw.httpStatus >= 300) {
         throw new Error(`HTTP ${archiveRaw.httpStatus}: ${archiveRaw.rawXml.slice(0, 200)}`);
       }
       archiveMatches = parseMatchesXml(archiveRaw.rawXml, teamId);
+      const echoed = parseArchiveEchoedRange(archiveRaw.rawXml);
       debugCounts.push(`matchesarchive.xml: ${archiveMatches.length} матчей (HTTP ${archiveRaw.httpStatus})`);
+      debugCounts.push(`matchesarchive.xml — запрошен диапазон: ${requestedFirst} .. ${requestedLast} (HTT)`);
+      debugCounts.push(
+        `matchesarchive.xml — CHPP применил диапазон: ${echoed.firstMatchDate ?? "?"} .. ${echoed.lastMatchDate ?? "?"}` +
+          (echoed.firstMatchDate && echoed.firstMatchDate !== requestedFirst ? " ⚠ отличается от запрошенного — CHPP подрезал диапазон сам" : ""),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "неизвестная ошибка";
       archiveWarning = `Полная история прошлых сезонов (matchesarchive) недоступна: ${message}. Показан только текущий сезон (matches).`;

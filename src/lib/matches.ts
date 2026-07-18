@@ -100,6 +100,24 @@ export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
 // AwayGoals/SourceSystem/MatchType, если разбор снова даст пустой список —
 // по одним только счётчикам совпадений не всегда понятно, какое именно
 // поле называется не так, как предположено.
+// ВРЕМЕННАЯ диагностика — matchesarchive.xml эхом возвращает диапазон дат,
+// который реально применил CHPP (Team/FirstMatchDate, Team/LastMatchDate).
+// Если запрошенный нами диапазон шире допустимого ("не более 2 сезонов
+// назад" по документации), CHPP молча подменяет его дефолтным (последние
+// 3 месяца) — сравнение запрошенного и эхом-возвращённого диапазона в
+// debugCounts (см. matches/page.tsx) сразу покажет, произошла ли такая
+// подмена, вместо повторного угадывания.
+export function parseArchiveEchoedRange(xml: string): { firstMatchDate: string | null; lastMatchDate: string | null } {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  const team = root?.Team;
+  return {
+    firstMatchDate: team?.FirstMatchDate !== undefined ? String(team.FirstMatchDate) : null,
+    lastMatchDate: team?.LastMatchDate !== undefined ? String(team.LastMatchDate) : null,
+  };
+}
+
 export function debugRawMatchFields(xml: string, count = 3): Record<string, unknown>[] {
   const parser = new XMLParser();
   const data = parser.parse(xml);
