@@ -132,6 +132,24 @@ function teamSideOf(teamId: string, homeTeamId: string): "home" | "away" | null 
   return teamId === homeTeamId ? "home" : "away";
 }
 
+// EventText — это тот же текст матч-репорта, что показывает сам Hattrick,
+// и содержит HTML-разметку (ссылки на страницы игроков/арены/судей вида
+// <a href="...">Имя</a>) — подтверждено на живом ответе. Раньше эта
+// разметка попадала на экран как есть. Убираем теги и раскодируем базовые
+// HTML-сущности, оставляя только читаемый текст.
+function stripHtml(text: string): string {
+  return text
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function parseZoneRatings(team: Record<string, unknown> | undefined): MatchZoneRatings | null {
   if (!team) return null;
   const zones: MatchZoneRatings = {
@@ -168,7 +186,12 @@ function parseAttendance(match: Record<string, unknown>): MatchAttendance | null
   };
 }
 
-// Приводит один сырой элемент EventList/Scorers/Bookings к MatchTimelineEntry.
+// Полный текстовый отчёт Hattrick (EventList/Event) — сейчас используется
+// только как ДОПОЛНИТЕЛЬНЫЙ источник, когда структурированных голов/карточек
+// нет вовсе (см. приоритет в resolveMatchAnalysis ниже): EventText — это
+// HTML-размеченный текст (ссылки на игроков/арену/судей), и хотя здесь он
+// чистится через stripHtml, структурированные поля (Scorers/Bookings)
+// надёжнее и предсказуемее, поэтому именно они — основной источник.
 // Оборачивается в try/catch на уровне вызывающего кода — один элемент со
 // неожиданной формой не должен обрушивать разбор всех остальных.
 function parseEventListTimeline(match: Record<string, unknown>, homeTeamId: string): { entries: MatchTimelineEntry[]; rawCount: number } {
@@ -178,7 +201,7 @@ function parseEventListTimeline(match: Record<string, unknown>, homeTeamId: stri
   for (const e of rawEvents) {
     try {
       const teamId = String(e.SubjectTeamID ?? e.SubjectTeamId ?? "");
-      const text = String(e.EventText ?? "").trim();
+      const text = stripHtml(String(e.EventText ?? ""));
       const minute = Number(e.Minute ?? NaN);
       entries.push({
         minute: Number.isNaN(minute) ? 0 : minute,
@@ -195,10 +218,10 @@ function parseEventListTimeline(match: Record<string, unknown>, homeTeamId: stri
   return { entries, rawCount: rawEvents.length };
 }
 
-// Запасной вариант — голы (Scorers) и карточки (Bookings) приходят всегда,
-// без matchEvents=true, так что это честная хронология и без полного
-// EventList (менее подробная — только голы и карточки, без прочих
-// игровых моментов).
+// Основной источник хронологии — голы (Scorers) и карточки (Bookings), оба
+// всегда приходят без доп. параметров. Имена игроков здесь — простые
+// текстовые поля (не HTML-размеченный отчёт), поэтому это надёжнее и чище,
+// чем полный EventList выше — используется как приоритетный источник.
 function parseGoalsAndCardsTimeline(
   match: Record<string, unknown>,
   homeTeamId: string,
@@ -394,17 +417,21 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     debug.push(
       `хронология — сырые элементы: EventList=${eventRawCount}, Scorers/Goal=${goalsRawCount}, Bookings/Booking=${bookingsRawCount}`,
     );
-    if (eventEntries.length > 0) {
-      timeline = eventEntries;
-      timelineSource = "events";
-    } else if (fallbackEntries.length > 0) {
+    // Приоритет — структурированные голы/карточки (простые текстовые поля,
+    // без HTML), а не EventList (HTML-размеченный отчёт, см. комментарий
+    // выше у parseEventListTimeline) — используем EventList только когда
+    // структурированных данных нет вовсе.
+    if (fallbackEntries.length > 0) {
       timeline = fallbackEntries;
       timelineSource = "goals-cards";
+    } else if (eventEntries.length > 0) {
+      timeline = eventEntries;
+      timelineSource = "events";
     } else {
       timeline = null;
       timelineSource = null;
       timelineError =
-        "Хронология событий недоступна для этого матча — ни полный список событий (EventList, запрошен с matchEvents=true), ни список голов/карточек не вернулись из matchdetails.";
+        "Хронология событий недоступна для этого матча — ни список голов/карточек, ни полный список событий (EventList, запрошен с matchEvents=true) не вернулись из matchdetails.";
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
