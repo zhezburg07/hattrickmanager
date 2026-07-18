@@ -194,6 +194,43 @@ export default function PlayerDetailModal({
     }
   }
 
+  interface TrainingEvent {
+    skillLabel: string;
+    oldLevel: number;
+    newLevel: number;
+    season: number;
+    matchRound: number;
+    dayNumber: number;
+  }
+
+  const [trainingLogOpen, setTrainingLogOpen] = useState(false);
+  const [trainingLogLoading, setTrainingLogLoading] = useState(false);
+  const [trainingLogEvents, setTrainingLogEvents] = useState<TrainingEvent[] | null>(null);
+  const [trainingLogError, setTrainingLogError] = useState<string | null>(null);
+
+  async function toggleTrainingLog() {
+    if (trainingLogOpen) {
+      setTrainingLogOpen(false);
+      return;
+    }
+    setTrainingLogOpen(true);
+    if (trainingLogEvents !== null || trainingLogError !== null) return; // уже загружено
+    setTrainingLogLoading(true);
+    try {
+      const res = await fetch(`/api/dashboard/training-events?playerId=${player.id}`);
+      const json = await res.json();
+      if (json.error) {
+        setTrainingLogError(json.error);
+      } else {
+        setTrainingLogEvents(json.events ?? []);
+      }
+    } catch {
+      setTrainingLogError("Не удалось загрузить журнал тренировок");
+    } finally {
+      setTrainingLogLoading(false);
+    }
+  }
+
   const staminaLevel = staminaToLevel(player.stamina);
   const prevStaminaLevel = prev?.stamina !== undefined ? staminaToLevel(prev.stamina) : undefined;
 
@@ -393,6 +430,45 @@ export default function PlayerDetailModal({
                       {details.transferDeadline ? `, срок — ${details.transferDeadline}` : ""}
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          <button
+            type="button"
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12.5, color: "var(--color-accent)", padding: 0 }}
+            onClick={toggleTrainingLog}
+          >
+            {trainingLogOpen ? "Скрыть официальный журнал тренировок ▲" : "Показать официальный журнал тренировок (CHPP) ▼"}
+          </button>
+
+          {trainingLogOpen && (
+            <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.6 }}>
+              <p style={{ color: "var(--color-text-muted)", marginBottom: 6 }}>
+                Официальный журнал скачков навыка от Hattrick — дополняет (не заменяет) собственную еженедельную
+                историю сайта, показанную подсветкой роста/падения выше. Даты здесь — не календарные, а игровые (сезон
+                /тур/день недели), так что напрямую сверять их с собственной историей нельзя.
+              </p>
+              {trainingLogLoading && <span style={{ color: "var(--color-text-muted)" }}>Загрузка…</span>}
+              {!trainingLogLoading && trainingLogError && (
+                <span style={{ color: "var(--color-text-muted)" }}>{trainingLogError}</span>
+              )}
+              {!trainingLogLoading && !trainingLogError && trainingLogEvents && trainingLogEvents.length === 0 && (
+                <span style={{ color: "var(--color-text-muted)" }}>
+                  Журнал тренировок для этого игрока пока пуст.
+                </span>
+              )}
+              {!trainingLogLoading && !trainingLogError && trainingLogEvents && trainingLogEvents.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto" }}>
+                  {trainingLogEvents.map((ev, i) => (
+                    <div key={i}>
+                      Сезон {ev.season}, тур {ev.matchRound}, день {ev.dayNumber}: {ev.skillLabel} {ev.oldLevel} →{" "}
+                      <b>{ev.newLevel}</b>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
