@@ -2,66 +2,256 @@ import { XMLParser } from "fast-xml-parser";
 import { assertNoChppError } from "./chppError";
 import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
 
-// Собственные трансферные листинги команды — CHPP-файл "transfers" (по
-// документации отдаёт список игроков, выставленных ЭТОЙ командой на
-// трансфер). Ни разу не пробовался в этом проекте живьём до сих пор —
-// прошлая пометка "заблокировано (401)" в истории задач ничем не
-// подтверждена (ни кода, ни сырого ответа не нашлось) — это первая реальная
-// попытка. Схема полей — лучшее предположение по аналогии с players.xml/
-// matches.xml (PlayerID/PlayerName, Deadline, разбивка ставки); если
-// реальный ответ устроен иначе — ошибка будет честно возвращена вызывающему
-// коду, который покажет простую заглушку без технических деталей.
-export interface RealTransferListing {
-  playerId: number;
-  playerName: string;
-  askingPrice: number;
-  currentBid: number;
-  bidCount: number;
-  deadline: string;
-}
+// ИСПРАВЛЕНО: раньше здесь запрашивался файл "transfers" — такого файла
+// вообще нет в официальном списке CHPP Files (тот же паттерн ошибки, что
+// раньше был с "manager" вместо "managercompendium"), сама схема ответа была
+// лишь предположением, ни разу не проверенным на живом ответе. Реальных
+// файлов для трансферов три (подтверждено по независимому CHPP-клиенту
+// github.com/lucianoq/hattrick):
+//   - transfersteam (v1.2)   — история купленных/проданных игроков КОМАНДЫ
+//     + агрегированные суммы. НЕТ отдельного файла для "что сейчас выставлено
+//     на продажу этой командой" — CHPP отдаёт только завершённую историю.
+//   - transfersearch (v1.1) — поиск по всему трансферному рынку с обязательными
+//     фильтрами (возраст + один основной навык) — это и есть ближайший
+//     аналог "рынка трансферов", доступный через CHPP.
+//   - transfersplayer (v1.1) — история трансферов ОДНОГО игрока (используется
+//     "по клику" на конкретного игрока в результатах поиска/истории).
+//
+// Валюта: TransferSteamXML.Stats.TotalSumOfBuys/TotalSumOfSales официально
+// документированы как ВСЕГДА в шведских кронах (SEK), независимо от локальной
+// валюты команды — единственное такое исключение. Цена конкретного трансфера
+// (Price/AskingPrice/HighestBid) такого исключения не имеет, значит идёт в
+// обычной локальной валюте команды — как и все суммы в economy.xml.
+const TRANSFERS_TEAM_VERSION = "1.2";
+const TRANSFERS_SEARCH_VERSION = "1.1";
+const TRANSFERS_PLAYER_VERSION = "1.1";
 
 function asArray(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? (value as Record<string, unknown>[]) : value ? [value as Record<string, unknown>] : [];
 }
 
-export function parseTransfersXml(xml: string): RealTransferListing[] {
+// ---------- Своя история трансферов (transfersteam.xml) ----------
+
+export interface TransferHistoryEntry {
+  transferId: string;
+  deadline: string;
+  playerId: number;
+  playerName: string;
+  tsi: number;
+  transferType: "buy" | "sale";
+  counterpartTeamName: string;
+  price: number;
+}
+
+export interface TransferHistoryResult {
+  teamName: string;
+  totalSumOfBuysSek: number;
+  totalSumOfSalesSek: number;
+  numberOfBuys: number;
+  numberOfSales: number;
+  transfers: TransferHistoryEntry[];
+  pageIndex: number;
+  pages: number;
+}
+
+export function parseTransfersTeamXml(xml: string): TransferHistoryResult {
   const parser = new XMLParser();
   const data = parser.parse(xml);
   const root = data?.HattrickData;
-  assertNoChppError(root, "transfers");
+  assertNoChppError(root, "transfersteam");
 
-  const rawListings = root?.TransferListings?.TransferListing ?? root?.Team?.TransferList?.Transfer;
-  const listings = asArray(rawListings);
+  const team = root?.Team as Record<string, unknown> | undefined;
+  const stats = root?.Stats as Record<string, unknown> | undefined;
+  const transfersContainer = root?.Transfers as Record<string, unknown> | undefined;
+  const rawTransfers = asArray(transfersContainer?.Transfer);
 
-  return listings.map((t) => ({
-    playerId: Number(t.PlayerID ?? 0),
-    playerName: String(t.PlayerName ?? ""),
-    askingPrice: Number(t.AskingPrice ?? t.MinimumBid ?? 0),
-    currentBid: Number(t.CurrentBid ?? t.HighestBid ?? 0),
-    bidCount: Number(t.NumberOfBids ?? t.Bids ?? 0),
-    deadline: String(t.Deadline ?? ""),
-  }));
+  const transfers: TransferHistoryEntry[] = rawTransfers.map((t) => {
+    const player = t.Player as Record<string, unknown> | undefined;
+    const buyer = t.Buyer as Record<string, unknown> | undefined;
+    const seller = t.Seller as Record<string, unknown> | undefined;
+    const transferType: "buy" | "sale" = String(player?.TransferType ?? "") === "S" ? "sale" : "buy";
+    const counterpartTeamName =
+      transferType === "sale" ? String(buyer?.BuyerTeamName ?? "") : String(seller?.SellerTeamName ?? "");
+    return {
+      transferId: String(t.TransferID ?? ""),
+      deadline: String(t.Deadline ?? ""),
+      playerId: Number(player?.PlayerID ?? 0),
+      playerName: String(player?.PlayerName ?? ""),
+      tsi: Number(player?.TSI ?? 0),
+      transferType,
+      counterpartTeamName,
+      price: Number(t.Price ?? 0),
+    };
+  });
+
+  return {
+    teamName: String(team?.TeamName ?? ""),
+    totalSumOfBuysSek: Number(stats?.TotalSumOfBuys ?? 0),
+    totalSumOfSalesSek: Number(stats?.TotalSumOfSales ?? 0),
+    numberOfBuys: Number(stats?.NumberOfBuys ?? 0),
+    numberOfSales: Number(stats?.NumberOfSales ?? 0),
+    transfers,
+    pageIndex: Number(transfersContainer?.PageIndex ?? 0),
+    pages: Number(transfersContainer?.Pages ?? 0),
+  };
 }
 
-export interface TransferMarketResult {
-  listings: RealTransferListing[] | null;
-  error: string | null;
-}
-
-// Пытается получить реальные листинги команды. Не запрашивает никакой
-// OAuth-scope сверх обычного — если CHPP всё же требует отдельное разрешение
-// для этого файла, здесь это проявится как обычная ошибка (HTTP-статус или
-// Error/ErrorCode в теле ответа), и вызывающий код честно откатится на
-// заглушку "раздел скоро станет доступен", не показывая технические детали.
-export async function resolveTransferListings(tokens: StoredHattrickTokens): Promise<TransferMarketResult> {
+export async function resolveTransferHistory(
+  tokens: StoredHattrickTokens,
+): Promise<{ data: TransferHistoryResult | null; error: string | null }> {
   try {
-    const raw = await requestChppXmlRaw("transfers", {}, tokens);
+    // pageIndex=0 — по документации это НЕ буквально "страница 0", а
+    // "последняя страница" (самые недавние трансферы).
+    const raw = await requestChppXmlRaw("transfersteam", { pageIndex: "0", version: TRANSFERS_TEAM_VERSION }, tokens);
     if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
       throw new Error(`HTTP ${raw.httpStatus}: ${raw.rawXml.slice(0, 200)}`);
     }
-    return { listings: parseTransfersXml(raw.rawXml), error: null };
+    return { data: parseTransfersTeamXml(raw.rawXml), error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
-    return { listings: null, error: `Трансферы (transfers): ${message}` };
+    return { data: null, error: `История трансферов (transfersteam): ${message}` };
+  }
+}
+
+// ---------- Поиск по рынку (transfersearch.xml) ----------
+
+export interface TransferSearchFilters {
+  ageMin: number;
+  ageMax: number;
+  skillType: number; // 1-11, см. SkillID CHPP
+  skillMin: number;
+  skillMax: number;
+}
+
+export interface TransferSearchResultEntry {
+  playerId: number;
+  name: string;
+  age: number;
+  tsi: number;
+  askingPrice: number;
+  deadline: string;
+  highestBid: number;
+  bidderTeamName: string;
+  sellerTeamName: string;
+}
+
+export interface TransferSearchResponse {
+  itemCount: number;
+  pageSize: number;
+  pageIndex: number;
+  results: TransferSearchResultEntry[];
+}
+
+export function parseTransferSearchXml(xml: string): TransferSearchResponse {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  assertNoChppError(root, "transfersearch");
+
+  const container = root?.TransferSearch as Record<string, unknown> | undefined;
+  const resultsContainer = container?.TransferResults as Record<string, unknown> | undefined;
+  const rawResults = asArray(resultsContainer?.TransferResult);
+
+  const results: TransferSearchResultEntry[] = rawResults.map((r) => {
+    const details = r.Details as Record<string, unknown> | undefined;
+    const bidderTeam = r.BidderTeam as Record<string, unknown> | undefined;
+    const sellerTeam = details?.SellerTeam as Record<string, unknown> | undefined;
+    const firstLast = `${r.FirstName ?? ""} ${r.LastName ?? ""}`.trim();
+    const name = firstLast || String(r.NickName ?? "") || `Игрок #${r.PlayerId ?? "?"}`;
+    return {
+      playerId: Number(r.PlayerId ?? 0),
+      name,
+      age: Number(details?.Age ?? 0),
+      tsi: Number(details?.TSI ?? 0),
+      askingPrice: Number(r.AskingPrice ?? 0),
+      deadline: String(r.Deadline ?? ""),
+      highestBid: Number(r.HighestBid ?? 0),
+      bidderTeamName: String(bidderTeam?.Name ?? ""),
+      sellerTeamName: String(sellerTeam?.Name ?? ""),
+    };
+  });
+
+  return {
+    itemCount: Number(container?.ItemCount ?? 0),
+    pageSize: Number(container?.PageSize ?? 0),
+    pageIndex: Number(container?.PageIndex ?? 0),
+    results,
+  };
+}
+
+export async function resolveTransferSearch(
+  tokens: StoredHattrickTokens,
+  filters: TransferSearchFilters,
+): Promise<{ data: TransferSearchResponse | null; error: string | null }> {
+  try {
+    const raw = await requestChppXmlRaw(
+      "transfersearch",
+      {
+        ageMin: String(filters.ageMin),
+        ageMax: String(filters.ageMax),
+        skillType1: String(filters.skillType),
+        minSkillValue1: String(filters.skillMin),
+        maxSkillValue1: String(filters.skillMax),
+        version: TRANSFERS_SEARCH_VERSION,
+      },
+      tokens,
+    );
+    if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
+      throw new Error(`HTTP ${raw.httpStatus}: ${raw.rawXml.slice(0, 200)}`);
+    }
+    return { data: parseTransferSearchXml(raw.rawXml), error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "неизвестная ошибка";
+    return { data: null, error: `Поиск по рынку (transfersearch): ${message}` };
+  }
+}
+
+// ---------- История одного игрока (transfersplayer.xml) ----------
+
+export interface PlayerTransferHistoryEntry {
+  transferId: string;
+  deadline: string;
+  buyerTeamName: string;
+  sellerTeamName: string;
+  price: number;
+  tsi: number;
+}
+
+export function parseTransfersPlayerXml(xml: string): PlayerTransferHistoryEntry[] {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  assertNoChppError(root, "transfersplayer");
+
+  const transfersContainer = root?.Transfers as Record<string, unknown> | undefined;
+  const rawTransfers = asArray(transfersContainer?.Transfer);
+
+  return rawTransfers.map((t) => {
+    const buyer = t.Buyer as Record<string, unknown> | undefined;
+    const seller = t.Seller as Record<string, unknown> | undefined;
+    return {
+      transferId: String(t.TransferID ?? ""),
+      deadline: String(t.Deadline ?? ""),
+      buyerTeamName: String(buyer?.BuyerTeamName ?? ""),
+      sellerTeamName: String(seller?.SellerTeamName ?? ""),
+      price: Number(t.Price ?? 0),
+      tsi: Number(t.TSI ?? 0),
+    };
+  });
+}
+
+export async function resolvePlayerTransferHistory(
+  tokens: StoredHattrickTokens,
+  playerId: string,
+): Promise<{ entries: PlayerTransferHistoryEntry[] | null; error: string | null }> {
+  try {
+    const raw = await requestChppXmlRaw("transfersplayer", { playerID: playerId, version: TRANSFERS_PLAYER_VERSION }, tokens);
+    if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
+      throw new Error(`HTTP ${raw.httpStatus}: ${raw.rawXml.slice(0, 200)}`);
+    }
+    return { entries: parseTransfersPlayerXml(raw.rawXml), error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "неизвестная ошибка";
+    return { entries: null, error: `История игрока (transfersplayer): ${message}` };
   }
 }
