@@ -11,6 +11,7 @@ import SquadSummaryPanel from "@/components/dashboard/SquadSummaryPanel";
 import TsiWeeklyChanges from "@/components/dashboard/TsiWeeklyChanges";
 import WeeklyHighlights from "@/components/dashboard/WeeklyHighlights";
 import PowerRatingPanel from "@/components/dashboard/PowerRatingPanel";
+import HofPlayersSection from "@/components/dashboard/HofPlayersSection";
 import { defaultCurrency, chppSupportersPopularityToFanMoodLevel } from "@/data/dashboard";
 import type { MatrixTeamMeta } from "@/data/leagueMatrix";
 import {
@@ -31,6 +32,7 @@ import { parsePlayersXml } from "@/lib/players";
 import { parsePlayersDetailedXml } from "@/lib/squadPlayers";
 import { parseWorldLeagueInfoXml } from "@/lib/worldCurrency";
 import { resolveWeeklyTsiHighlights } from "@/lib/playerHistoryDb";
+import { resolveHofPlayers } from "@/lib/hofPlayers";
 import { upsertConnectedUser } from "@/lib/connectedUsersDb";
 import styles from "@/components/dashboard/Overview.module.css";
 
@@ -341,9 +343,10 @@ const SHOW_LEAGUE_DEBUG_PANEL = false;
 export default async function DashboardPage() {
   const tokens = await getRequiredHattrickTokens();
   const hattrickUserId = getStoredHattrickUserId();
-  const [data, weeklyTsi] = await Promise.all([
+  const [data, weeklyTsi, hof] = await Promise.all([
     resolveDashboardData(tokens),
     resolveWeeklyTsiHighlights(hattrickUserId),
+    resolveHofPlayers(tokens),
   ]);
 
   // Побочный эффект для админ-панели (/admin, см. src/lib/connectedUsersDb.ts)
@@ -458,6 +461,10 @@ export default async function DashboardPage() {
               loser={weeklyTsi.loser}
               hasEnoughHistory={weeklyTsi.hasEnoughHistory}
             />
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <HofPlayersSection players={hof.players} error={hof.error} />
           </div>
         </div>
       </main>
