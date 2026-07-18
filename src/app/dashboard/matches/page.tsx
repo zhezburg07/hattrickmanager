@@ -6,7 +6,14 @@ import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
 import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
-import { parseMatchesXml, toSeasonMatches, dedupeMatches, filterTrainingRelevantMatches, type RealMatch } from "@/lib/matches";
+import {
+  parseMatchesXml,
+  toSeasonMatches,
+  dedupeMatches,
+  filterTrainingRelevantMatches,
+  debugRawMatchFields,
+  type RealMatch,
+} from "@/lib/matches";
 import { resolveArenaChallenges } from "@/lib/hattrickArena";
 import type { SeasonMatch } from "@/data/matches";
 
@@ -14,29 +21,33 @@ const MAX_MATCHES_SHOWN = 25;
 
 // ВРЕМЕННАЯ диагностика — показывает количество матчей на каждом шаге
 // конвейера (matches.xml → matchesarchive.xml → объединение → строгий
-// фильтр → мягкий фильтр), чтобы сразу видеть, на каком именно шаге список
-// становится пустым, если это повторится. Поставьте false, когда список
-// стабильно показывает реальные матчи.
+// фильтр → мягкий фильтр) и сырые поля первых матчей, чтобы сразу видеть,
+// на каком именно шаге список становится пустым, если это повторится.
+// Поставьте false, когда список стабильно показывает реальные матчи.
 const SHOW_MATCHES_DEBUG = true;
 
 interface MatchesResult {
   matches: SeasonMatch[] | null;
+  ourTeamName: string;
   error: string | null;
   // Необязательное предупреждение (не блокирует страницу) — например,
   // matchesarchive не подключился, или строгий фильтр по SourceSystem
   // отсеял всё и пришлось откатиться к более мягкому условию.
   warning: string | null;
   debugCounts: string[];
+  debugRaw: Record<string, unknown>[];
 }
 
 async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<MatchesResult> {
   const debugCounts: string[] = [];
+  let debugRaw: Record<string, unknown>[] = [];
   try {
     const teamRaw = await requestChppXmlRaw("teamdetails", {}, tokens);
     if (teamRaw.httpStatus < 200 || teamRaw.httpStatus >= 300) {
       throw new Error(`HTTP ${teamRaw.httpStatus}: ${teamRaw.rawXml.slice(0, 200)}`);
     }
-    const teamId = parseTeamDetailsXml(teamRaw.rawXml).teamId;
+    const ourTeam = parseTeamDetailsXml(teamRaw.rawXml);
+    const teamId = ourTeam.teamId;
 
     const raw = await requestChppXmlRaw("matches", {}, tokens);
     if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
@@ -44,6 +55,7 @@ async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<Matches
     }
     const currentSeasonMatches = parseMatchesXml(raw.rawXml, teamId);
     debugCounts.push(`matches.xml: ${currentSeasonMatches.length} матчей (HTTP ${raw.httpStatus})`);
+    debugRaw = debugRawMatchFields(raw.rawXml);
 
     // matchesarchive.xml — более полная история прошлых сезонов (matches.xml
     // документированно ограничен ~50 матчами). Ни имя файла, ни параметры
@@ -77,9 +89,11 @@ async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<Matches
       const archiveNote = archiveMatches.length === 0 ? " и matchesarchive" : "";
       return {
         matches: null,
+        ourTeamName: ourTeam.teamName,
         error: `Матчи (matches${archiveNote}): запрос выполнился (HTTP ${raw.httpStatus}), но вернул пустой список матчей — либо у команды ещё нет ни одного матча в ответе CHPP, либо структура ответа отличается от ожидаемой (см. RealMatch в src/lib/matches.ts).`,
         warning: null,
         debugCounts,
+        debugRaw,
       };
     }
 
@@ -103,16 +117,16 @@ async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<Matches
 
     const shown = toSeasonMatches(trainingRelevant).slice(0, MAX_MATCHES_SHOWN);
     const warning = [archiveWarning, filterWarning].filter(Boolean).join(" ") || null;
-    return { matches: shown, error: null, warning, debugCounts };
+    return { matches: shown, ourTeamName: ourTeam.teamName, error: null, warning, debugCounts, debugRaw };
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
-    return { matches: null, error: `Матчи (matches): ${message}`, warning: null, debugCounts };
+    return { matches: null, ourTeamName: "", error: `Матчи (matches): ${message}`, warning: null, debugCounts, debugRaw };
   }
 }
 
 export default async function MatchesPage() {
   const tokens = await getRequiredHattrickTokens();
-  const [{ matches, error, warning, debugCounts }, challenges] = await Promise.all([
+  const [{ matches, ourTeamName, error, warning, debugCounts, debugRaw }, challenges] = await Promise.all([
     resolveMatchesData(tokens),
     resolveArenaChallenges(tokens),
   ]);
@@ -124,7 +138,7 @@ export default async function MatchesPage() {
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
           {error && <DemoModeBanner title="Не удалось загрузить реальные матчи" reasons={[error]} />}
           {warning && <DemoModeBanner title="Показана не вся история" reasons={[warning]} showConnectAction={false} />}
-          {SHOW_MATCHES_DEBUG && debugCounts.length > 0 && (
+          {SHOW_MATCHES_DEBUG && (debugCounts.length > 0 || debugRaw.length > 0) && (
             <div className={styles.card}>
               <div className={styles.balanceLabel}>Диагностика: количество матчей на каждом шаге</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 8, fontSize: 12.5 }}>
@@ -132,9 +146,21 @@ export default async function MatchesPage() {
                   <div key={i}>{line}</div>
                 ))}
               </div>
+              {debugRaw.length > 0 && (
+                <>
+                  <div className={styles.balanceLabel} style={{ marginTop: 16 }}>
+                    Диагностика: сырые поля первых матчей из matches.xml
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8, fontSize: 12.5 }}>
+                    {debugRaw.map((m, i) => (
+                      <div key={i}>{JSON.stringify(m)}</div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
-          {matches && <MatchesCalendar matches={matches} />}
+          {matches && <MatchesCalendar matches={matches} ourTeamName={ourTeamName} />}
           <HattrickArenaSection challenges={challenges} />
         </div>
       </main>

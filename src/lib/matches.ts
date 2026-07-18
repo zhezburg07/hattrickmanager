@@ -92,6 +92,31 @@ export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
   });
 }
 
+// ВРЕМЕННАЯ диагностика (см. SHOW_MATCHES_DEBUG в matches/page.tsx) —
+// возвращает сырые (ещё не разобранные в RealMatch) поля первых нескольких
+// матчей прямо из XML, чтобы увидеть настоящие значения Status/HomeGoals/
+// AwayGoals/SourceSystem/MatchType, если разбор снова даст пустой список —
+// по одним только счётчикам совпадений не всегда понятно, какое именно
+// поле называется не так, как предположено.
+export function debugRawMatchFields(xml: string, count = 3): Record<string, unknown>[] {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  const rawMatches = root?.Team?.MatchList?.Match ?? root?.MatchList?.Match;
+  const matches: Record<string, unknown>[] = Array.isArray(rawMatches) ? rawMatches : rawMatches ? [rawMatches] : [];
+  return matches.slice(0, count).map((m) => ({
+    MatchID: m.MatchID,
+    MatchDate: m.MatchDate,
+    Status: m.Status,
+    HomeGoals: m.HomeGoals,
+    AwayGoals: m.AwayGoals,
+    MatchType: m.MatchType,
+    SourceSystem: m.SourceSystem,
+    MatchRuleId: m.MatchRuleId ?? m.MatchRuleID,
+    CupID: m.CupID ?? m.CupId,
+  }));
+}
+
 // Оставляет только сыгранные матчи основной команды, реально учитываемые
 // Hattrick для тренировки: обычная игровая система ("hattrick" в
 // SourceSystem), исключая юношескую команду ("youth") и интегрированные

@@ -50,60 +50,6 @@
   border-bottom: none;
 }
 
-.row {
-  cursor: default;
-}
-
-.rowClickable {
-  cursor: pointer;
-}
-
-.rowClickable:hover td {
-  background: rgba(201, 162, 39, 0.06);
-}
-
-.rowExpanded td {
-  background: rgba(201, 162, 39, 0.06);
-  border-bottom: none;
-}
-
-.expandedRow td {
-  padding: 16px 8px 22px;
-}
-
-.roundCell {
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
-
-.competitionTag {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.competitionLeague {
-  color: var(--color-text-muted);
-  background: rgba(169, 189, 181, 0.12);
-}
-
-.competitionCup {
-  color: var(--color-accent);
-  background: rgba(201, 162, 39, 0.14);
-}
-
-.competitionFriendly {
-  color: var(--color-text-muted);
-  background: rgba(169, 189, 181, 0.12);
-}
-
-.opponentCell {
-  font-weight: 600;
-}
-
 .homeTag {
   font-size: 11px;
   color: var(--color-text-muted);
@@ -113,10 +59,94 @@
   white-space: nowrap;
 }
 
-.scoreCell {
+/* Единый список сыгранных матчей (MatchesCalendar) — по образцу реального
+   сайта Hattrick: значок типа матча, дата/время, названия команд (наша —
+   жирным), счёт справа с цветом по исходу. Строки — flex-ряды, а не
+   таблица, чтобы гибче выравнивать иконку и переменную длину имён команд. */
+.matchListWrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.matchRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 6px;
+  border-bottom: 1px solid rgba(44, 74, 64, 0.6);
+  cursor: pointer;
+}
+
+.matchListWrap > :last-child.matchRow {
+  border-bottom: none;
+}
+
+.matchRow:hover {
+  background: rgba(201, 162, 39, 0.06);
+}
+
+.matchRowExpanded {
+  background: rgba(201, 162, 39, 0.06);
+  border-bottom: none;
+}
+
+.matchIcon {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.matchDate {
+  flex: none;
+  width: 108px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.matchTeams {
+  flex: 1 1 auto;
+  font-size: 14px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.matchScore {
+  flex: none;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  min-width: 44px;
+  text-align: right;
+}
+
+.scoreWin {
+  color: var(--color-good);
+}
+
+.scoreLoss {
+  color: var(--color-bad);
+}
+
+.scoreDraw {
+  color: var(--color-text);
+}
+
+.matchExpanded {
+  padding: 16px 6px 22px;
+}
+
+@media (max-width: 560px) {
+  .matchDate {
+    width: 76px;
+    font-size: 12px;
+  }
+
+  .matchTeams {
+    font-size: 13px;
+  }
 }
 
 .legend {
