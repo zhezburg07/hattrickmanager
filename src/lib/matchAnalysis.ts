@@ -14,7 +14,9 @@ import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
 //    (HomeTeam/AwayTeam → Lineup → Player → RatingStars) — этого поля там
 //    ПРОСТО НЕТ, отсюда и пустой список. Список игроков с рейтингом отдаёт
 //    ОТДЕЛЬНЫЙ файл matchlineup.xml (v2.1), по одному запросу на команду
-//    (свою — без teamID, чужую — с explicit teamID).
+//    (свою — без teamID, чужую — с explicit teamID). Также отдаёт RoleID —
+//    формальную позицию игрока на поле (100-113 — стартовый состав, см.
+//    positionOf ниже), используется для расстановки маркеров на поле.
 // 2) matchdetails.xml (v3.1) реально содержит: командные показатели по
 //    зонам (RatingMidfield/RatingRightDef/RatingMidDef/RatingLeftDef/
 //    RatingRightAtt/RatingMidAtt/RatingLeftAtt/RatingIndirectSetPieces{Def,
@@ -28,10 +30,23 @@ import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
 //    (EventList/Event с EventTypeID/EventText), но ТОЛЬКО если явно
 //    запросить параметр matchEvents=true — без него контейнер просто не
 //    приходит в ответе, что и стало причиной прежнего вывода "недоступно".
+//
+// ВАЖНО: каждая секция (рейтинги/зоны/посещаемость/хронология) разбирается
+// в своём собственном try/catch — раньше исключение в разборе ЛЮБОЙ одной
+// секции (например, из-за нестандартной формы конкретного события в
+// EventList для конкретного матча) обрушивало ВЕСЬ resolveMatchAnalysis,
+// из-за чего для одних матчей отчёт показывался целиком, а для других —
+// нет (нестабильное поведение). Теперь падение одной секции не мешает
+// остальным, а раздел debug ниже показывает сырые счётчики, чтобы не
+// гадать вслепую при следующей похожей жалобе.
 export interface MatchPlayerRating {
   playerId: number;
   name: string;
   rating: number;
+  // RoleID из matchlineup.xml — формальная позиция на поле (100-113 —
+  // одна из 11 стартовых позиций, всё остальное — скамейка/спецроль).
+  // null, если поле не пришло вовсе.
+  roleId: number | null;
 }
 
 // Зональные показатели команды за конкретный матч — шкала CHPP 1-80,
@@ -86,6 +101,12 @@ export interface MatchAnalysisResult {
   timeline: MatchTimelineEntry[] | null;
   timelineSource: MatchTimelineSource | null;
   timelineError: string | null;
+
+  // Сырые счётчики для диагностики нестабильной хронологии (см.
+  // SHOW_MATCH_ANALYSIS_DEBUG в MatchDetailAnalysis.tsx) — сколько сырых
+  // элементов реально пришло в каждом контейнере matchdetails, независимо
+  // от того, удалось ли их разобрать в MatchTimelineEntry.
+  debug: string[];
 
   // Полный отказ (не удалось получить даже сам matchdetails) — остальные
   // секции в этом случае тоже пустые, страница честно покажет одну общую
@@ -147,26 +168,31 @@ function parseAttendance(match: Record<string, unknown>): MatchAttendance | null
   };
 }
 
-// Полная хронология — приходит только если matchdetails запрошен с
-// matchEvents=true. EventText — уже готовый текст события от самого
-// Hattrick (как в отчёте о матче), поэтому декодировать сотни числовых
-// кодов EventTypeID самим не нужно.
-function parseEventListTimeline(match: Record<string, unknown>, homeTeamId: string): MatchTimelineEntry[] {
+// Приводит один сырой элемент EventList/Scorers/Bookings к MatchTimelineEntry.
+// Оборачивается в try/catch на уровне вызывающего кода — один элемент со
+// неожиданной формой не должен обрушивать разбор всех остальных.
+function parseEventListTimeline(match: Record<string, unknown>, homeTeamId: string): { entries: MatchTimelineEntry[]; rawCount: number } {
   const eventList = match.EventList as Record<string, unknown> | undefined;
   const rawEvents = asArray(eventList?.Event);
-  return rawEvents
-    .map((e) => {
+  const entries: MatchTimelineEntry[] = [];
+  for (const e of rawEvents) {
+    try {
       const teamId = String(e.SubjectTeamID ?? e.SubjectTeamId ?? "");
       const text = String(e.EventText ?? "").trim();
-      return {
-        minute: Number(e.Minute ?? 0),
-        matchPart: Number(e.MatchPart ?? 0),
+      const minute = Number(e.Minute ?? NaN);
+      entries.push({
+        minute: Number.isNaN(minute) ? 0 : minute,
+        matchPart: Number(e.MatchPart ?? 0) || 0,
         text: text || `Событие (тип ${e.EventTypeID ?? "?"})`,
-        kind: "event" as const,
+        kind: "event",
         teamSide: teamSideOf(teamId, homeTeamId),
-      };
-    })
-    .sort((a, b) => a.minute - b.minute);
+      });
+    } catch {
+      // Пропускаем один нестандартный элемент, не теряя остальные.
+    }
+  }
+  entries.sort((a, b) => a.minute - b.minute);
+  return { entries, rawCount: rawEvents.length };
 }
 
 // Запасной вариант — голы (Scorers) и карточки (Bookings) приходят всегда,
@@ -178,38 +204,48 @@ function parseGoalsAndCardsTimeline(
   homeTeamId: string,
   homeTeamName: string,
   awayTeamName: string,
-): MatchTimelineEntry[] {
+): { entries: MatchTimelineEntry[]; goalsRawCount: number; bookingsRawCount: number } {
   const goals = asArray((match.Scorers as Record<string, unknown> | undefined)?.Goal);
   const bookings = asArray((match.Bookings as Record<string, unknown> | undefined)?.Booking);
 
   const teamName = (teamId: string) => (teamId === homeTeamId ? homeTeamName : awayTeamName);
 
-  const goalEntries: MatchTimelineEntry[] = goals.map((g) => {
-    const teamId = String(g.ScorerTeamID ?? "");
-    const scorerName = String(g.ScorerPlayerName ?? "").trim() || "Неизвестный игрок";
-    return {
-      minute: Number(g.ScorerMinute ?? 0),
-      matchPart: Number(g.MatchPart ?? 0),
-      text: `Гол — ${scorerName} (${teamName(teamId)}), ${g.ScorerHomeGoals ?? 0}:${g.ScorerAwayGoals ?? 0}`,
-      kind: "goal" as const,
-      teamSide: teamSideOf(teamId, homeTeamId),
-    };
-  });
-
-  const cardEntries: MatchTimelineEntry[] = bookings.map((b) => {
-    const teamId = String(b.BookingTeamID ?? "");
-    const playerName = String(b.BookingPlayerName ?? "").trim() || "Неизвестный игрок";
-    const cardLabel = Number(b.BookingType ?? 0) === 2 ? "Красная карточка" : "Жёлтая карточка";
-    return {
-      minute: Number(b.BookingMinute ?? 0),
-      matchPart: Number(b.MatchPart ?? 0),
-      text: `${cardLabel} — ${playerName} (${teamName(teamId)})`,
-      kind: "card" as const,
-      teamSide: teamSideOf(teamId, homeTeamId),
-    };
-  });
-
-  return [...goalEntries, ...cardEntries].sort((a, b) => a.minute - b.minute);
+  const entries: MatchTimelineEntry[] = [];
+  for (const g of goals) {
+    try {
+      const teamId = String(g.ScorerTeamID ?? "");
+      const scorerName = String(g.ScorerPlayerName ?? "").trim() || "Неизвестный игрок";
+      const minute = Number(g.ScorerMinute ?? NaN);
+      entries.push({
+        minute: Number.isNaN(minute) ? 0 : minute,
+        matchPart: Number(g.MatchPart ?? 0) || 0,
+        text: `Гол — ${scorerName} (${teamName(teamId)}), ${g.ScorerHomeGoals ?? 0}:${g.ScorerAwayGoals ?? 0}`,
+        kind: "goal",
+        teamSide: teamSideOf(teamId, homeTeamId),
+      });
+    } catch {
+      // Пропускаем один нестандартный элемент.
+    }
+  }
+  for (const b of bookings) {
+    try {
+      const teamId = String(b.BookingTeamID ?? "");
+      const playerName = String(b.BookingPlayerName ?? "").trim() || "Неизвестный игрок";
+      const cardLabel = Number(b.BookingType ?? 0) === 2 ? "Красная карточка" : "Жёлтая карточка";
+      const minute = Number(b.BookingMinute ?? NaN);
+      entries.push({
+        minute: Number.isNaN(minute) ? 0 : minute,
+        matchPart: Number(b.MatchPart ?? 0) || 0,
+        text: `${cardLabel} — ${playerName} (${teamName(teamId)})`,
+        kind: "card",
+        teamSide: teamSideOf(teamId, homeTeamId),
+      });
+    } catch {
+      // Пропускаем один нестандартный элемент.
+    }
+  }
+  entries.sort((a, b) => a.minute - b.minute);
+  return { entries, goalsRawCount: goals.length, bookingsRawCount: bookings.length };
 }
 
 async function fetchTeamLineupRatings(
@@ -234,7 +270,13 @@ async function fetchTeamLineupRatings(
   const lineup = team?.Lineup as Record<string, unknown> | undefined;
   const players = asArray(lineup?.Player);
 
-  const ratings: MatchPlayerRating[] = [];
+  // Игрок может встретиться в списке несколько раз (например, отдельная
+  // запись под спецролью вроде "капитан"/"пробивающий пенальти" — см.
+  // MatchRole 17/18/22-32 в справочнике CHPP). Группируем по PlayerID и для
+  // расстановки на поле (RoleID 100-113 — один из 11 стартовых слотов)
+  // предпочитаем ту запись, где формальная позиция определена; это
+  // защищает и от задвоения игрока в списке, и от потери его позиции.
+  const byId = new Map<number, MatchPlayerRating>();
   for (const p of players) {
     const id = Number(p.PlayerID ?? 0);
     const ratingRaw = p.RatingStarsEndOfMatch ?? p.RatingStars;
@@ -243,12 +285,20 @@ async function fetchTeamLineupRatings(
     if (Number.isNaN(rating)) continue;
     const firstLast = `${p.FirstName ?? ""} ${p.LastName ?? ""}`.trim();
     const name = firstLast || String(p.NickName ?? "") || `Игрок #${id}`;
-    ratings.push({ playerId: id, name, rating });
+    const roleIdRaw = p.RoleID ?? p.RoleId;
+    const roleId = roleIdRaw !== undefined ? Number(roleIdRaw) : null;
+
+    const existing = byId.get(id);
+    const isFieldRole = roleId !== null && roleId >= 100 && roleId <= 113;
+    if (!existing || isFieldRole) {
+      byId.set(id, { playerId: id, name, rating, roleId: isFieldRole ? roleId : (existing?.roleId ?? roleId) });
+    }
   }
-  return ratings.sort((a, b) => b.rating - a.rating);
+  return [...byId.values()].sort((a, b) => b.rating - a.rating);
 }
 
 export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId: string): Promise<MatchAnalysisResult> {
+  const debug: string[] = [];
   const empty: MatchAnalysisResult = {
     homeTeamName: "",
     awayTeamName: "",
@@ -263,6 +313,7 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     timeline: null,
     timelineSource: null,
     timelineError: null,
+    debug,
     error: null,
   };
 
@@ -293,34 +344,61 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     awayTeamId = String(awayTeam?.AwayTeamID ?? "");
     homeTeamName = String(homeTeam?.HomeTeamName ?? "");
     awayTeamName = String(awayTeam?.AwayTeamName ?? "");
+    debug.push(`matchdetails.xml: HTTP ${raw.httpStatus}, homeTeamId=${homeTeamId}, awayTeamId=${awayTeamId}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
+    debug.push(`matchdetails.xml: ошибка — ${message}`);
     return { ...empty, error: `Разбор матча (matchdetails): ${message}` };
   }
 
   const homeTeam = match.HomeTeam as Record<string, unknown> | undefined;
   const awayTeam = match.AwayTeam as Record<string, unknown> | undefined;
 
-  const homeZones = parseZoneRatings(homeTeam);
-  const awayZones = parseZoneRatings(awayTeam);
-  const zonesError = !homeZones && !awayZones ? "Зональные показатели (RatingMidfield и т.п.) отсутствуют в ответе matchdetails для этого матча." : null;
+  let homeZones: MatchZoneRatings | null = null;
+  let awayZones: MatchZoneRatings | null = null;
+  let zonesError: string | null;
+  try {
+    homeZones = parseZoneRatings(homeTeam);
+    awayZones = parseZoneRatings(awayTeam);
+    zonesError = !homeZones && !awayZones ? "Зональные показатели (RatingMidfield и т.п.) отсутствуют в ответе matchdetails для этого матча." : null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "неизвестная ошибка";
+    zonesError = `Не удалось разобрать зональные показатели: ${message}`;
+    debug.push(`zones: исключение при разборе — ${message}`);
+  }
 
-  const attendance = parseAttendance(match);
-  const attendanceError = attendance
-    ? null
-    : "Данные о посещаемости (<Arena><SoldTerraces>/<SoldBasic>/<SoldRoof>/<SoldVIP>) отсутствуют в ответе matchdetails для этого матча.";
+  let attendance: MatchAttendance | null = null;
+  let attendanceError: string | null;
+  try {
+    attendance = parseAttendance(match);
+    attendanceError = attendance
+      ? null
+      : "Данные о посещаемости (<Arena><SoldTerraces>/<SoldBasic>/<SoldRoof>/<SoldVIP>) отсутствуют в ответе matchdetails для этого матча.";
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "неизвестная ошибка";
+    attendanceError = `Не удалось разобрать посещаемость: ${message}`;
+    debug.push(`attendance: исключение при разборе — ${message}`);
+  }
 
-  const eventTimeline = parseEventListTimeline(match, homeTeamId);
-  let timeline: MatchTimelineEntry[] | null;
-  let timelineSource: MatchTimelineSource | null;
+  let timeline: MatchTimelineEntry[] | null = null;
+  let timelineSource: MatchTimelineSource | null = null;
   let timelineError: string | null = null;
-  if (eventTimeline.length > 0) {
-    timeline = eventTimeline;
-    timelineSource = "events";
-  } else {
-    const fallback = parseGoalsAndCardsTimeline(match, homeTeamId, homeTeamName, awayTeamName);
-    if (fallback.length > 0) {
-      timeline = fallback;
+  try {
+    const { entries: eventEntries, rawCount: eventRawCount } = parseEventListTimeline(match, homeTeamId);
+    const { entries: fallbackEntries, goalsRawCount, bookingsRawCount } = parseGoalsAndCardsTimeline(
+      match,
+      homeTeamId,
+      homeTeamName,
+      awayTeamName,
+    );
+    debug.push(
+      `хронология — сырые элементы: EventList=${eventRawCount}, Scorers/Goal=${goalsRawCount}, Bookings/Booking=${bookingsRawCount}`,
+    );
+    if (eventEntries.length > 0) {
+      timeline = eventEntries;
+      timelineSource = "events";
+    } else if (fallbackEntries.length > 0) {
+      timeline = fallbackEntries;
       timelineSource = "goals-cards";
     } else {
       timeline = null;
@@ -328,6 +406,10 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
       timelineError =
         "Хронология событий недоступна для этого матча — ни полный список событий (EventList, запрошен с matchEvents=true), ни список голов/карточек не вернулись из matchdetails.";
     }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "неизвестная ошибка";
+    timelineError = `Не удалось разобрать хронологию: ${message}`;
+    debug.push(`хронология: исключение при разборе — ${message}`);
   }
 
   const [homeResult, awayResult] = await Promise.allSettled([
@@ -347,6 +429,7 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
       : homeRatings.length === 0 && awayRatings.length === 0
         ? "Рейтинги игроков (matchlineup) вернулись пустыми для обеих команд."
         : null;
+  debug.push(`matchlineup — рейтинги: наша сторона ${homeRatings.length}, соперник ${awayRatings.length}`);
 
   return {
     homeTeamName,
@@ -362,6 +445,7 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     timeline,
     timelineSource,
     timelineError,
+    debug,
     error: null,
   };
 }

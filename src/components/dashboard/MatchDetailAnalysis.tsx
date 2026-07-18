@@ -26,6 +26,7 @@ interface MatchPlayerRating {
   playerId: number;
   name: string;
   rating: number;
+  roleId: number | null;
 }
 
 interface MatchZoneRatings {
@@ -73,16 +74,51 @@ interface MatchAnalysisResponse {
   timeline: MatchTimelineEntry[] | null;
   timelineSource: "events" | "goals-cards" | null;
   timelineError: string | null;
+  debug: string[];
   error: string | null;
+}
+
+// ВРЕМЕННАЯ диагностика — показывает сырые счётчики из
+// src/lib/matchAnalysis.ts (сколько элементов реально пришло в EventList/
+// Scorers/Bookings, сколько рейтингов удалось разобрать и т.п.), чтобы
+// сразу видеть, на каком шаге хронология/рейтинги теряют данные, если
+// поведение снова станет нестабильным по конкретным матчам.
+const SHOW_MATCH_ANALYSIS_DEBUG = true;
+
+// RoleID из matchlineup.xml (см. src/lib/matchAnalysis.ts) — 11 формальных
+// позиций стартового состава (100-113, схема 5-5-3). Координаты — доля
+// поля по глубине (x, свой гол→0, центр поля→50) и по ширине (y, 0-100).
+// Всё остальное (скамейка, спецроли вроде капитана/пробивающего пенальти)
+// на схему не наносится — показывается отдельным списком под полем.
+const FIELD_POSITIONS: Record<number, { x: number; y: number }> = {
+  100: { x: 6, y: 50 }, // вратарь
+  101: { x: 20, y: 18 }, // правый защитник
+  102: { x: 20, y: 34 }, // правый центральный защитник
+  103: { x: 20, y: 50 }, // центральный защитник
+  104: { x: 20, y: 66 }, // левый центральный защитник
+  105: { x: 20, y: 82 }, // левый защитник
+  106: { x: 34, y: 12 }, // правый полузащитник (фланг)
+  107: { x: 34, y: 34 }, // правый полузащитник (центр)
+  108: { x: 34, y: 50 }, // центральный полузащитник
+  109: { x: 34, y: 66 }, // левый полузащитник (центр)
+  110: { x: 34, y: 88 }, // левый полузащитник (фланг)
+  111: { x: 46, y: 30 }, // правый нападающий
+  112: { x: 46, y: 50 }, // центральный нападающий
+  113: { x: 46, y: 70 }, // левый нападающий
+};
+
+function fieldPosition(roleId: number | null, side: "home" | "away"): { x: number; y: number } | null {
+  if (roleId === null) return null;
+  const base = FIELD_POSITIONS[roleId];
+  if (!base) return null;
+  return side === "home" ? base : { x: 100 - base.x, y: base.y };
 }
 
 // Реальные данные конкретного матча (см. src/lib/matchAnalysis.ts,
 // /api/dashboard/match-analysis). Раньше рейтинги игроков всегда приходили
 // пустыми — читались из несуществующего в matchdetails.xml поля Lineup;
-// список игроков с рейтингом отдаёт отдельный файл matchlineup.xml.
-// Зональные показатели команд, посещаемость и хронология (голы/карточки,
-// либо полный список игровых моментов при matchEvents=true) — тоже реальные
-// поля matchdetails.xml, ранее ошибочно считавшиеся недоступными.
+// список игроков с рейтингом отдаёт отдельный файл matchlineup.xml, откуда
+// же берётся RoleID для расстановки маркеров на поле ниже.
 export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch }) {
   const [tab, setTab] = useState<ReportTab>("ratings");
   const [data, setData] = useState<MatchAnalysisResponse | null>(null);
@@ -112,6 +148,7 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
             timeline: null,
             timelineSource: null,
             timelineError: "Не удалось загрузить",
+            debug: [],
             error: "Не удалось загрузить",
           });
         }
@@ -145,6 +182,11 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
     const skillLevel = Math.max(1, Math.min(20, Math.ceil(raw / 4)));
     return skillWord(skillLevel);
   };
+
+  const homeStarters = data?.homeRatings.filter((p) => fieldPosition(p.roleId, "home") !== null) ?? [];
+  const awayStarters = data?.awayRatings.filter((p) => fieldPosition(p.roleId, "away") !== null) ?? [];
+  const homeBench = data?.homeRatings.filter((p) => fieldPosition(p.roleId, "home") === null) ?? [];
+  const awayBench = data?.awayRatings.filter((p) => fieldPosition(p.roleId, "away") === null) ?? [];
 
   return (
     <div className={styles.card}>
@@ -190,15 +232,59 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
                 {data.ratingsError}
               </p>
             )}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+
+            {(homeStarters.length > 0 || awayStarters.length > 0) && (
+              <>
+                <div className={styles.splitPitch}>
+                  <div className={styles.splitDivider} />
+                  {homeStarters.map((p) => {
+                    const pos = fieldPosition(p.roleId, "home");
+                    if (!pos) return null;
+                    return (
+                      <div key={`home-${p.playerId}`} className={styles.ratingMarker} style={{ left: `${pos.x}%`, top: `${pos.y}%` }}>
+                        <div className={`${styles.ratingBadge} ${styles.ratingBadgeOwn}`}>{p.rating.toFixed(1)}</div>
+                        <div className={styles.ratingName} title={p.name}>
+                          {p.name}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {awayStarters.map((p) => {
+                    const pos = fieldPosition(p.roleId, "away");
+                    if (!pos) return null;
+                    return (
+                      <div key={`away-${p.playerId}`} className={styles.ratingMarker} style={{ left: `${pos.x}%`, top: `${pos.y}%` }}>
+                        <div className={`${styles.ratingBadge} ${styles.ratingBadgeOpp}`}>{p.rating.toFixed(1)}</div>
+                        <div className={styles.ratingName} title={p.name}>
+                          {p.name}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className={styles.legendRow}>
+                  <span>
+                    <span className={styles.legendDot} style={{ background: "var(--color-good)" }} />
+                    {data.homeTeamName || homeName}
+                  </span>
+                  <span>
+                    <span className={styles.legendDot} style={{ background: "var(--color-text-muted)" }} />
+                    {data.awayTeamName || awayName}
+                  </span>
+                </div>
+              </>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginTop: 24 }}>
               <div>
                 <div className={styles.matchHeadTeam} style={{ marginBottom: 8 }}>
                   {data.homeTeamName || homeName}
+                  {homeBench.length > 0 ? " — скамейка/прочие роли" : ""}
                 </div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
                     <tbody>
-                      {data.homeRatings.map((p) => (
+                      {homeBench.map((p) => (
                         <tr key={p.playerId}>
                           <td>{p.name}</td>
                           <td className={styles.numCell}>{p.rating.toFixed(1)}</td>
@@ -212,11 +298,12 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
               <div>
                 <div className={styles.matchHeadTeam} style={{ marginBottom: 8 }}>
                   {data.awayTeamName || awayName}
+                  {awayBench.length > 0 ? " — скамейка/прочие роли" : ""}
                 </div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
                     <tbody>
-                      {data.awayRatings.map((p) => (
+                      {awayBench.map((p) => (
                         <tr key={p.playerId}>
                           <td>{p.name}</td>
                           <td className={styles.numCell}>{p.rating.toFixed(1)}</td>
@@ -374,6 +461,17 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
               )
             )}
           </>
+        )}
+
+        {!loading && data && SHOW_MATCH_ANALYSIS_DEBUG && data.debug.length > 0 && (
+          <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--color-border)" }}>
+            <div className={styles.cardTitle}>Диагностика (временная)</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 12.5, color: "var(--color-text-muted)" }}>
+              {data.debug.map((line, i) => (
+                <div key={i}>{line}</div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>

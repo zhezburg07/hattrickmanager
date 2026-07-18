@@ -63,27 +63,25 @@ async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<Matches
     // FirstMatchDate/LastMatchDate, CHPP по документации молча использует
     // диапазон по умолчанию — только последние 3 месяца (это и есть причина,
     // по которой список ранее обрывался на 8 матчах при MAX_MATCHES_SHOWN=25:
-    // ограничивал не наш код, а дефолтный 3-месячный диапазон CHPP). Просим
-    // явный более широкий диапазон (последние ~9 месяцев), чтобы реально
-    // получить больше истории — это подтверждённые названия и формат полей
-    // (см. github.com/lucianoq/hattrick, api/matchesarchive.go), сам факт
-    // 3-месячного дефолта — из комментария в его исходном коде, ни разу не
-    // проверен на живом ответе этого проекта. Диапазон нарочно не длиннее
-    // "2 сезонов назад" — по документации более широкий интервал CHPP сам
-    // молча урежет обратно до 3-месячного дефолта.
+    // ограничивал не наш код, а дефолтный 3-месячный диапазон CHPP).
     //
-    // ИСПРАВЛЕНО: все даты CHPP — это "Hattrick Time" (HTT), официально
-    // всегда равное шведскому времени (CET/CEST), а НЕ UTC и не времени
-    // сервера — этот момент подтверждён комментарием в независимом
-    // CHPP-клиенте (github.com/lucianoq/hattrick, type_hattrick_time.go),
-    // который сверял это с живым ответом реального аккаунта. Предыдущая
-    // версия форматировала даты в UTC, что могло сдвигать границу диапазона
-    // на 1-2 часа — не хватило бы для потери матчей, но исправлено заодно.
-    // Ниже также добавлено эхо: matchesarchive.xml возвращает Team/
-    // FirstMatchDate и Team/LastMatchDate — тот диапазон, который CHPP
-    // реально применил. Если он окажется у́же запрошенного — значит CHPP
-    // молча подрезал его сам (see parseArchiveEchoedRange в matches.ts), и
-    // тогда дело не в нашем коде, а в серверном ограничении диапазона.
+    // ИСПРАВЛЕНО (2 раза подряд): 1) все даты CHPP — это "Hattrick Time"
+    // (HTT), официально равное шведскому времени (CET/CEST), а не UTC — уже
+    // поправлено. 2) Первая попытка запросить один widе-диапазон (270 дней)
+    // одним запросом, скорее всего, сама попадала под официальное
+    // ограничение CHPP "не более ~2 сезонов за один запрос" и тихо
+    // подрезалась обратно до тех же 3 месяцев — отсюда и то, что после
+    // первого "фикса" число матчей не изменилось. Независимый CHPP-клиент
+    // (github.com/lucianoq/hattrick, api/matchesarchive.go), для которого
+    // подтверждено, что это реально работает на живых ответах, никогда не
+    // запрашивает диапазон шире 50 дней за один вызов — вместо одного
+    // широкого запроса он разбивает нужный период на несколько 50-дневных
+    // "окон" и делает по одному запросу на каждое. Повторяем эту же тактику
+    // здесь: 6 окон по 45 дней (с запасом от 50) = ~270 дней истории,
+    // запросы идут параллельно. Диагностика ниже показывает per-окно
+    // запрошенный и реально применённый CHPP диапазон (see
+    // parseArchiveEchoedRange в matches.ts) — если CHPP всё равно подрежет
+    // хоть одно окно, это будет видно явно, а не как молчаливая недостача.
     const toHattrickTimeString = (d: Date) => {
       const parts = new Intl.DateTimeFormat("en-GB", {
         timeZone: "Europe/Stockholm",
@@ -98,35 +96,63 @@ async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<Matches
       const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
       return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
     };
-    const archiveLastDate = new Date();
-    const archiveFirstDate = new Date(archiveLastDate.getTime() - 270 * 24 * 60 * 60 * 1000);
-    const requestedFirst = toHattrickTimeString(archiveFirstDate);
-    const requestedLast = toHattrickTimeString(archiveLastDate);
+
+    const ARCHIVE_WINDOW_DAYS = 45;
+    const ARCHIVE_WINDOW_COUNT = 6;
+    const dayMs = 24 * 60 * 60 * 1000;
+    const now = new Date();
+    const archiveWindows = Array.from({ length: ARCHIVE_WINDOW_COUNT }, (_, i) => {
+      const last = new Date(now.getTime() - i * ARCHIVE_WINDOW_DAYS * dayMs);
+      const first = new Date(last.getTime() - ARCHIVE_WINDOW_DAYS * dayMs);
+      return { firstMatchDate: toHattrickTimeString(first), lastMatchDate: toHattrickTimeString(last) };
+    });
 
     let archiveMatches: RealMatch[] = [];
     let archiveWarning: string | null = null;
-    try {
-      const archiveRaw = await requestChppXmlRaw(
-        "matchesarchive",
-        { FirstMatchDate: requestedFirst, LastMatchDate: requestedLast },
-        tokens,
-      );
-      if (archiveRaw.httpStatus < 200 || archiveRaw.httpStatus >= 300) {
-        throw new Error(`HTTP ${archiveRaw.httpStatus}: ${archiveRaw.rawXml.slice(0, 200)}`);
+    const archiveResults = await Promise.allSettled(
+      archiveWindows.map((w) =>
+        requestChppXmlRaw("matchesarchive", { FirstMatchDate: w.firstMatchDate, LastMatchDate: w.lastMatchDate }, tokens),
+      ),
+    );
+
+    let anyArchiveSuccess = false;
+    let clampedWindowCount = 0;
+    archiveResults.forEach((result, i) => {
+      const w = archiveWindows[i];
+      const windowLabel = `окно ${i + 1}/${ARCHIVE_WINDOW_COUNT} (${w.firstMatchDate}..${w.lastMatchDate})`;
+      if (result.status !== "fulfilled") {
+        const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        debugCounts.push(`matchesarchive.xml [${windowLabel}]: ошибка запроса — ${message}`);
+        return;
       }
-      archiveMatches = parseMatchesXml(archiveRaw.rawXml, teamId);
-      const echoed = parseArchiveEchoedRange(archiveRaw.rawXml);
-      debugCounts.push(`matchesarchive.xml: ${archiveMatches.length} матчей (HTTP ${archiveRaw.httpStatus})`);
-      debugCounts.push(`matchesarchive.xml — запрошен диапазон: ${requestedFirst} .. ${requestedLast} (HTT)`);
-      debugCounts.push(
-        `matchesarchive.xml — CHPP применил диапазон: ${echoed.firstMatchDate ?? "?"} .. ${echoed.lastMatchDate ?? "?"}` +
-          (echoed.firstMatchDate && echoed.firstMatchDate !== requestedFirst ? " ⚠ отличается от запрошенного — CHPP подрезал диапазон сам" : ""),
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "неизвестная ошибка";
-      archiveWarning = `Полная история прошлых сезонов (matchesarchive) недоступна: ${message}. Показан только текущий сезон (matches).`;
-      debugCounts.push(`matchesarchive.xml: ошибка — ${message}`);
+      const archiveRaw = result.value;
+      if (archiveRaw.httpStatus < 200 || archiveRaw.httpStatus >= 300) {
+        debugCounts.push(`matchesarchive.xml [${windowLabel}]: HTTP ${archiveRaw.httpStatus}`);
+        return;
+      }
+      try {
+        const windowMatches = parseMatchesXml(archiveRaw.rawXml, teamId);
+        archiveMatches.push(...windowMatches);
+        anyArchiveSuccess = true;
+        const echoed = parseArchiveEchoedRange(archiveRaw.rawXml);
+        const clamped = echoed.firstMatchDate !== null && echoed.firstMatchDate !== w.firstMatchDate;
+        if (clamped) clampedWindowCount += 1;
+        debugCounts.push(
+          `matchesarchive.xml [${windowLabel}]: ${windowMatches.length} матчей` +
+            (clamped ? ` ⚠ CHPP применил другой диапазон: ${echoed.firstMatchDate}..${echoed.lastMatchDate}` : ""),
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "неизвестная ошибка";
+        debugCounts.push(`matchesarchive.xml [${windowLabel}]: ошибка разбора — ${message}`);
+      }
+    });
+
+    if (!anyArchiveSuccess) {
+      archiveWarning = "Полная история прошлых сезонов (matchesarchive) недоступна — показан только текущий сезон (matches).";
+    } else if (clampedWindowCount > 0) {
+      archiveWarning = `CHPP подрезал запрошенный диапазон дат в ${clampedWindowCount} из ${ARCHIVE_WINDOW_COUNT} запросов к matchesarchive — история может быть неполной несмотря на попытку.`;
     }
+    debugCounts.push(`matchesarchive.xml — всего собрано из всех окон: ${archiveMatches.length} матчей`);
 
     // currentSeasonMatches — ПЕРВЫМ аргументом: dedupeMatches оставляет
     // первое вхождение по MatchID, так что уже подтверждённый разбор
