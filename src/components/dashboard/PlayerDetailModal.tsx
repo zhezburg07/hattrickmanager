@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   positionGroupLabel,
@@ -112,6 +112,34 @@ export default function PlayerDetailModal({
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyEvents, setHistoryEvents] = useState<{ date: string; text: string }[] | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  async function toggleHistory() {
+    if (historyOpen) {
+      setHistoryOpen(false);
+      return;
+    }
+    setHistoryOpen(true);
+    if (historyEvents !== null || historyError !== null) return; // уже загружено
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/dashboard/player-events?playerId=${player.id}`);
+      const json = await res.json();
+      if (json.error) {
+        setHistoryError(json.error);
+      } else {
+        setHistoryEvents(json.data?.events ?? []);
+      }
+    } catch {
+      setHistoryError("Не удалось загрузить историю карьеры");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
   const staminaLevel = staminaToLevel(player.stamina);
   const prevStaminaLevel = prev?.stamina !== undefined ? staminaToLevel(prev.stamina) : undefined;
@@ -225,6 +253,39 @@ export default function PlayerDetailModal({
           <span>
             Голов за клуб: <b>{player.goalsScored}</b>
           </span>
+        </div>
+
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--color-border)" }}>
+          <button
+            type="button"
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12.5, color: "var(--color-accent)", padding: 0 }}
+            onClick={toggleHistory}
+          >
+            {historyOpen ? "Скрыть историю карьеры ▲" : "Показать историю карьеры ▼"}
+          </button>
+
+          {historyOpen && (
+            <div style={{ marginTop: 10 }}>
+              {historyLoading && <span style={{ fontSize: 12.5, color: "var(--color-text-muted)" }}>Загрузка…</span>}
+              {!historyLoading && historyError && (
+                <span style={{ fontSize: 12.5, color: "var(--color-text-muted)" }}>{historyError}</span>
+              )}
+              {!historyLoading && !historyError && historyEvents && historyEvents.length === 0 && (
+                <span style={{ fontSize: 12.5, color: "var(--color-text-muted)" }}>
+                  Карьерных событий для этого игрока пока не зафиксировано.
+                </span>
+              )}
+              {!historyLoading && !historyError && historyEvents && historyEvents.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto" }}>
+                  {historyEvents.map((ev, i) => (
+                    <div key={i} style={{ fontSize: 12, lineHeight: 1.4 }}>
+                      <span style={{ color: "var(--color-text-muted)" }}>{ev.date}</span> — {ev.text}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>,

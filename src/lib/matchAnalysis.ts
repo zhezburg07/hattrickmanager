@@ -1,6 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import { assertNoChppError } from "./chppError";
 import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
+import { stripHtml } from "./htmlText";
 
 // Реальный разбор матча по конкретному MatchID — раньше на "Обзоре матча"
 // (раскрытая строка сыгранного матча в календаре) показывались полностью
@@ -130,24 +131,6 @@ function numOrNull(value: unknown): number | null {
 function teamSideOf(teamId: string, homeTeamId: string): "home" | "away" | null {
   if (!teamId) return null;
   return teamId === homeTeamId ? "home" : "away";
-}
-
-// EventText — это тот же текст матч-репорта, что показывает сам Hattrick,
-// и содержит HTML-разметку (ссылки на страницы игроков/арены/судей вида
-// <a href="...">Имя</a>) — подтверждено на живом ответе. Раньше эта
-// разметка попадала на экран как есть. Убираем теги и раскодируем базовые
-// HTML-сущности, оставляя только читаемый текст.
-function stripHtml(text: string): string {
-  return text
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function parseZoneRatings(team: Record<string, unknown> | undefined): MatchZoneRatings | null {
