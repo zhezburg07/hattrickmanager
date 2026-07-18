@@ -3,15 +3,9 @@ import Footer from "@/components/Footer";
 import FinanceSection from "@/components/dashboard/FinanceSection";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import {
-  getRequiredHattrickTokens,
-  getStoredHattrickUserId,
-  requestChppXmlRaw,
-  type StoredHattrickTokens,
-} from "@/lib/hattrickApi";
+import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseEconomyXml, type RealEconomy } from "@/lib/economy";
 import { resolveRealCurrencyLabel } from "@/lib/worldCurrency";
-import { resolveLastWeekFinance } from "@/lib/financeHistoryDb";
 
 // Названия полей в src/lib/economy.ts сверены с реальным ответом на живом
 // аккаунте — диагностика сырых полей <Team> больше не нужна на экране.
@@ -36,14 +30,11 @@ async function resolveEconomy(
 
 export default async function FinancePage() {
   const tokens = await getRequiredHattrickTokens();
-  const hattrickUserId = getStoredHattrickUserId();
 
   const [{ data: economy, error }, { label: currencyLabel }] = await Promise.all([
     resolveEconomy(tokens),
     resolveRealCurrencyLabel(tokens),
   ]);
-
-  const lastWeek = economy ? await resolveLastWeekFinance(hattrickUserId, economy.thisWeek) : null;
 
   return (
     <>
@@ -54,8 +45,9 @@ export default async function FinancePage() {
           {economy && (
             <FinanceSection
               cash={economy.cash}
+              expectedCash={economy.expectedCash}
               thisWeek={economy.thisWeek}
-              lastWeek={lastWeek}
+              lastWeek={economy.lastWeek}
               currencyLabel={currencyLabel ?? undefined}
             />
           )}

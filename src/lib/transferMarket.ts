@@ -26,6 +26,17 @@ const TRANSFERS_TEAM_VERSION = "1.2";
 const TRANSFERS_SEARCH_VERSION = "1.1";
 const TRANSFERS_PLAYER_VERSION = "1.1";
 
+// ПОДТВЕРЖДЁННЫЙ баг (сверено пользователем с реальными суммами на самом
+// hattrick.org, см. src/lib/economy.ts): денежные поля CHPP приходят в 10
+// раз меньше реальной суммы — это касается любых Money-полей независимо от
+// валюты (в т.ч. сумм в шведских кронах ниже). Проверка на null/undefined/
+// NaN — до умножения.
+function money(value: unknown): number {
+  if (value === null || value === undefined || value === "") return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n * 10 : 0;
+}
+
 function asArray(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? (value as Record<string, unknown>[]) : value ? [value as Record<string, unknown>] : [];
 }
@@ -80,14 +91,14 @@ export function parseTransfersTeamXml(xml: string): TransferHistoryResult {
       tsi: Number(player?.TSI ?? 0),
       transferType,
       counterpartTeamName,
-      price: Number(t.Price ?? 0),
+      price: money(t.Price),
     };
   });
 
   return {
     teamName: String(team?.TeamName ?? ""),
-    totalSumOfBuysSek: Number(stats?.TotalSumOfBuys ?? 0),
-    totalSumOfSalesSek: Number(stats?.TotalSumOfSales ?? 0),
+    totalSumOfBuysSek: money(stats?.TotalSumOfBuys),
+    totalSumOfSalesSek: money(stats?.TotalSumOfSales),
     numberOfBuys: Number(stats?.NumberOfBuys ?? 0),
     numberOfSales: Number(stats?.NumberOfSales ?? 0),
     transfers,
@@ -163,9 +174,9 @@ export function parseTransferSearchXml(xml: string): TransferSearchResponse {
       name,
       age: Number(details?.Age ?? 0),
       tsi: Number(details?.TSI ?? 0),
-      askingPrice: Number(r.AskingPrice ?? 0),
+      askingPrice: money(r.AskingPrice),
       deadline: String(r.Deadline ?? ""),
-      highestBid: Number(r.HighestBid ?? 0),
+      highestBid: money(r.HighestBid),
       bidderTeamName: String(bidderTeam?.Name ?? ""),
       sellerTeamName: String(sellerTeam?.Name ?? ""),
     };
@@ -234,7 +245,7 @@ export function parseTransfersPlayerXml(xml: string): PlayerTransferHistoryEntry
       deadline: String(t.Deadline ?? ""),
       buyerTeamName: String(buyer?.BuyerTeamName ?? ""),
       sellerTeamName: String(seller?.SellerTeamName ?? ""),
-      price: Number(t.Price ?? 0),
+      price: money(t.Price),
       tsi: Number(t.TSI ?? 0),
     };
   });

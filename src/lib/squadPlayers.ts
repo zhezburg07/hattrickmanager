@@ -67,6 +67,15 @@ export interface HomeCountryInfo {
 //   src/lib/worldCurrency.ts), 3) честная заглушка (флаг не показываем,
 //   раз страну не знаем), без какого-либо отдельного статуса/подписи
 //   поверх неё.
+// ПОДТВЕРЖДЁННЫЙ баг (сверено пользователем с реальными суммами на самом
+// hattrick.org, см. src/lib/economy.ts): денежные поля CHPP приходят в 10
+// раз меньше реальной суммы. Проверка на null/undefined/NaN — до умножения.
+function money(value: unknown): number {
+  if (value === null || value === undefined || value === "") return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n * 10 : 0;
+}
+
 export function parsePlayersDetailedXml(
   xml: string,
   homeCountry: HomeCountryInfo | null,
@@ -167,7 +176,7 @@ export function parsePlayersDetailedXml(
       // Нет истории за прошлую неделю в одном снимке players.xml — заполняется
       // на клиенте из localStorage между синхронизациями, см. usePlayerStatChanges.
       prev: undefined,
-      salary: Number(p.Salary ?? 0),
+      salary: money(p.Salary),
       status: injuryLevel > 0 ? "injured" : "squad",
       gamesPlayed: undefined,
       goalsScored: Number(p.LeagueGoals ?? 0) + Number(p.CupGoals ?? 0) + Number(p.FriendliesGoals ?? 0),

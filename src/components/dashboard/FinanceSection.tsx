@@ -45,25 +45,29 @@ function formatSignedAmount(amount: number, sign: "+" | "−", formatMoney: (val
 
 function WeekBlock({
   title,
+  hint,
   data,
-  cashAtEnd,
   formatMoney,
 }: {
   title: string;
+  hint?: string;
   data: FinanceWeekData;
-  cashAtEnd?: number;
   formatMoney: (value: number) => string;
 }) {
   const income = incomeLines(data);
   const expense = expenseLines(data);
-  const profit = data.incomeSum - data.expenseSum;
-  const isProfit = profit >= 0;
+  const isProfit = data.profit >= 0;
 
   return (
     <div>
-      <div className={styles.financeGroupTitle} style={{ fontSize: 13, marginBottom: 14 }}>
+      <div className={styles.financeGroupTitle} style={{ fontSize: 13, marginBottom: 4 }}>
         {title}
       </div>
+      {hint && (
+        <p className={styles.financeSummaryHint} style={{ marginTop: 0, marginBottom: 14 }}>
+          {hint}
+        </p>
+      )}
       <div className={styles.financeTables}>
         <div>
           <div className={styles.financeGroupTitle}>Доход</div>
@@ -94,31 +98,27 @@ function WeekBlock({
         <span className={styles.financeExpenseValue}>−{formatMoney(data.expenseSum)}</span>
       </div>
       <div className={styles.financeTotalRow}>
-        <span>{isProfit ? "Ожидаемая прибыль" : "Ожидаемые убытки"}</span>
+        <span>{isProfit ? "Прибыль" : "Убытки"}</span>
         <span className={isProfit ? styles.financeIncomeValue : styles.financeExpenseValue}>
           {isProfit ? "+" : "−"}
-          {formatMoney(Math.abs(profit))}
+          {formatMoney(Math.abs(data.profit))}
         </span>
       </div>
-      {cashAtEnd !== undefined && (
-        <div className={styles.financeTotalRow}>
-          <span>Наличность на конец недели</span>
-          <span>{formatMoney(cashAtEnd)}</span>
-        </div>
-      )}
     </div>
   );
 }
 
 export default function FinanceSection({
   cash,
+  expectedCash,
   thisWeek,
   lastWeek,
   currencyLabel,
 }: {
   cash: number;
+  expectedCash?: number;
   thisWeek: FinanceWeekData;
-  lastWeek: FinanceWeekData | null;
+  lastWeek: FinanceWeekData;
   currencyLabel?: string;
 }) {
   const currency = currencyLabel ?? defaultCurrency.label;
@@ -128,24 +128,18 @@ export default function FinanceSection({
     <div className={styles.card}>
       <div className={styles.balanceLabel}>Доступные средства</div>
       <div className={styles.balanceValue}>{formatMoney(cash)}</div>
+      {expectedCash !== undefined && (
+        <p className={styles.financeSummaryHint} style={{ marginTop: 4 }}>
+          Ожидается на следующей неделе: {formatMoney(expectedCash)}
+        </p>
+      )}
 
       <div style={{ marginTop: 28 }}>
-        <WeekBlock title="На этой неделе" data={thisWeek} formatMoney={formatMoney} />
+        <WeekBlock title="На этой неделе" hint="План — неделя ещё не завершилась" data={thisWeek} formatMoney={formatMoney} />
       </div>
 
       <div style={{ marginTop: 32, paddingTop: 24, borderTop: "1px solid var(--color-border)" }}>
-        {lastWeek ? (
-          <WeekBlock title="На прошлой неделе" data={lastWeek} cashAtEnd={lastWeek.cash} formatMoney={formatMoney} />
-        ) : (
-          <>
-            <div className={styles.financeGroupTitle} style={{ fontSize: 13, marginBottom: 8 }}>
-              На прошлой неделе
-            </div>
-            <p className={styles.financeSummaryHint}>
-              Пока недостаточно данных для сравнения — загляните на эту вкладку через неделю.
-            </p>
-          </>
-        )}
+        <WeekBlock title="На прошлой неделе" hint="Факт — завершившаяся неделя" data={lastWeek} formatMoney={formatMoney} />
       </div>
     </div>
   );

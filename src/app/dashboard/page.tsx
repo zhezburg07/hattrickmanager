@@ -286,8 +286,8 @@ async function resolveDashboardData(tokens: StoredHattrickTokens): Promise<Dashb
     }
     const economy = parseEconomyXml(raw.economy.rawXml);
     data.balance = economy.cash;
-    data.totalIncome = economy.lastWeekIncome;
-    data.totalExpense = economy.lastWeekExpense;
+    data.totalIncome = economy.thisWeek.incomeSum;
+    data.totalExpense = economy.thisWeek.expenseSum;
     data.fanMood = chppSupportersPopularityToFanMoodLevel(economy.supportersPopularity);
     data.fanClubSize = economy.fanClubSize;
   } catch (err) {

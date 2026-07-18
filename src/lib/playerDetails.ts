@@ -14,6 +14,16 @@ const agreeabilityLabels = ["скандалист", "спорная личнос
 const aggressivenessLabels = ["спокойный", "хладнокровный", "уравновешенный", "вспыльчивый", "горячий", "неуправляемый"];
 const honestyLabels = ["печально известен", "нечестный", "честный", "порядочный", "праведный", "святой"];
 
+// ПОДТВЕРЖДЁННЫЙ баг (сверено пользователем с реальными суммами на самом
+// hattrick.org, см. src/lib/economy.ts): денежные поля CHPP приходят в 10
+// раз меньше реальной суммы. null остаётся null (поле реально отсутствует),
+// а не превращается в 0 — отличает "нет данных" от "ноль".
+function moneyOrNull(value: unknown): number | null {
+  if (value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n * 10 : null;
+}
+
 function traitLabel(labels: string[], value: number): string | null {
   if (value < 0 || value >= labels.length) return null;
   return labels[value];
@@ -85,9 +95,9 @@ export function parsePlayerDetailsXml(xml: string): PlayerCareerDetails {
     motherClubBonus: String(player.MotherClubBonus ?? "").toLowerCase() === "true",
     statement: player.Statement ? String(player.Statement) : null,
     transferListed: String(player.TransferListed ?? "").toLowerCase() === "true",
-    transferAskingPrice: transferDetails?.AskingPrice !== undefined ? Number(transferDetails.AskingPrice) : null,
+    transferAskingPrice: moneyOrNull(transferDetails?.AskingPrice),
     transferDeadline: transferDetails?.Deadline !== undefined ? String(transferDetails.Deadline) : null,
-    transferHighestBid: transferDetails?.HighestBid !== undefined ? Number(transferDetails.HighestBid) : null,
+    transferHighestBid: moneyOrNull(transferDetails?.HighestBid),
   };
 }
 
