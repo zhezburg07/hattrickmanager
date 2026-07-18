@@ -141,6 +141,59 @@ export default function PlayerDetailModal({
     }
   }
 
+  interface PlayerCareerDetails {
+    careerGoals: number;
+    careerHattricks: number;
+    careerAssists: number;
+    leagueGoals: number;
+    cupGoals: number;
+    friendliesGoals: number;
+    matchesCurrentTeam: number;
+    goalsCurrentTeam: number;
+    assistsCurrentTeam: number;
+    caps: number;
+    capsU20: number;
+    nationalTeamName: string | null;
+    agreeability: string | null;
+    aggressiveness: string | null;
+    honesty: string | null;
+    motherClubName: string | null;
+    motherClubBonus: boolean;
+    statement: string | null;
+    transferListed: boolean;
+    transferAskingPrice: number | null;
+    transferDeadline: string | null;
+    transferHighestBid: number | null;
+  }
+
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [details, setDetails] = useState<PlayerCareerDetails | null>(null);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+
+  async function toggleDetails() {
+    if (detailsOpen) {
+      setDetailsOpen(false);
+      return;
+    }
+    setDetailsOpen(true);
+    if (details !== null || detailsError !== null) return; // уже загружено
+    setDetailsLoading(true);
+    try {
+      const res = await fetch(`/api/dashboard/player-details?playerId=${player.id}`);
+      const json = await res.json();
+      if (json.error) {
+        setDetailsError(json.error);
+      } else {
+        setDetails(json.data);
+      }
+    } catch {
+      setDetailsError("Не удалось загрузить карьерную статистику");
+    } finally {
+      setDetailsLoading(false);
+    }
+  }
+
   const staminaLevel = staminaToLevel(player.stamina);
   const prevStaminaLevel = prev?.stamina !== undefined ? staminaToLevel(prev.stamina) : undefined;
 
@@ -282,6 +335,64 @@ export default function PlayerDetailModal({
                       <span style={{ color: "var(--color-text-muted)" }}>{ev.date}</span> — {ev.text}
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          <button
+            type="button"
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12.5, color: "var(--color-accent)", padding: 0 }}
+            onClick={toggleDetails}
+          >
+            {detailsOpen ? "Скрыть карьерную статистику ▲" : "Показать карьерную статистику ▼"}
+          </button>
+
+          {detailsOpen && (
+            <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.6 }}>
+              {detailsLoading && <span style={{ color: "var(--color-text-muted)" }}>Загрузка…</span>}
+              {!detailsLoading && detailsError && <span style={{ color: "var(--color-text-muted)" }}>{detailsError}</span>}
+              {!detailsLoading && !detailsError && details && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div>
+                    Голы за карьеру: <b>{details.careerGoals}</b> (лига {details.leagueGoals}, кубок {details.cupGoals},
+                    товарищеские {details.friendliesGoals}), хет-триков — <b>{details.careerHattricks}</b>, передач —{" "}
+                    <b>{details.careerAssists}</b>
+                  </div>
+                  <div>
+                    За текущий клуб: <b>{details.matchesCurrentTeam}</b> матчей, <b>{details.goalsCurrentTeam}</b> голов,{" "}
+                    <b>{details.assistsCurrentTeam}</b> передач
+                  </div>
+                  {(details.caps > 0 || details.capsU20 > 0) && (
+                    <div>
+                      Сборная{details.nationalTeamName ? ` (${details.nationalTeamName})` : ""}: <b>{details.caps}</b> игр
+                      за взрослую, <b>{details.capsU20}</b> за молодёжную
+                    </div>
+                  )}
+                  {(details.agreeability || details.aggressiveness || details.honesty) && (
+                    <div>
+                      Характер:{" "}
+                      {[details.agreeability, details.aggressiveness, details.honesty].filter(Boolean).join(", ")}
+                    </div>
+                  )}
+                  {details.motherClubName && (
+                    <div>
+                      Родной клуб: <b>{details.motherClubName}</b>
+                      {details.motherClubBonus ? " (бонус воспитанника активен)" : ""}
+                    </div>
+                  )}
+                  {details.statement && <div>Высказывание игрока: «{details.statement}»</div>}
+                  {details.transferListed && (
+                    <div>
+                      На трансфере: стартовая цена {details.transferAskingPrice?.toLocaleString("ru-RU")},{" "}
+                      {details.transferHighestBid && details.transferHighestBid > 0
+                        ? `текущая ставка ${details.transferHighestBid.toLocaleString("ru-RU")}`
+                        : "ставок пока нет"}
+                      {details.transferDeadline ? `, срок — ${details.transferDeadline}` : ""}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
