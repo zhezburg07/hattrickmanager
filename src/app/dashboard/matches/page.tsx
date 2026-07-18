@@ -31,7 +31,7 @@ interface MatchesResult {
   ourTeamName: string;
   error: string | null;
   // Необязательное предупреждение (не блокирует страницу) — например,
-  // matchesarchive не подключился, или строгий фильтр по SourceSystem
+  // matchesarchive не подключился, или фильтр по SourceSystem === "youth"
   // отсеял всё и пришлось откатиться к более мягкому условию.
   warning: string | null;
   debugCounts: string[];
