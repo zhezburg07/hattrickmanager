@@ -13,6 +13,7 @@ import WeeklyHighlights from "@/components/dashboard/WeeklyHighlights";
 import PowerRatingPanel from "@/components/dashboard/PowerRatingPanel";
 import HofPlayersSection from "@/components/dashboard/HofPlayersSection";
 import AchievementsSection from "@/components/dashboard/AchievementsSection";
+import SupportersSection from "@/components/dashboard/SupportersSection";
 import { defaultCurrency, chppSupportersPopularityToFanMoodLevel } from "@/data/dashboard";
 import type { MatrixTeamMeta } from "@/data/leagueMatrix";
 import {
@@ -35,6 +36,7 @@ import { parseWorldLeagueInfoXml } from "@/lib/worldCurrency";
 import { resolveWeeklyTsiHighlights } from "@/lib/playerHistoryDb";
 import { resolveHofPlayers } from "@/lib/hofPlayers";
 import { resolveAchievements } from "@/lib/achievements";
+import { resolveSupporters } from "@/lib/supporters";
 import { upsertConnectedUser } from "@/lib/connectedUsersDb";
 import styles from "@/components/dashboard/Overview.module.css";
 
@@ -345,11 +347,12 @@ const SHOW_LEAGUE_DEBUG_PANEL = false;
 export default async function DashboardPage() {
   const tokens = await getRequiredHattrickTokens();
   const hattrickUserId = getStoredHattrickUserId();
-  const [data, weeklyTsi, hof, achievements] = await Promise.all([
+  const [data, weeklyTsi, hof, achievements, supporters] = await Promise.all([
     resolveDashboardData(tokens),
     resolveWeeklyTsiHighlights(hattrickUserId),
     resolveHofPlayers(tokens),
     resolveAchievements(tokens),
+    resolveSupporters(tokens),
   ]);
 
   // Побочный эффект для админ-панели (/admin, см. src/lib/connectedUsersDb.ts)
@@ -472,6 +475,15 @@ export default async function DashboardPage() {
 
           <div style={{ marginTop: 12 }}>
             <AchievementsSection data={achievements.data} error={achievements.error} />
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <SupportersSection
+              weSupport={supporters.weSupport}
+              weSupportError={supporters.weSupportError}
+              ourSupporters={supporters.ourSupporters}
+              ourSupportersError={supporters.ourSupportersError}
+            />
           </div>
         </div>
       </main>
