@@ -1,15 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import { positionGroupLabel, skillLabel, skillWord, type Country, type PositionGroup, type SquadSkills } from "@/data/squad";
 import NationalityTag from "./NationalityTag";
+import YouthPlayerDetailModal, { type RealYouthPlayerRow } from "./YouthPlayerDetailModal";
 import styles from "./SquadTable.module.css";
-
-interface RealYouthPlayerRow {
-  id: number;
-  name: string;
-  age: number;
-  nationality: Country;
-  positionGroup: PositionGroup;
-  skills: SquadSkills;
-}
 
 type SkillKey = keyof SquadSkills;
 
@@ -48,6 +43,7 @@ export default function YouthTable({
   players?: RealYouthPlayerRow[];
 }) {
   const roster = players ?? [];
+  const [selectedPlayer, setSelectedPlayer] = useState<RealYouthPlayerRow | null>(null);
 
   return (
     <>
@@ -110,7 +106,7 @@ export default function YouthTable({
             </thead>
             <tbody>
               {roster.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.id} onClick={() => setSelectedPlayer(p)} style={{ cursor: "pointer" }}>
                   <td className={styles.nameCell}>{p.name}</td>
                   <td>
                     <NationalityTag nationality={p.nationality} />
@@ -135,7 +131,7 @@ export default function YouthTable({
 
         <div className={styles.cardList}>
           {roster.map((p) => (
-            <div className={styles.playerCard} key={p.id}>
+            <div className={styles.playerCard} key={p.id} onClick={() => setSelectedPlayer(p)} style={{ cursor: "pointer" }}>
               <div className={styles.playerCardHead}>
                 <span className={styles.playerCardName}>{p.name}</span>
               </div>
@@ -164,6 +160,8 @@ export default function YouthTable({
           ))}
         </div>
       </div>
+
+      {selectedPlayer && <YouthPlayerDetailModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
     </>
   );
 }
