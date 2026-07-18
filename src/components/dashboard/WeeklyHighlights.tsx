@@ -6,10 +6,10 @@ function fmtTsi(n: number): string {
   return n.toLocaleString("ru-RU");
 }
 
-function HighlightCard({ title, entry, tone }: { title: string; entry: WeeklyTsiEntry; tone: "hero" | "zero" }) {
+function HighlightCard({ title, entry }: { title: string; entry: WeeklyTsiEntry }) {
   const isUp = entry.delta >= 0;
   return (
-    <div className={`${styles.highlightCard} ${tone === "hero" ? styles.highlightHero : styles.highlightZero}`}>
+    <div className={`${styles.highlightCard} ${styles.highlightHero}`}>
       <div className={styles.highlightTitle}>{title}</div>
       <div className={styles.highlightName}>{entry.name}</div>
       <div className={styles.highlightMeta}>{positionGroupLabel[entry.positionGroup]}</div>
@@ -32,27 +32,27 @@ function HighlightCard({ title, entry, tone }: { title: string; entry: WeeklyTsi
 // каждом визите на Состав/Расстановку — если пользователь ни разу не заходил
 // туда неделю назад, сравнивать не с чем, и вместо выдумки честно показываем
 // заглушку.
+//
+// По запросу оставлен только лучший игрок недели ("Ноль недели"/худший
+// игрок убран из блока — см. git-историю, если понадобится вернуть).
 export default function WeeklyHighlights({
   gainer,
-  loser,
   hasEnoughHistory,
 }: {
   gainer: WeeklyTsiEntry | null;
-  loser: WeeklyTsiEntry | null;
   hasEnoughHistory: boolean;
 }) {
   return (
     <div className={styles.panel}>
       <div className={styles.panelHeadRow}>
         <div className={styles.panelTitle} style={{ margin: 0 }}>
-          Герой и Ноль недели
+          Герой недели
         </div>
         <span className={styles.panelHint}>Изменение TSI за последнюю неделю</span>
       </div>
-      {hasEnoughHistory && gainer && loser ? (
-        <div className={styles.highlightGrid}>
-          <HighlightCard title="Лучший игрок недели" entry={gainer} tone="hero" />
-          <HighlightCard title="Худший игрок недели" entry={loser} tone="zero" />
+      {hasEnoughHistory && gainer ? (
+        <div className={styles.highlightGrid} style={{ gridTemplateColumns: "1fr", maxWidth: 280 }}>
+          <HighlightCard title="Лучший игрок недели" entry={gainer} />
         </div>
       ) : (
         <p className={styles.highlightNote}>Пока недостаточно данных для сравнения, приходите через неделю.</p>

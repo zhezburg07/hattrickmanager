@@ -1,9 +1,9 @@
 import type { AchievementsResult } from "@/lib/achievements";
 import styles from "./Overview.module.css";
 
-// Реальные достижения менеджера (achievements.xml) — заголовок и описание
-// каждого достижения приходят готовым текстом от самого Hattrick, здесь
-// только переведена категория (CategoryID) и добавлено оформление.
+// Реальные достижения менеджера (achievements.xml) — по запросу упрощено
+// до одной строки с общим количеством очков, без развёрнутой витрины
+// (см. git-историю, если понадобится вернуть полный список).
 export default function AchievementsSection({
   data,
   error,
@@ -17,26 +17,14 @@ export default function AchievementsSection({
         <div className={styles.panelTitle} style={{ margin: 0 }}>
           Достижения менеджера
         </div>
-        {data && <span className={styles.panelHint}>Очков всего: {data.maxPoints}</span>}
       </div>
 
       {error ? (
         <p className={styles.highlightNote}>{error}</p>
-      ) : data && data.achievements.length > 0 ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-          {data.achievements.map((a) => (
-            <div key={a.id} className={styles.highlightCard} style={{ flex: "1 1 260px", minWidth: 240 }}>
-              <div className={styles.highlightTitle}>{a.categoryLabel}</div>
-              <div className={styles.highlightName}>{a.title}</div>
-              {a.text && <div className={styles.highlightMeta}>{a.text}</div>}
-              <div className={styles.highlightStats} style={{ marginTop: 8 }}>
-                <span>{a.points} очк.</span>
-                {a.rank > 0 && <span>Ранг {a.rank}</span>}
-                {a.eventDate && <span>{a.eventDate}</span>}
-              </div>
-            </div>
-          ))}
-        </div>
+      ) : data ? (
+        <p className={styles.highlightNote} style={{ marginTop: 0 }}>
+          Очков всего: <b style={{ color: "var(--color-text)" }}>{data.maxPoints}</b>
+        </p>
       ) : (
         <p className={styles.highlightNote}>Достижений пока нет.</p>
       )}

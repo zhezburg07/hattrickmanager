@@ -344,6 +344,12 @@ function errorMessage(err: unknown): string {
 // проверить leaguefixtures на реальных сыгранных матчах (см. чат).
 const SHOW_LEAGUE_DEBUG_PANEL = false;
 
+// Временно скрыт по запросу — блок "Кого поддерживаем / кто поддерживает
+// нас" убран с экрана, код и src/lib/supporters.ts не удалены. Заодно не
+// делаем сам запрос к CHPP, пока флаг выключен, — незачем дважды дёргать
+// supporters.xml впустую на каждой загрузке Обзора.
+const SHOW_SUPPORTERS_SECTION = false;
+
 export default async function DashboardPage() {
   const tokens = await getRequiredHattrickTokens();
   const hattrickUserId = getStoredHattrickUserId();
@@ -352,7 +358,9 @@ export default async function DashboardPage() {
     resolveWeeklyTsiHighlights(hattrickUserId),
     resolveHofPlayers(tokens),
     resolveAchievements(tokens),
-    resolveSupporters(tokens),
+    SHOW_SUPPORTERS_SECTION
+      ? resolveSupporters(tokens)
+      : Promise.resolve({ weSupport: null, weSupportError: null, ourSupporters: null, ourSupportersError: null }),
   ]);
 
   // Побочный эффект для админ-панели (/admin, см. src/lib/connectedUsersDb.ts)
@@ -427,15 +435,15 @@ export default async function DashboardPage() {
                 resultsMatrix={data.resultsMatrix}
               />
             )}
+            {data.recentMatches && data.upcomingMatches && (
+              <MatchesSection recentMatches={data.recentMatches} upcomingMatches={data.upcomingMatches} />
+            )}
             {data.squadInjured !== undefined && data.squadAvgForm !== undefined && (
               <SquadSummaryPanel
                 totalPlayers={data.squadTotal}
                 injured={data.squadInjured}
                 avgForm={data.squadAvgForm}
               />
-            )}
-            {data.recentMatches && data.upcomingMatches && (
-              <MatchesSection recentMatches={data.recentMatches} upcomingMatches={data.upcomingMatches} />
             )}
             {data.balance !== undefined && data.totalIncome !== undefined && data.totalExpense !== undefined && (
               <FinanceSummary
@@ -462,11 +470,7 @@ export default async function DashboardPage() {
           </div>
 
           <div style={{ marginTop: 12 }}>
-            <WeeklyHighlights
-              gainer={weeklyTsi.gainer}
-              loser={weeklyTsi.loser}
-              hasEnoughHistory={weeklyTsi.hasEnoughHistory}
-            />
+            <WeeklyHighlights gainer={weeklyTsi.gainer} hasEnoughHistory={weeklyTsi.hasEnoughHistory} />
           </div>
 
           <div style={{ marginTop: 12 }}>
@@ -477,14 +481,16 @@ export default async function DashboardPage() {
             <AchievementsSection data={achievements.data} error={achievements.error} />
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <SupportersSection
-              weSupport={supporters.weSupport}
-              weSupportError={supporters.weSupportError}
-              ourSupporters={supporters.ourSupporters}
-              ourSupportersError={supporters.ourSupportersError}
-            />
-          </div>
+          {SHOW_SUPPORTERS_SECTION && (
+            <div style={{ marginTop: 12 }}>
+              <SupportersSection
+                weSupport={supporters.weSupport}
+                weSupportError={supporters.weSupportError}
+                ourSupporters={supporters.ourSupporters}
+                ourSupportersError={supporters.ourSupportersError}
+              />
+            </div>
+          )}
         </div>
       </main>
       <Footer />

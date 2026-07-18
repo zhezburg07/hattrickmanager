@@ -43,6 +43,10 @@ export default function StaffSection({
   coachName?: string;
   coachLeadership?: number;
 }) {
+  // По запросу показываем только реально нанятых специалистов — строки
+  // "не нанят" для пустых категорий убраны.
+  const hiredStaff = realStaff ? realStaffLabels.filter(({ key }) => realStaff[key] > 0) : [];
+
   return (
     <div className={`${styles.panel} ${styles.span2}`}>
       <div className={styles.panelTitle}>Персонал</div>
@@ -58,20 +62,19 @@ export default function StaffSection({
           </div>
         )}
 
-        {realStaff &&
-          realStaffLabels.map(({ key, label }) => {
-            const level = realStaff[key];
-            const hired = level > 0;
-            return (
-              <div className={styles.rowListItem} key={key}>
-                <span className={`${styles.rowDot} ${hired ? styles.rowDotOn : styles.rowDotOff}`} />
-                <span className={styles.rowLabel}>{label}</span>
-                <span className={`${styles.rowValue} ${hired ? styles.rowValueOn : ""}`}>
-                  {hired ? skillWord(level) : "не нанят"}
-                </span>
-              </div>
-            );
-          })}
+        {hiredStaff.map(({ key, label }) => (
+          <div className={styles.rowListItem} key={key}>
+            <span className={`${styles.rowDot} ${styles.rowDotOn}`} />
+            <span className={styles.rowLabel}>{label}</span>
+            <span className={`${styles.rowValue} ${styles.rowValueOn}`}>{skillWord(realStaff![key])}</span>
+          </div>
+        ))}
+
+        {!coachName && hiredStaff.length === 0 && (
+          <p className={styles.panelHint} style={{ margin: 0 }}>
+            Специалисты пока не наняты.
+          </p>
+        )}
       </div>
     </div>
   );
