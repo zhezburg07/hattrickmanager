@@ -48,7 +48,20 @@ export interface RealMatch {
 // ближайшие матчи команды. Hattrick сам решает, что считать "нашей" и
 // "чужой" стороной по HomeTeamID/AwayTeamID — здесь просто сравниваем с
 // ourTeamId.
-export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
+//
+// isArchive — ИСПРАВЛЕНО по живой диагностике: matchesarchive.xml вообще не
+// присылает поле <Status> для своих записей (архив по определению содержит
+// только уже сыгранные матчи, так что Hattrick, похоже, не считает нужным
+// повторять статус) — раньше отсутствие поля трактовалось как "UPCOMING"
+// (дефолт, рассчитанный на matches.xml, где это верно для будущих матчей),
+// из-за чего ВСЕ матчи из matchesarchive (с реальными датами в прошлом и
+// реальным счётом) ошибочно отбрасывались фильтром "сыграно" — 57 из 57
+// архивных матчей отсеивались именно так. Для matchesarchive отсутствие
+// Status теперь считается "FINISHED" (архивная запись = сыгранный матч по
+// определению) — а не наоборот вслепую: если счёта тоже нет, матч всё равно
+// отсеется отдельной проверкой на пустой счёт в filterTrainingRelevantMatches,
+// так что тут нет риска показать "сыгранный" матч без реального счёта.
+export function parseMatchesXml(xml: string, ourTeamId: string, options?: { isArchive?: boolean }): RealMatch[] {
   const parser = new XMLParser();
   const data = parser.parse(xml);
 
@@ -77,13 +90,15 @@ export function parseMatchesXml(xml: string, ourTeamId: string): RealMatch[] {
     const matchRuleRaw = m.MatchRuleId ?? m.MatchRuleID;
     const matchRuleId = matchRuleRaw !== undefined ? String(matchRuleRaw) : null;
 
+    const defaultStatus = options?.isArchive ? "FINISHED" : "UPCOMING";
+
     return {
       matchId: String(m.MatchID ?? ""),
       date: String(m.MatchDate ?? ""),
       home: isHome,
       opponent,
       opponentTeamId,
-      status: (String(m.Status ?? "UPCOMING").toUpperCase() as RealMatchStatus) || "UPCOMING",
+      status: (String(m.Status ?? defaultStatus).toUpperCase() as RealMatchStatus) || defaultStatus,
       ourScore: homeGoals === null || awayGoals === null ? null : isHome ? homeGoals : awayGoals,
       oppScore: homeGoals === null || awayGoals === null ? null : isHome ? awayGoals : homeGoals,
       matchType: String(m.MatchType ?? ""),

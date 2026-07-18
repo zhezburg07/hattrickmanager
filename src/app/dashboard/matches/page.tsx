@@ -131,7 +131,7 @@ async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<Matches
         return;
       }
       try {
-        const windowMatches = parseMatchesXml(archiveRaw.rawXml, teamId);
+        const windowMatches = parseMatchesXml(archiveRaw.rawXml, teamId, { isArchive: true });
         archiveMatches.push(...windowMatches);
         anyArchiveSuccess = true;
         const echoed = parseArchiveEchoedRange(archiveRaw.rawXml);
