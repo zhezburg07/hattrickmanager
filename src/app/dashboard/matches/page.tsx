@@ -58,14 +58,33 @@ async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<Matches
     debugRaw = debugRawMatchFields(raw.rawXml);
 
     // matchesarchive.xml — более полная история прошлых сезонов (matches.xml
-    // документированно ограничен ~50 матчами). Ни имя файла, ни параметры
-    // здесь ни разу не проверялись на живом ответе — если запрос не удастся,
-    // страница всё равно показывает текущий сезон из matches.xml, просто с
-    // честным предупреждением, а не пустой.
+    // документированно ограничен ~50 матчами). ВАЖНО: если не передать
+    // FirstMatchDate/LastMatchDate, CHPP по документации молча использует
+    // диапазон по умолчанию — только последние 3 месяца (это и есть причина,
+    // по которой список ранее обрывался на 8 матчах при MAX_MATCHES_SHOWN=25:
+    // ограничивал не наш код, а дефолтный 3-месячный диапазон CHPP). Просим
+    // явный более широкий диапазон (последние ~9 месяцев), чтобы реально
+    // получить больше истории — это подтверждённые названия и формат полей
+    // (см. github.com/lucianoq/hattrick, api/matchesarchive.go), сам факт
+    // 3-месячного дефолта — из комментария в его исходном коде, ни разу не
+    // проверен на живом ответе этого проекта. Диапазон нарочно не длиннее
+    // "2 сезонов назад" — по документации более широкий интервал CHPP сам
+    // молча урежет обратно до 3-месячного дефолта.
+    const archiveLastDate = new Date();
+    const archiveFirstDate = new Date(archiveLastDate.getTime() - 270 * 24 * 60 * 60 * 1000);
+    const toChppDateTime = (d: Date) => d.toISOString().slice(0, 19).replace("T", " ");
+
     let archiveMatches: RealMatch[] = [];
     let archiveWarning: string | null = null;
     try {
-      const archiveRaw = await requestChppXmlRaw("matchesarchive", {}, tokens);
+      const archiveRaw = await requestChppXmlRaw(
+        "matchesarchive",
+        {
+          FirstMatchDate: toChppDateTime(archiveFirstDate),
+          LastMatchDate: toChppDateTime(archiveLastDate),
+        },
+        tokens,
+      );
       if (archiveRaw.httpStatus < 200 || archiveRaw.httpStatus >= 300) {
         throw new Error(`HTTP ${archiveRaw.httpStatus}: ${archiveRaw.rawXml.slice(0, 200)}`);
       }
