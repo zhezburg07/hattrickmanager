@@ -4,26 +4,29 @@ import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
 import { parseTeamDetailsXml } from "./teamDetails";
 import { parseMatchesXml } from "./matches";
 
-// Рейтинг игрока за сыгранные матчи (звёзды, 0-10, как в самой Hattrick) —
+// Рейтинг игрока за сыгранные матчи (звёзды, как в самой Hattrick) —
 // раньше в проекте таких данных не было: src/data/matchAnalysis.ts (теперь
 // удалён) для "Обзора матча" был целиком иллюстративной детерминированной
 // генерацией, а не реальным ответом CHPP.
 //
 // Схема: 1) teamdetails.xml → наш TeamID; 2) matches.xml → последние N
-// матчей со статусом FINISHED; 3) matchdetails.xml по каждому MatchID →
-// состав и рейтинг (RatingStars) наших игроков, вышедших на поле. Из этого
-// же набора считаются два показателя разом (без повторных запросов
-// teamdetails/matches): рейтинг за самый последний матч и лучший рейтинг
-// среди последних RECENT_MATCH_COUNT матчей — "пиковая форма" игрока за
-// это время.
+// матчей со статусом FINISHED; 3) matchlineup.xml по каждому MatchID →
+// наш состав и рейтинг (RatingStarsEndOfMatch) вышедших на поле игроков.
 //
-// Поля matchdetails.xml (Team/Lineup/Player, RatingStars) не проверялись на
-// живом ответе Hattrick — структура предположена по аналогии с уже
-// подтверждённым matches.xml (см. src/lib/matches.ts) и общей схемой CHPP.
-// Если что-то не совпадёт — функция вернёт пустые карты рейтингов через
-// error, вызывающий код (squad/page.tsx) честно оставит рейтинг непоказанным
-// у всех игроков, ничего не сломав.
+// ИСПРАВЛЕНО: раньше здесь запрашивался matchdetails.xml и читалось
+// Team/Lineup/Player/RatingStars — это поле никогда не было подтверждено
+// на живом ответе и было лишь предположением по аналогии с matches.xml.
+// Проверка реальной схемы matchdetails.xml (v3.1, через независимый CHPP-
+// клиент github.com/lucianoq/hattrick) показала, что HomeTeam/AwayTeam там
+// вообще не содержат Lineup/Player — только командные показатели (Rating*
+// по зонам, Formation, TacticType и т.п.). Список игроков с их рейтингом
+// (RatingStars/RatingStarsEndOfMatch) отдаёт ОТДЕЛЬНЫЙ файл — matchlineup.xml
+// (v2.1), причём по одному запросу на одну команду (свою — без teamID,
+// чужую — с явным teamID). Здесь нужна только "наша" сторона, поэтому одного
+// запроса на матч достаточно (teamID не передаём — CHPP по умолчанию отдаёт
+// команду залогиненного пользователя).
 const RECENT_MATCH_COUNT = 3;
+const MATCH_LINEUP_VERSION = "2.1";
 
 export interface RecentMatchRatingsResult {
   lastMatchRatings: Record<number, number>;
@@ -53,14 +56,16 @@ export async function resolveLastMatchRatings(tokens: StoredHattrickTokens): Pro
       return empty;
     }
 
-    const detailsRaws = await Promise.all(
-      recentFinished.map((m) => requestChppXmlRaw("matchdetails", { matchID: m.matchId }, tokens)),
+    const lineupRaws = await Promise.all(
+      recentFinished.map((m) =>
+        requestChppXmlRaw("matchlineup", { matchID: m.matchId, version: MATCH_LINEUP_VERSION, sourceSystem: "hattrick" }, tokens),
+      ),
     );
 
-    const perMatchRatings = detailsRaws.map((raw) => {
+    const perMatchRatings = lineupRaws.map((raw) => {
       if (raw.httpStatus < 200 || raw.httpStatus >= 300) return {};
       try {
-        return parseMatchDetailsRatings(raw.rawXml, teamId);
+        return parseMatchLineupRatings(raw.rawXml);
       } catch {
         return {};
       }
@@ -86,25 +91,20 @@ function asArray(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? (value as Record<string, unknown>[]) : value ? [value as Record<string, unknown>] : [];
 }
 
-function parseMatchDetailsRatings(xml: string, ourTeamId: string): Record<number, number> {
+function parseMatchLineupRatings(xml: string): Record<number, number> {
   const parser = new XMLParser();
   const data = parser.parse(xml);
   const root = data?.HattrickData;
-  assertNoChppError(root, "matchdetails");
+  assertNoChppError(root, "matchlineup");
 
-  const match = (root?.Match ?? root) as Record<string, unknown> | undefined;
-  const homeTeam = match?.HomeTeam as Record<string, unknown> | undefined;
-  const awayTeam = match?.AwayTeam as Record<string, unknown> | undefined;
-  const isHome = String(homeTeam?.HomeTeamID ?? "") === ourTeamId;
-  const ourTeam = isHome ? homeTeam : awayTeam;
-
-  const lineup = ourTeam?.Lineup as Record<string, unknown> | undefined;
+  const team = root?.Team as Record<string, unknown> | undefined;
+  const lineup = team?.Lineup as Record<string, unknown> | undefined;
   const players = asArray(lineup?.Player);
 
   const ratings: Record<number, number> = {};
   for (const p of players) {
     const id = Number(p.PlayerID ?? p.PlayerId ?? 0);
-    const ratingRaw = p.RatingStars ?? p.Rating ?? p.PlayerRating;
+    const ratingRaw = p.RatingStarsEndOfMatch ?? p.RatingStars;
     if (!id || ratingRaw === undefined) continue;
     const rating = Number(ratingRaw);
     if (!Number.isNaN(rating)) ratings[id] = rating;
