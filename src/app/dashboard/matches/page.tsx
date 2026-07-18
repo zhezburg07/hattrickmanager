@@ -182,6 +182,35 @@ async function resolveMatchesData(tokens: StoredHattrickTokens): Promise<Matches
     // непроверенной догадки.
     let trainingRelevant = filterTrainingRelevantMatches(merged);
     debugCounts.push(`после строгого фильтра (сыграно + основная команда): ${trainingRelevant.length}`);
+
+    // ВРЕМЕННАЯ диагностика — раскладывает КАЖДЫЙ отсеянный матч по точной
+    // причине (не "сыграно" / нет счёта / юношеская команда), плюс сырые
+    // поля первых нескольких отсеянных, чтобы увидеть настоящие значения
+    // Status/HomeGoals/AwayGoals/SourceSystem у matchesarchive-матчей — до
+    // сих пор дамп сырых полей показывал только 3 матча из matches.xml, а
+    // основная потеря (59 → 8) происходит среди matchesarchive-записей,
+    // которые в дамп не попадали вовсе.
+    if (merged.length !== trainingRelevant.length) {
+      const passedIds = new Set(trainingRelevant.map((m) => m.matchId));
+      const excluded = merged.filter((m) => !passedIds.has(m.matchId));
+      let notFinished = 0;
+      let missingScore = 0;
+      let youth = 0;
+      for (const m of excluded) {
+        if (m.status !== "FINISHED") notFinished += 1;
+        else if (m.ourScore === null || m.oppScore === null) missingScore += 1;
+        else if (m.sourceSystem === "youth") youth += 1;
+      }
+      debugCounts.push(
+        `отсеяно ${excluded.length}: не "FINISHED" — ${notFinished}, нет счёта — ${missingScore}, sourceSystem="youth" — ${youth}`,
+      );
+      debugCounts.push(
+        `сырые поля первых отсеянных: ${excluded
+          .slice(0, 8)
+          .map((m) => `#${m.matchId} ${m.date} status=${m.status} score=${m.ourScore}:${m.oppScore} src=${m.sourceSystem} type=${m.matchType}`)
+          .join(" | ")}`,
+      );
+    }
     let filterWarning: string | null = null;
     if (trainingRelevant.length === 0) {
       trainingRelevant = merged.filter((m) => m.status === "FINISHED" && m.ourScore !== null && m.oppScore !== null);
