@@ -428,10 +428,10 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
             ) : (
               data.timeline && (
                 <>
-                  {data.timelineSource === "events" && (
+                  {data.timelineSource === "goals-cards" && (
                     <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 12 }}>
-                      Список голов/карточек для этого матча не вернулся — хронология собрана из полного текстового
-                      отчёта Hattrick (может включать не только голы и карточки).
+                      Полный текстовый отчёт для этого матча не вернулся — хронология собрана только из голов и
+                      карточек, без остальных игровых моментов.
                     </p>
                   )}
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

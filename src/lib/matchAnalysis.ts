@@ -169,14 +169,14 @@ function parseAttendance(match: Record<string, unknown>): MatchAttendance | null
   };
 }
 
-// Полный текстовый отчёт Hattrick (EventList/Event) — сейчас используется
-// только как ДОПОЛНИТЕЛЬНЫЙ источник, когда структурированных голов/карточек
-// нет вовсе (см. приоритет в resolveMatchAnalysis ниже): EventText — это
-// HTML-размеченный текст (ссылки на игроков/арену/судей), и хотя здесь он
-// чистится через stripHtml, структурированные поля (Scorers/Bookings)
-// надёжнее и предсказуемее, поэтому именно они — основной источник.
-// Оборачивается в try/catch на уровне вызывающего кода — один элемент со
-// неожиданной формой не должен обрушивать разбор всех остальных.
+// Полный текстовый отчёт Hattrick (EventList/Event) — основной источник
+// хронологии (см. приоритет в resolveMatchAnalysis ниже): по одной строке
+// на каждый игровой момент за все 90 минут, а не только на голы/карточки,
+// поэтому раздел выглядит как настоящая подробная хронология, а не куцая
+// сводка счёта. EventText — HTML-размеченный текст (ссылки на игроков/
+// арену/судей), чистится через stripHtml. Оборачивается в try/catch на
+// уровне вызывающего кода — один элемент со неожиданной формой не должен
+// обрушивать разбор всех остальных.
 function parseEventListTimeline(match: Record<string, unknown>, homeTeamId: string): { entries: MatchTimelineEntry[]; rawCount: number } {
   const eventList = match.EventList as Record<string, unknown> | undefined;
   const rawEvents = asArray(eventList?.Event);
@@ -201,10 +201,11 @@ function parseEventListTimeline(match: Record<string, unknown>, homeTeamId: stri
   return { entries, rawCount: rawEvents.length };
 }
 
-// Основной источник хронологии — голы (Scorers) и карточки (Bookings), оба
-// всегда приходят без доп. параметров. Имена игроков здесь — простые
-// текстовые поля (не HTML-размеченный отчёт), поэтому это надёжнее и чище,
-// чем полный EventList выше — используется как приоритетный источник.
+// Запасной источник хронологии — голы (Scorers) и карточки (Bookings), оба
+// всегда приходят без доп. параметров (в отличие от EventList, который
+// требует matchEvents=true и иногда всё равно не приходит). Используется,
+// только если полный EventList выше пуст — сам по себе он охватывает лишь
+// голы и карточки, без остальных игровых моментов.
 function parseGoalsAndCardsTimeline(
   match: Record<string, unknown>,
   homeTeamId: string,
@@ -400,16 +401,20 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     debug.push(
       `хронология — сырые элементы: EventList=${eventRawCount}, Scorers/Goal=${goalsRawCount}, Bookings/Booking=${bookingsRawCount}`,
     );
-    // Приоритет — структурированные голы/карточки (простые текстовые поля,
-    // без HTML), а не EventList (HTML-размеченный отчёт, см. комментарий
-    // выше у parseEventListTimeline) — используем EventList только когда
-    // структурированных данных нет вовсе.
-    if (fallbackEntries.length > 0) {
-      timeline = fallbackEntries;
-      timelineSource = "goals-cards";
-    } else if (eventEntries.length > 0) {
+    // Приоритет — полный EventList (по одной строке на каждый игровой
+    // момент за все 90 минут: атаки, стандарты, замены и т.п., а не только
+    // голы/карточки — именно это и делает раздел похожим на настоящую
+    // хронологию). Голы/карточки (Scorers/Bookings) — запасной источник:
+    // они всегда приходят без matchEvents=true, но покрывают только сами
+    // голы и карточки, поэтому при их коротком списке (например, матч 1:0
+    // без единой карточки) раздел выглядел куце — почти как одна строка со
+    // счётом, а не подробная хронология (см. чат — вернули как было).
+    if (eventEntries.length > 0) {
       timeline = eventEntries;
       timelineSource = "events";
+    } else if (fallbackEntries.length > 0) {
+      timeline = fallbackEntries;
+      timelineSource = "goals-cards";
     } else {
       timeline = null;
       timelineSource = null;
