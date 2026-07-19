@@ -9,6 +9,7 @@ import {
   formWord,
   staminaToLevel,
   leadershipWord,
+  specialtyLabel,
   type SquadPlayer,
   type SquadSkills,
   type PositionGroup,
@@ -96,6 +97,19 @@ function AvatarIcon() {
   );
 }
 
+// Только то, что нужно для блока "Характер" и для "Игр за клуб" — остальные
+// поля playerdetails.xml (карьерная статистика, скауты, трансфер и т.п.)
+// раньше показывались отдельными раскрывающимися блоками; по запросу
+// карточка упрощена до основной информации, эти секции убраны (сама
+// поддержка playerdetails/playerevents/trainingevents в src/lib и API-роутах
+// не тронута, на случай если понадобится вернуть).
+interface PlayerCharacterDetails {
+  matchesCurrentTeam: number;
+  agreeability: string | null;
+  aggressiveness: string | null;
+  honesty: string | null;
+}
+
 export default function PlayerDetailModal({
   player,
   prev,
@@ -113,126 +127,47 @@ export default function PlayerDetailModal({
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyEvents, setHistoryEvents] = useState<{ date: string; text: string }[] | null>(null);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-
-  async function toggleHistory() {
-    if (historyOpen) {
-      setHistoryOpen(false);
-      return;
-    }
-    setHistoryOpen(true);
-    if (historyEvents !== null || historyError !== null) return; // уже загружено
-    setHistoryLoading(true);
-    try {
-      const res = await fetch(`/api/dashboard/player-events?playerId=${player.id}`);
-      const json = await res.json();
-      if (json.error) {
-        setHistoryError(json.error);
-      } else {
-        setHistoryEvents(json.data?.events ?? []);
-      }
-    } catch {
-      setHistoryError("Не удалось загрузить историю карьеры");
-    } finally {
-      setHistoryLoading(false);
-    }
-  }
-
-  interface PlayerCareerDetails {
-    careerGoals: number;
-    careerHattricks: number;
-    careerAssists: number;
-    leagueGoals: number;
-    cupGoals: number;
-    friendliesGoals: number;
-    matchesCurrentTeam: number;
-    goalsCurrentTeam: number;
-    assistsCurrentTeam: number;
-    caps: number;
-    capsU20: number;
-    nationalTeamName: string | null;
-    agreeability: string | null;
-    aggressiveness: string | null;
-    honesty: string | null;
-    motherClubName: string | null;
-    motherClubBonus: boolean;
-    statement: string | null;
-    transferListed: boolean;
-    transferAskingPrice: number | null;
-    transferDeadline: string | null;
-    transferHighestBid: number | null;
-  }
-
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [detailsLoading, setDetailsLoading] = useState(false);
-  const [details, setDetails] = useState<PlayerCareerDetails | null>(null);
+  const [details, setDetails] = useState<PlayerCharacterDetails | null>(null);
   const [detailsError, setDetailsError] = useState<string | null>(null);
 
-  async function toggleDetails() {
-    if (detailsOpen) {
-      setDetailsOpen(false);
-      return;
-    }
-    setDetailsOpen(true);
-    if (details !== null || detailsError !== null) return; // уже загружено
-    setDetailsLoading(true);
-    try {
-      const res = await fetch(`/api/dashboard/player-details?playerId=${player.id}`);
-      const json = await res.json();
-      if (json.error) {
-        setDetailsError(json.error);
-      } else {
-        setDetails(json.data);
-      }
-    } catch {
-      setDetailsError("Не удалось загрузить карьерную статистику");
-    } finally {
-      setDetailsLoading(false);
-    }
-  }
-
-  interface TrainingEvent {
-    skillLabel: string;
-    oldLevel: number;
-    newLevel: number;
-    season: number;
-    matchRound: number;
-    dayNumber: number;
-  }
-
-  const [trainingLogOpen, setTrainingLogOpen] = useState(false);
-  const [trainingLogLoading, setTrainingLogLoading] = useState(false);
-  const [trainingLogEvents, setTrainingLogEvents] = useState<TrainingEvent[] | null>(null);
-  const [trainingLogError, setTrainingLogError] = useState<string | null>(null);
-
-  async function toggleTrainingLog() {
-    if (trainingLogOpen) {
-      setTrainingLogOpen(false);
-      return;
-    }
-    setTrainingLogOpen(true);
-    if (trainingLogEvents !== null || trainingLogError !== null) return; // уже загружено
-    setTrainingLogLoading(true);
-    try {
-      const res = await fetch(`/api/dashboard/training-events?playerId=${player.id}`);
-      const json = await res.json();
-      if (json.error) {
-        setTrainingLogError(json.error);
-      } else {
-        setTrainingLogEvents(json.events ?? []);
-      }
-    } catch {
-      setTrainingLogError("Не удалось загрузить журнал тренировок");
-    } finally {
-      setTrainingLogLoading(false);
-    }
-  }
+  useEffect(() => {
+    let cancelled = false;
+    setDetails(null);
+    setDetailsError(null);
+    fetch(`/api/dashboard/player-details?playerId=${player.id}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (json.error) {
+          setDetailsError(json.error);
+        } else if (json.data) {
+          setDetails({
+            matchesCurrentTeam: json.data.matchesCurrentTeam,
+            agreeability: json.data.agreeability,
+            aggressiveness: json.data.aggressiveness,
+            honesty: json.data.honesty,
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDetailsError("Не удалось загрузить");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [player.id]);
 
   const staminaLevel = staminaToLevel(player.stamina);
   const prevStaminaLevel = prev?.stamina !== undefined ? staminaToLevel(prev.stamina) : undefined;
+
+  const characterParts = [
+    player.specialty ? specialtyLabel[player.specialty] : null,
+    details?.agreeability ?? null,
+    details?.aggressiveness ?? null,
+    details?.honesty ?? null,
+  ].filter((v): v is string => v !== null);
+
+  const gamesPlayed = details?.matchesCurrentTeam ?? player.gamesPlayed;
 
   return createPortal(
     <div className={styles.overlay} onClick={onClose}>
@@ -269,6 +204,20 @@ export default function PlayerDetailModal({
                 Зарплата <b>{formatSalary(player.salary)}</b> / неделю
               </span>
             </div>
+
+            {characterParts.length > 0 ? (
+              <div className={styles.headMeta} style={{ marginTop: 6 }}>
+                <span style={{ color: "var(--color-text-muted)" }}>Характер: {characterParts.join(", ")}</span>
+              </div>
+            ) : (
+              detailsError && (
+                <div className={styles.headMeta} style={{ marginTop: 6 }}>
+                  <span style={{ color: "var(--color-text-muted)", fontSize: 11 }}>
+                    Характер игрока сейчас недоступен ({detailsError})
+                  </span>
+                </div>
+              )
+            )}
           </div>
         </div>
 
@@ -335,144 +284,14 @@ export default function PlayerDetailModal({
         </div>
 
         <div className={styles.career}>
-          {player.gamesPlayed !== undefined && (
+          {gamesPlayed !== undefined && (
             <span>
-              Игр за клуб: <b>{player.gamesPlayed}</b>
+              Игр за клуб: <b>{gamesPlayed}</b>
             </span>
           )}
           <span>
             Голов за клуб: <b>{player.goalsScored}</b>
           </span>
-        </div>
-
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--color-border)" }}>
-          <button
-            type="button"
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12.5, color: "var(--color-accent)", padding: 0 }}
-            onClick={toggleHistory}
-          >
-            {historyOpen ? "Скрыть историю карьеры ▲" : "Показать историю карьеры ▼"}
-          </button>
-
-          {historyOpen && (
-            <div style={{ marginTop: 10 }}>
-              {historyLoading && <span style={{ fontSize: 12.5, color: "var(--color-text-muted)" }}>Загрузка…</span>}
-              {!historyLoading && historyError && (
-                <span style={{ fontSize: 12.5, color: "var(--color-text-muted)" }}>{historyError}</span>
-              )}
-              {!historyLoading && !historyError && historyEvents && historyEvents.length === 0 && (
-                <span style={{ fontSize: 12.5, color: "var(--color-text-muted)" }}>
-                  Карьерных событий для этого игрока пока не зафиксировано.
-                </span>
-              )}
-              {!historyLoading && !historyError && historyEvents && historyEvents.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto" }}>
-                  {historyEvents.map((ev, i) => (
-                    <div key={i} style={{ fontSize: 12, lineHeight: 1.4 }}>
-                      <span style={{ color: "var(--color-text-muted)" }}>{ev.date}</span> — {ev.text}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div style={{ marginTop: 10 }}>
-          <button
-            type="button"
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12.5, color: "var(--color-accent)", padding: 0 }}
-            onClick={toggleDetails}
-          >
-            {detailsOpen ? "Скрыть карьерную статистику ▲" : "Показать карьерную статистику ▼"}
-          </button>
-
-          {detailsOpen && (
-            <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.6 }}>
-              {detailsLoading && <span style={{ color: "var(--color-text-muted)" }}>Загрузка…</span>}
-              {!detailsLoading && detailsError && <span style={{ color: "var(--color-text-muted)" }}>{detailsError}</span>}
-              {!detailsLoading && !detailsError && details && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <div>
-                    Голы за карьеру: <b>{details.careerGoals}</b> (лига {details.leagueGoals}, кубок {details.cupGoals},
-                    товарищеские {details.friendliesGoals}), хет-триков — <b>{details.careerHattricks}</b>, передач —{" "}
-                    <b>{details.careerAssists}</b>
-                  </div>
-                  <div>
-                    За текущий клуб: <b>{details.matchesCurrentTeam}</b> матчей, <b>{details.goalsCurrentTeam}</b> голов,{" "}
-                    <b>{details.assistsCurrentTeam}</b> передач
-                  </div>
-                  {(details.caps > 0 || details.capsU20 > 0) && (
-                    <div>
-                      Сборная{details.nationalTeamName ? ` (${details.nationalTeamName})` : ""}: <b>{details.caps}</b> игр
-                      за взрослую, <b>{details.capsU20}</b> за молодёжную
-                    </div>
-                  )}
-                  {(details.agreeability || details.aggressiveness || details.honesty) && (
-                    <div>
-                      Характер:{" "}
-                      {[details.agreeability, details.aggressiveness, details.honesty].filter(Boolean).join(", ")}
-                    </div>
-                  )}
-                  {details.motherClubName && (
-                    <div>
-                      Родной клуб: <b>{details.motherClubName}</b>
-                      {details.motherClubBonus ? " (бонус воспитанника активен)" : ""}
-                    </div>
-                  )}
-                  {details.statement && <div>Высказывание игрока: «{details.statement}»</div>}
-                  {details.transferListed && (
-                    <div>
-                      На трансфере: стартовая цена {details.transferAskingPrice?.toLocaleString("ru-RU")},{" "}
-                      {details.transferHighestBid && details.transferHighestBid > 0
-                        ? `текущая ставка ${details.transferHighestBid.toLocaleString("ru-RU")}`
-                        : "ставок пока нет"}
-                      {details.transferDeadline ? `, срок — ${details.transferDeadline}` : ""}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div style={{ marginTop: 10 }}>
-          <button
-            type="button"
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12.5, color: "var(--color-accent)", padding: 0 }}
-            onClick={toggleTrainingLog}
-          >
-            {trainingLogOpen ? "Скрыть официальный журнал тренировок ▲" : "Показать официальный журнал тренировок (CHPP) ▼"}
-          </button>
-
-          {trainingLogOpen && (
-            <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.6 }}>
-              <p style={{ color: "var(--color-text-muted)", marginBottom: 6 }}>
-                Официальный журнал скачков навыка от Hattrick — дополняет (не заменяет) собственную еженедельную
-                историю сайта, показанную подсветкой роста/падения выше. Даты здесь — не календарные, а игровые (сезон
-                /тур/день недели), так что напрямую сверять их с собственной историей нельзя.
-              </p>
-              {trainingLogLoading && <span style={{ color: "var(--color-text-muted)" }}>Загрузка…</span>}
-              {!trainingLogLoading && trainingLogError && (
-                <span style={{ color: "var(--color-text-muted)" }}>{trainingLogError}</span>
-              )}
-              {!trainingLogLoading && !trainingLogError && trainingLogEvents && trainingLogEvents.length === 0 && (
-                <span style={{ color: "var(--color-text-muted)" }}>
-                  Журнал тренировок для этого игрока пока пуст.
-                </span>
-              )}
-              {!trainingLogLoading && !trainingLogError && trainingLogEvents && trainingLogEvents.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto" }}>
-                  {trainingLogEvents.map((ev, i) => (
-                    <div key={i}>
-                      Сезон {ev.season}, тур {ev.matchRound}, день {ev.dayNumber}: {ev.skillLabel} {ev.oldLevel} →{" "}
-                      <b>{ev.newLevel}</b>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>,
