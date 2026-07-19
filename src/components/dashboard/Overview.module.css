@@ -129,12 +129,30 @@
   grid-column: span 3;
 }
 
+/* "Лига" и "Матчи" side by side, во всю ширину сетки — обёртка сама
+   занимает все 3 колонки, а внутри делится на 2 равные половины. */
+.sideBySideRow {
+  grid-column: span 3;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
 @media (max-width: 900px) {
   .grid {
     grid-template-columns: repeat(2, 1fr);
   }
   .span3 {
     grid-column: span 2;
+  }
+  .sideBySideRow {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 600px) {
+  .sideBySideRow {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -324,18 +342,14 @@
   background: rgba(192, 80, 63, 0.15);
 }
 
-/* Матчи: два мини-списка бок о бок */
+/* Матчи: "Уже сыграно" и "Ближайшие игры" друг под другом — панель теперь
+   уже (делит ряд с "Лигой" вместо 2/3 ширины), а названия команд стали
+   полными ("Команда А — Команда Б"), так что бок о бок им не хватало бы
+   места и текст обрезался. */
 .matchesCols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 14px;
-}
-
-@media (max-width: 600px) {
-  .matchesCols {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .matchesColTitle {
@@ -365,12 +379,6 @@
   font-variant-numeric: tabular-nums;
   flex: none;
   width: 78px;
-}
-
-.matchTime {
-  color: var(--color-text-muted);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
 }
 
 .matchOpponent {

@@ -148,6 +148,23 @@ export const positionGroupAccentColor: Record<PositionGroup, string> = {
   FWD: "#d9564a",
 };
 
+// Обозначения амплуа для "Состава" (по запросу — латинские сокращения
+// вместо русских слов, цвет остаётся тем же 4-значным positionGroupAccentColor
+// выше, никакой новой группы/цвета не вводится). Для "MID" отдельно решаем
+// между "CM" (центральный полузащитник) и "W" (фланговый) по тому, какой из
+// навыков у ИМЕННО ЭТОГО игрока выше — тот же сигнал, что уже используется в
+// inferPositionGroup (src/lib/squadPlayers.ts) при отнесении игрока в группу
+// "MID" (усреднение midfield+winger+passing) — здесь используем его же,
+// чтобы просто уточнить подпись внутри уже посчитанной группы, не меняя саму
+// группу/цвет/сортировку по 4 амплуа.
+export function positionAbbrev(group: PositionGroup, skills: SquadSkills): string {
+  if (group === "GK") return "GK";
+  if (group === "DEF") return "CD";
+  if (group === "FWD") return "ST";
+  const centralScore = (skills.midfield + skills.passing) / 2;
+  return skills.winger > centralScore ? "W" : "CM";
+}
+
 // Короткий код игрока для компактного маркера (на поле и в перетаскивании)
 export function playerBadgeCode(player: Pick<SquadPlayer, "name" | "positionGroup">): string {
   const short = player.name.split(" ")[1]?.slice(0, 3).toUpperCase();

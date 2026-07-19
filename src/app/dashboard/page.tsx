@@ -350,13 +350,18 @@ const SHOW_LEAGUE_DEBUG_PANEL = false;
 // supporters.xml впустую на каждой загрузке Обзора.
 const SHOW_SUPPORTERS_SECTION = false;
 
+// Временно скрыт по запросу — "Зал славы клуба" убран с экрана Обзора, код
+// и src/lib/hofPlayers.ts не удалены. Запрос к CHPP тоже не делаем, пока флаг
+// выключен.
+const SHOW_HOF_SECTION = false;
+
 export default async function DashboardPage() {
   const tokens = await getRequiredHattrickTokens();
   const hattrickUserId = getStoredHattrickUserId();
   const [data, weeklyTsi, hof, achievements, supporters] = await Promise.all([
     resolveDashboardData(tokens),
     resolveWeeklyTsiHighlights(hattrickUserId),
-    resolveHofPlayers(tokens),
+    SHOW_HOF_SECTION ? resolveHofPlayers(tokens) : Promise.resolve({ players: null, error: null }),
     resolveAchievements(tokens),
     SHOW_SUPPORTERS_SECTION
       ? resolveSupporters(tokens)
@@ -427,16 +432,24 @@ export default async function DashboardPage() {
           />
 
           <div className={styles.grid}>
-            {data.leagueRows && (
-              <LeagueTable
-                rows={data.leagueRows}
-                leagueName={data.leagueName}
-                matrixTeams={data.resultsMatrixTeams}
-                resultsMatrix={data.resultsMatrix}
-              />
-            )}
-            {data.recentMatches && data.upcomingMatches && (
-              <MatchesSection recentMatches={data.recentMatches} upcomingMatches={data.upcomingMatches} />
+            {(data.leagueRows || (data.recentMatches && data.upcomingMatches)) && (
+              <div className={styles.sideBySideRow}>
+                {data.leagueRows && (
+                  <LeagueTable
+                    rows={data.leagueRows}
+                    leagueName={data.leagueName}
+                    matrixTeams={data.resultsMatrixTeams}
+                    resultsMatrix={data.resultsMatrix}
+                  />
+                )}
+                {data.recentMatches && data.upcomingMatches && (
+                  <MatchesSection
+                    ourTeamName={data.clubShortName ?? data.clubName ?? "Наша команда"}
+                    recentMatches={data.recentMatches}
+                    upcomingMatches={data.upcomingMatches}
+                  />
+                )}
+              </div>
             )}
             {data.squadInjured !== undefined && data.squadAvgForm !== undefined && (
               <SquadSummaryPanel
@@ -473,9 +486,11 @@ export default async function DashboardPage() {
             <WeeklyHighlights gainer={weeklyTsi.gainer} hasEnoughHistory={weeklyTsi.hasEnoughHistory} />
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <HofPlayersSection players={hof.players} error={hof.error} />
-          </div>
+          {SHOW_HOF_SECTION && (
+            <div style={{ marginTop: 12 }}>
+              <HofPlayersSection players={hof.players} error={hof.error} />
+            </div>
+          )}
 
           <div style={{ marginTop: 12 }}>
             <AchievementsSection data={achievements.data} error={achievements.error} />

@@ -19,6 +19,13 @@ const cabinetTabs = [
   { href: "/dashboard/updates", label: "Обновления" },
 ];
 
+// Временно скрыты из меню личного кабинета по запросу — целесообразность
+// этих разделов ещё нужно обдумать. Сами страницы и код не удалены и
+// по-прежнему доступны напрямую по ссылке — просто убраны из выпадающего
+// меню. Уберите href отсюда, чтобы вернуть пункт меню.
+const HIDDEN_NAV_HREFS = new Set(["/dashboard/finance", "/dashboard/stadium", "/dashboard/training"]);
+const visibleCabinetTabs = cabinetTabs.filter((tab) => !HIDDEN_NAV_HREFS.has(tab.href));
+
 export default function Header() {
   const pathname = usePathname();
   const isCabinet = pathname?.startsWith("/dashboard") ?? false;
@@ -93,7 +100,7 @@ export default function Header() {
 
             {open && (
               <div className={styles.dropdown} role="menu">
-                {cabinetTabs.map((tab) => {
+                {visibleCabinetTabs.map((tab) => {
                   const isActive = tab.href === pathname;
                   return (
                     <Link

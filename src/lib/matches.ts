@@ -224,13 +224,14 @@ function isLikelyFriendlyMatchType(matchType: string): boolean {
 export function toSeasonMatches(matches: RealMatch[]): SeasonMatch[] {
   const sorted = [...matches].sort((a, b) => b.date.localeCompare(a.date));
   return sorted.map((m, i) => {
-    const { shortDate, time } = formatMatchDateTime(m.date);
+    // По запросу — только дата, без точного времени начала матча.
+    const { shortDate } = formatMatchDateTime(m.date);
     const competition = m.cupId !== null ? "Кубок" : isLikelyFriendlyMatchType(m.matchType) ? "Товарищеский" : "Лига";
     return {
       id: Number(m.matchId) || i + 1,
       round: null,
       competition,
-      date: time ? `${shortDate} · ${time}` : shortDate,
+      date: shortDate,
       opponent: m.opponent,
       home: m.home,
       ourScore: m.status === "FINISHED" ? m.ourScore : null,

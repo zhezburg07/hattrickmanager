@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   positionGroupLabel,
   positionGroupAccentColor,
+  positionAbbrev,
   statusLabel,
   specialtyLabel,
   skillLabel,
@@ -95,8 +96,10 @@ function getValue(player: SquadPlayer, key: SortKey, overrides: PositionOverride
       return player.name;
     case "age":
       return player.age + player.ageDays / 112;
-    case "positionGroup":
-      return positionGroupLabel[effectivePositionGroup(player, overrides)];
+    case "positionGroup": {
+      const effective = effectivePositionGroup(player, overrides);
+      return positionAbbrev(effective, player.skills);
+    }
     case "form":
       return player.form;
     case "stamina":
@@ -314,7 +317,7 @@ function PositionBadge({
       >
         {positionOptions.map((g) => (
           <option key={g} value={g}>
-            {positionGroupLabel[g]}
+            {positionAbbrev(g, player.skills)}
           </option>
         ))}
       </select>

@@ -134,7 +134,7 @@ export default function LeagueTable({
   const hasLast5 = displayedRows.some((r) => r.last5 !== undefined);
 
   return (
-    <div className={`${styles.panel} ${styles.span2}`}>
+    <div className={styles.panel}>
       <div className={styles.panelTitle}>{leagueName ? `Команда / ${leagueName}` : "Команда / Лига"}</div>
 
       {showResultsMatrix && (
