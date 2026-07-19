@@ -4,7 +4,12 @@ import SquadTable from "@/components/dashboard/SquadTable";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
 import { getRequiredHattrickTokens, getStoredHattrickUserId, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
-import { parsePlayersDetailedXml, debugRawPlayerCountryIds, type DebugPlayerCountryRaw } from "@/lib/squadPlayers";
+import {
+  parsePlayersDetailedXml,
+  debugRawPlayerCountryIds,
+  PLAYERS_XML_VERSION,
+  type DebugPlayerCountryRaw,
+} from "@/lib/squadPlayers";
 import { resolveRealHomeCountry } from "@/lib/worldCurrency";
 import { getCountryIdLookup } from "@/lib/worldCountries";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
@@ -13,7 +18,7 @@ import { resolveLastMatchRatings } from "@/lib/lastMatchRating";
 import type { SquadPlayer } from "@/data/squad";
 
 async function fetchPlayersRaw(tokens: StoredHattrickTokens) {
-  return requestChppXmlRaw("players", {}, tokens);
+  return requestChppXmlRaw("players", { version: PLAYERS_XML_VERSION }, tokens);
 }
 
 // Тренер команды в Hattrick — один из собственных игроков (см.

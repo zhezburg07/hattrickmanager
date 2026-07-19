@@ -5,7 +5,7 @@ import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
 import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
-import { parsePlayersDetailedXml } from "@/lib/squadPlayers";
+import { parsePlayersDetailedXml, PLAYERS_XML_VERSION } from "@/lib/squadPlayers";
 import { parseTrainingXml, type RealTraining } from "@/lib/training";
 
 interface RealCoach {
@@ -21,7 +21,7 @@ async function resolveCoach(tokens: StoredHattrickTokens): Promise<{ coach: Real
     }
     const trainerPlayerId = parseTeamDetailsXml(teamRaw.rawXml).trainerPlayerId;
 
-    const playersRaw = await requestChppXmlRaw("players", {}, tokens);
+    const playersRaw = await requestChppXmlRaw("players", { version: PLAYERS_XML_VERSION }, tokens);
     if (playersRaw.httpStatus < 200 || playersRaw.httpStatus >= 300) {
       throw new Error(`HTTP ${playersRaw.httpStatus}: ${playersRaw.rawXml.slice(0, 200)}`);
     }

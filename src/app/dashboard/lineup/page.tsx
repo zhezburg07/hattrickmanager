@@ -4,7 +4,7 @@ import LineupBoard from "@/components/dashboard/LineupBoard";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
 import { getRequiredHattrickTokens, getStoredHattrickUserId, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
-import { parsePlayersDetailedXml } from "@/lib/squadPlayers";
+import { parsePlayersDetailedXml, PLAYERS_XML_VERSION } from "@/lib/squadPlayers";
 import { resolveRealHomeCountry } from "@/lib/worldCurrency";
 import { getCountryIdLookup } from "@/lib/worldCountries";
 import { resolvePlayerHistory } from "@/lib/playerHistoryDb";
@@ -13,7 +13,7 @@ import { resolveOpponentAnalysis } from "@/lib/opponentAnalysis";
 import type { SquadPlayer } from "@/data/squad";
 
 async function fetchPlayersRaw(tokens: StoredHattrickTokens) {
-  return requestChppXmlRaw("players", {}, tokens);
+  return requestChppXmlRaw("players", { version: PLAYERS_XML_VERSION }, tokens);
 }
 
 export default async function LineupPage() {

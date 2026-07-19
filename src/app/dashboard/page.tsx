@@ -31,7 +31,7 @@ import { parseMatchesXml } from "@/lib/matches";
 import { parseEconomyXml } from "@/lib/economy";
 import { parseClubXml, type RealClubStaff } from "@/lib/clubStaff";
 import { parsePlayersXml } from "@/lib/players";
-import { parsePlayersDetailedXml } from "@/lib/squadPlayers";
+import { parsePlayersDetailedXml, PLAYERS_XML_VERSION } from "@/lib/squadPlayers";
 import { parseWorldLeagueInfoXml } from "@/lib/worldCurrency";
 import { resolveWeeklyTsiHighlights } from "@/lib/playerHistoryDb";
 import { resolveHofPlayers } from "@/lib/hofPlayers";
@@ -49,7 +49,7 @@ const CHPP_REQUESTS: { file: string; params: Record<string, string> }[] = [
   { file: "matches", params: {} },
   { file: "economy", params: {} },
   { file: "club", params: {} },
-  { file: "players", params: {} },
+  { file: "players", params: { version: PLAYERS_XML_VERSION } },
 ];
 
 interface DashboardData {

@@ -207,13 +207,13 @@ export default function PlayerDetailModal({
 
             {characterParts.length > 0 ? (
               <div className={styles.headMeta} style={{ marginTop: 6 }}>
-                <span style={{ color: "var(--color-text-muted)" }}>Характер: {characterParts.join(", ")}</span>
+                <span style={{ color: "var(--color-text-muted)" }}>{characterParts.join(", ")}</span>
               </div>
             ) : (
               detailsError && (
                 <div className={styles.headMeta} style={{ marginTop: 6 }}>
                   <span style={{ color: "var(--color-text-muted)", fontSize: 11 }}>
-                    Характер игрока сейчас недоступен ({detailsError})
+                    Данные о характере игрока сейчас недоступны ({detailsError})
                   </span>
                 </div>
               )
