@@ -122,35 +122,25 @@ export function SpecialtyIcon({ specialty, label }: { specialty: PlayerSpecialty
   );
 }
 
-// Травма — красный крест; серьёзная (2+ недели) — тот же крест в закрашенном
-// кружке, чтобы визуально выделяться сильнее лёгкой (~1 неделя).
+// Травма — 3 ступени по сроку восстановления (InjuryLevel из players.xml,
+// см. src/lib/squadPlayers.ts): 0 недель — лёгкая (ушиб, матчей не
+// пропускает), 1 неделя — среднее восстановление, 2+ недель — серьёзная.
+// По запросу — обычные emoji вместо SVG-глифов (в отличие от остальных
+// значков в этом файле, см. комментарий выше): здесь важны именно узнаваемые
+// бытовые символы (пластырь/крест/скорая), не однотонный минималистичный
+// стиль.
 export function InjuryIcon({ weeksRemaining }: { weeksRemaining: number }) {
-  const serious = weeksRemaining >= 2;
-  const title = serious
-    ? `Травма, осталось недель: ${weeksRemaining}`
-    : `Лёгкая травма, осталось около недели`;
+  const symbol = weeksRemaining >= 2 ? "🚑" : weeksRemaining === 1 ? "➕" : "🩹";
+  const title =
+    weeksRemaining >= 2
+      ? `Травма, осталось недель: ${weeksRemaining}`
+      : weeksRemaining === 1
+        ? "Травма, осталось около недели"
+        : "Лёгкая травма — матчей не пропускает";
   return (
-    <IconBase title={title}>
-      {serious && <circle cx="12" cy="12" r="10" fill="var(--color-bad)" />}
-      <line
-        x1="12"
-        y1={serious ? 7 : 5}
-        x2="12"
-        y2={serious ? 17 : 19}
-        stroke={serious ? "#fff" : "var(--color-bad)"}
-        strokeWidth={serious ? 2.5 : 3}
-        strokeLinecap="round"
-      />
-      <line
-        x1={serious ? 7 : 5}
-        y1="12"
-        x2={serious ? 17 : 19}
-        y2="12"
-        stroke={serious ? "#fff" : "var(--color-bad)"}
-        strokeWidth={serious ? 2.5 : 3}
-        strokeLinecap="round"
-      />
-    </IconBase>
+    <span title={title} aria-label={title} style={{ display: "inline-flex", flex: "none", fontSize: 13, lineHeight: 1 }}>
+      {symbol}
+    </span>
   );
 }
 

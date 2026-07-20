@@ -180,7 +180,11 @@ export function parsePlayersDetailedXml(
       // матча (см. src/lib/lastMatchRating.ts, squad/page.tsx).
       lastMatchRating: undefined,
       specialty,
-      injuryWeeksRemaining: injuryLevel > 0 ? injuryLevel : undefined,
+      // InjuryLevel 0 — лёгкая травма/ушиб: игрок не пропускает матчей (статус
+      // ниже остаётся "squad", доступен для расстановки), но значок травмы
+      // всё равно должен показаться (см. InjuryIcon в StatusIcons.tsx) — это
+      // отдельная, самая мягкая ступень наравне с "около недели"/"2+ недели".
+      injuryWeeksRemaining: injuryLevel >= 0 ? injuryLevel : undefined,
       yellowCards,
       isSuspended,
       tsi,
@@ -188,6 +192,10 @@ export function parsePlayersDetailedXml(
       // на клиенте из localStorage между синхронизациями, см. usePlayerStatChanges.
       prev: undefined,
       salary: money(p.Salary),
+      // Порог для статуса строже (> 0), чем для значка травмы выше (>= 0) —
+      // намеренно: лёгкая травма (0) не выбивает игрока из доступного состава
+      // (recommendLineup.ts фильтрует именно по этому полю), только "1+
+      // неделя" по-настоящему считается "травмирован".
       status: injuryLevel > 0 ? "injured" : "squad",
       gamesPlayed: undefined,
       goalsScored: Number(p.LeagueGoals ?? 0) + Number(p.CupGoals ?? 0) + Number(p.FriendliesGoals ?? 0),
