@@ -14,6 +14,7 @@ import PowerRatingPanel from "@/components/dashboard/PowerRatingPanel";
 import HofPlayersSection from "@/components/dashboard/HofPlayersSection";
 import AchievementsSection from "@/components/dashboard/AchievementsSection";
 import SupportersSection from "@/components/dashboard/SupportersSection";
+import SetPasswordPrompt from "@/components/dashboard/SetPasswordPrompt";
 import { defaultCurrency, chppSupportersPopularityToFanMoodLevel } from "@/data/dashboard";
 import type { MatrixTeamMeta } from "@/data/leagueMatrix";
 import {
@@ -24,6 +25,7 @@ import {
   type StoredHattrickTokens,
 } from "@/lib/hattrickApi";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
+import { isChppAuthError } from "@/lib/chppError";
 import { parseLeagueDetailsXml } from "@/lib/leagueDetails";
 import { parseLeagueFixturesXml } from "@/lib/leagueFixtures";
 import { buildRealLeagueMatrix } from "@/lib/realLeagueMatrix";
@@ -38,6 +40,8 @@ import { resolveHofPlayers } from "@/lib/hofPlayers";
 import { resolveAchievements } from "@/lib/achievements";
 import { resolveSupporters } from "@/lib/supporters";
 import { upsertConnectedUser } from "@/lib/connectedUsersDb";
+import { hasEmailLogin } from "@/lib/hattrickTokensDb";
+import { cookies } from "next/headers";
 import styles from "@/components/dashboard/Overview.module.css";
 
 // Таблица лиги приходит из leaguedetails.xml — но только когда группы на
@@ -98,6 +102,12 @@ interface DashboardData {
   powerRatingWorldRank?: number;
   currencyLabel: string;
   errors: string[];
+  // Сохранённый в базе Hattrick-токен оказался недействительным (протух или
+  // был отозван пользователем на самом Hattrick — см. чат, пункт 5). Вместо
+  // обычной страницы с баннером ошибок показываем вежливое предложение
+  // подключиться заново — остальные разделы даже не запрашиваются, они бы
+  // всё равно упали с той же причиной.
+  needsReconnect?: boolean;
 }
 
 async function requestAllRaw(
@@ -150,6 +160,12 @@ async function resolveDashboardData(tokens: StoredHattrickTokens): Promise<Dashb
     if (team.powerRatingValue !== null) data.powerRatingValue = team.powerRatingValue;
     if (team.powerRatingGlobalRank !== null) data.powerRatingWorldRank = team.powerRatingGlobalRank;
   } catch (err) {
+    if (isChppAuthError(err)) {
+      // Токен недействителен/отозван — остальные разделы упадут по той же
+      // причине, поэтому дальше не идём и просим переподключиться (см.
+      // needsReconnect в рендере ниже), а не сыплем той же ошибкой 6 раз.
+      return { ...data, errors: [errorMessage(err)], needsReconnect: true };
+    }
     errors.push(`Название команды (teamdetails): ${errorMessage(err)}`);
   }
 
@@ -375,11 +391,54 @@ export default async function DashboardPage() {
     upsertConnectedUser(hattrickUserId, data.clubName ?? null).catch(() => {});
   }
 
+  // Сохранённый токен оказался недействительным (протух или отозван на
+  // самом Hattrick, см. isChppAuthError выше) — вместо обычного дашборда с
+  // баннером ошибок вежливо предлагаем подключиться заново. Пароль (если
+  // заведён) тут не поможет: он ускоряет только вход НА САЙТ, а не выпускает
+  // новый Hattrick-токен — это может сделать только сам OAuth.
+  if (data.needsReconnect) {
+    return (
+      <>
+        <Header />
+        <main className={styles.page}>
+          <div className="container" style={{ paddingBottom: 48, paddingTop: 24 }}>
+            <DemoModeBanner
+              title="Нужно заново подключить команду"
+              reasons={[
+                "Сохранённое разрешение от Hattrick перестало действовать — такое бывает редко, например если токен устарел или доступ был отозван на самом Hattrick.",
+                "Это не ошибка сайта и не потеря данных — после повторного подключения всё вернётся как было.",
+              ]}
+            />
+          </div>
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
+  // Предложение завести email+пароль (см. чат, пункт 1) — только если его
+  // ещё нет и пользователь не отклонял его раньше ("Не сейчас", cookie
+  // ставится на клиенте в SetPasswordPrompt.tsx). Ошибка базы здесь не
+  // должна ронять всю страницу — тогда просто не показываем предложение.
+  let showPasswordPrompt = false;
+  if (hattrickUserId && !cookies().get("password_prompt_dismissed")?.value) {
+    try {
+      showPasswordPrompt = !(await hasEmailLogin(hattrickUserId));
+    } catch {
+      showPasswordPrompt = false;
+    }
+  }
+
   return (
     <>
       <Header />
       <main className={styles.page}>
         <div className="container" style={{ paddingBottom: 48 }}>
+          {showPasswordPrompt && (
+            <div style={{ marginBottom: 16 }}>
+              <SetPasswordPrompt />
+            </div>
+          )}
           {SHOW_LEAGUE_DEBUG_PANEL && data.debugLeague && (
             <div
               style={{

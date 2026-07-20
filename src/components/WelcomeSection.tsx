@@ -66,9 +66,14 @@ export default function WelcomeSection() {
             ))}
           </ul>
 
-          <a href="/api/auth/request-token" className={`btnPrimary ${styles.cta}`}>
-            Подключить команду
-          </a>
+          <div className={styles.ctaRow}>
+            <a href="/api/auth/request-token" className={`btnPrimary ${styles.cta}`}>
+              Подключить команду
+            </a>
+            <Link href="/login" className={styles.loginLink}>
+              Уже подключали? Войти по email
+            </Link>
+          </div>
         </div>
       </div>
     </section>

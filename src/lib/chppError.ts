@@ -29,3 +29,14 @@ export function assertNoChppError(root: Record<string, unknown> | undefined, fil
     throw new Error(`Hattrick вернул ошибку на "${fileLabel}": ${error.message} — код ${describeChppErrorCode(error.code)}`);
   }
 }
+
+// Определяет, была ли ошибка (из assertNoChppError выше, где угодно в коде)
+// именно про недействительный/отозванный/просроченный OAuth-токен (код 0,
+// NotLoggedIn) — а не про что-то другое (сеть, неизвестный ID и т.п.). Нужно,
+// чтобы вежливо предложить заново пройти OAuth вместо обычного сообщения об
+// ошибке (см. чат, пункт 5 — редко, но токен может протухнуть/быть отозван
+// пользователем на самом Hattrick).
+export function isChppAuthError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes("(NotLoggedIn)");
+}

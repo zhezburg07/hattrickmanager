@@ -56,8 +56,26 @@
   margin-top: 2px;
 }
 
-.cta {
+.ctaRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   margin-top: 32px;
+  flex-wrap: wrap;
+}
+
+.cta {
+  margin-top: 0;
+}
+
+.loginLink {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.loginLink:hover {
+  color: var(--color-accent);
 }
 
 @media (max-width: 760px) {
