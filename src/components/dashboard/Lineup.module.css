@@ -429,20 +429,24 @@
 /* Карточка игрока на поле — широкая горизонтальная плашка (~в 3 раза шире,
    чем была квадратная версия): номер | фамилия | позиция в один ряд. Цвета
    берутся из тех же модификаторов (.slotBadgeEmpty/.slotBadgeFilled/
-   .slotBadgeSelected), что и раньше — меняется только форма/размер. */
+   .slotBadgeSelected), что и раньше — меняется только форма/размер.
+   Размер увеличен в 1.5 раза по запросу (было 156×40) — проверено вживую,
+   что при этом расстояние между соседними колонками (см. groupX в
+   src/data/pitchBoard.ts, там уже был запас "с учётом самой узкой ширины
+   карточки") остаётся положительным на всех 3 брейкпоинтах, наложения нет. */
 .slotCard {
   position: relative;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  width: 156px;
-  height: 40px;
-  padding: 0 10px;
-  border-radius: 8px;
+  gap: 9px;
+  width: 234px;
+  height: 60px;
+  padding: 0 15px;
+  border-radius: 12px;
   font-weight: 800;
-  font-size: 12px;
+  font-size: 18px;
   cursor: pointer;
   text-align: center;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
@@ -455,11 +459,11 @@
 .slotCard::before {
   content: "";
   position: absolute;
-  left: 3px;
-  top: 5px;
-  bottom: 5px;
-  width: 4px;
-  border-radius: 2px;
+  left: 4px;
+  top: 7px;
+  bottom: 7px;
+  width: 6px;
+  border-radius: 3px;
   background: var(--slot-accent, transparent);
 }
 
@@ -489,7 +493,7 @@
 
 .slotCardNumber {
   flex: none;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 800;
   color: var(--color-accent);
   line-height: 1;
@@ -503,7 +507,7 @@
   flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
-  font-size: 11px;
+  font-size: 16.5px;
   font-weight: 700;
   line-height: 1;
   text-align: left;
@@ -511,19 +515,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   border-left: 1px solid rgba(242, 237, 225, 0.25);
-  padding-left: 6px;
+  padding-left: 9px;
 }
 
 .slotCardRole {
   flex: none;
-  font-size: 10px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--slot-accent, var(--color-text-muted));
   text-transform: uppercase;
   letter-spacing: 0.2px;
   line-height: 1;
   border-left: 1px solid rgba(242, 237, 225, 0.25);
-  padding-left: 6px;
+  padding-left: 9px;
 }
 
 .slotBadgeSelected .slotCardRole {
@@ -538,54 +542,71 @@
 
 /* Промежуточная ширина — на средних экранах (планшет/неширокое окно
    десктопа) поле уже растянуто на всю ширину блока, но самого блока может
-   не хватать для полноразмерной (156px) карточки без столкновений колонок */
-@media (max-width: 1023px) {
+   не хватать для полноразмерной (234px, было 156px) карточки без
+   столкновений колонок или обрезания крайних линий (GK/FWD) рамкой поля.
+   Порог поднят с 1023px до 1279px по сравнению с версией до увеличения на
+   1.5x — проверено вживую: при 234px карточке даже на широком экране
+   (1280px, ширина поля ~1086px) вратарская карточка вылезала за левый край
+   поля примерно на 18px, если оставить только старые отступы GK/FWD (см.
+   groupX в src/data/pitchBoard.ts — там же и пересчитаны новые отступы под
+   увеличенную карточку). Этот промежуточный размер (уже увеличен в 1.5
+   раза, было 108×30) с новыми отступами безопасен и на своём самом узком
+   конце (940px) — проверено вживую, наложений и обрезаний нет. */
+@media (max-width: 1279px) {
   .slotCard {
-    width: 108px;
-    height: 30px;
-    gap: 4px;
-    padding: 0 6px;
-    font-size: 10px;
+    width: 162px;
+    height: 45px;
+    gap: 6px;
+    padding: 0 9px;
+    font-size: 15px;
   }
 
   .slotCardNumber {
-    font-size: 10px;
+    font-size: 15px;
   }
 
   .slotCardName {
-    font-size: 9px;
-    padding-left: 4px;
+    font-size: 13.5px;
+    padding-left: 6px;
   }
 
   .slotCardRole {
-    font-size: 8px;
-    padding-left: 4px;
+    font-size: 12px;
+    padding-left: 6px;
   }
 }
 
-@media (max-width: 560px) {
-  /* На узких экранах поле само сужается — карточка здесь заметно компактнее,
-     чтобы соседние колонки не сталкивались */
+/* Порог для этого (самого мелкого) размера карточки поднят с 560px до
+   939px — специально для .slotCard/.slotCardNumber/.slotCardName/
+   .slotCardRole (у остальных элементов на этой странице — скамейка
+   запасных, значки "Показатели", шапка — порог 560px не менялся, см. ниже:
+   им хватает места и без этого). НЕ увеличена в те же 1.5 раза, что
+   остальные размеры (было 68×24) — при полных 1.5x (102×36) вратарская
+   карточка на самом узком реалистичном поле (~387px) вылезала за край
+   примерно на 16px, для 4 колонок такой ширины физически не хватает места.
+   Здесь увеличение чуть скромнее (~1.25x, 85×30) — всё ещё заметно крупнее
+   прежнего, но проверено вживую, что помещается без наложения. */
+@media (max-width: 939px) {
   .slotCard {
-    width: 68px;
-    height: 24px;
-    gap: 3px;
-    padding: 0 5px;
-    font-size: 9px;
+    width: 85px;
+    height: 30px;
+    gap: 4px;
+    padding: 0 6px;
+    font-size: 11px;
   }
 
   .slotCardNumber {
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .slotCardName {
-    font-size: 8px;
-    padding-left: 3px;
+    font-size: 10px;
+    padding-left: 4px;
   }
 
   .slotCardRole {
-    font-size: 7px;
-    padding-left: 3px;
+    font-size: 9px;
+    padding-left: 4px;
   }
 }
 
@@ -807,18 +828,23 @@
   color: var(--color-bg-darker);
 }
 
-/* Значки зональных рейтингов поверх поля в режиме "Показатели" */
+/* Значки зональных рейтингов поверх поля в режиме "Показатели" — увеличены
+   в 1.5 раза вместе с карточками игроков в режиме "Состав" (см. .slotCard
+   выше); у этих значков всего 3 колонки (защита/полузащита/атака, см.
+   zonePositions в LineupField.tsx) с ещё большим запасом по ширине, чем у
+   4-колоночных карточек игроков, так что здесь наложение тем более не
+   грозит. */
 .zoneSlotBadge {
-  min-width: 78px;
-  max-width: 92px;
-  border-radius: 10px;
-  padding: 6px 8px;
+  min-width: 117px;
+  max-width: 138px;
+  border-radius: 15px;
+  padding: 9px 12px;
   text-align: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .zoneSlotValue {
-  font-size: 11.5px;
+  font-size: 17px;
   font-weight: 800;
   color: var(--color-text);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
@@ -826,13 +852,13 @@
 }
 
 .zoneSlotLabel {
-  font-size: 9.5px;
+  font-size: 14px;
   color: var(--color-text);
   opacity: 0.85;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   text-transform: uppercase;
   letter-spacing: 0.2px;
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 /* Скамейка запасных — узкая полоса вдоль нижней бровки поля, визуально
@@ -916,13 +942,13 @@
   }
 
   .zoneSlotBadge {
-    min-width: 46px;
-    max-width: 54px;
-    padding: 3px 4px;
+    min-width: 69px;
+    max-width: 81px;
+    padding: 4.5px 6px;
   }
 
   .zoneSlotValue {
-    font-size: 9px;
+    font-size: 13.5px;
     line-height: 1.1;
   }
 
