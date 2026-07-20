@@ -35,10 +35,6 @@ const skillKeys: (keyof SquadSkills)[] = [
   "setPieces",
 ];
 
-function formatSalary(value: number): string {
-  return `${value.toLocaleString("ru-RU")} ₸`;
-}
-
 // Русское склонение по числу (1 год / 2-4 года / 5+ лет)
 function pluralize(n: number, one: string, few: string, many: string): string {
   const mod10 = n % 10;
@@ -160,12 +156,9 @@ export default function PlayerDetailModal({
   const staminaLevel = staminaToLevel(player.stamina);
   const prevStaminaLevel = prev?.stamina !== undefined ? staminaToLevel(prev.stamina) : undefined;
 
-  const characterParts = [
-    player.specialty ? specialtyLabel[player.specialty] : null,
-    details?.agreeability ?? null,
-    details?.aggressiveness ?? null,
-    details?.honesty ?? null,
-  ].filter((v): v is string => v !== null);
+  const characterParts = [details?.agreeability ?? null, details?.aggressiveness ?? null, details?.honesty ?? null].filter(
+    (v): v is string => v !== null,
+  );
 
   const gamesPlayed = details?.matchesCurrentTeam ?? player.gamesPlayed;
 
@@ -200,9 +193,7 @@ export default function PlayerDetailModal({
               >
                 TSI <b>{player.tsi.toLocaleString("ru-RU")}</b>
               </span>
-              <span>
-                Зарплата <b>{formatSalary(player.salary)}</b> / неделю
-              </span>
+              {player.specialty && <b>{specialtyLabel[player.specialty]}</b>}
             </div>
 
             {characterParts.length > 0 ? (
