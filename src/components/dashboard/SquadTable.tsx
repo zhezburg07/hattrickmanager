@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   positionGroupLabel,
-  positionGroupAccentColor,
+  positionAccentColor,
   positionAbbrev,
   statusLabel,
   specialtyLabel,
@@ -279,7 +279,7 @@ function TrainerIcon() {
 // где он сейчас числится в составе (основа/запас/список).
 function AmpluaAccent({ player, overrides }: { player: SquadPlayer; overrides: PositionOverrides }) {
   const effective = effectivePositionGroup(player, overrides);
-  return <span className={styles.ampluaAccent} style={{ background: positionGroupAccentColor[effective] }} />;
+  return <span className={styles.ampluaAccent} style={{ background: positionAccentColor(effective, player.skills) }} />;
 }
 
 // Амплуа игрока — цветной бейдж-селект (акцент по эффективному амплуа: ручное
@@ -303,7 +303,7 @@ function PositionBadge({
     <span className={styles.positionWrap} onClick={(e) => e.stopPropagation()}>
       <select
         className={styles.positionBadge}
-        style={{ "--position-accent": positionGroupAccentColor[effective] } as React.CSSProperties}
+        style={{ "--position-accent": positionAccentColor(effective, player.skills) } as React.CSSProperties}
         value={effective}
         title={isOverridden ? overrideTitle : undefined}
         onChange={(e) => {

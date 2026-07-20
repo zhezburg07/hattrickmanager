@@ -148,21 +148,37 @@ export const positionGroupAccentColor: Record<PositionGroup, string> = {
   FWD: "#d9564a",
 };
 
-// Обозначения амплуа для "Состава" (по запросу — латинские сокращения
-// вместо русских слов, цвет остаётся тем же 4-значным positionGroupAccentColor
-// выше, никакой новой группы/цвета не вводится). Для "MID" отдельно решаем
-// между "CM" (центральный полузащитник) и "W" (фланговый) по тому, какой из
-// навыков у ИМЕННО ЭТОГО игрока выше — тот же сигнал, что уже используется в
-// inferPositionGroup (src/lib/squadPlayers.ts) при отнесении игрока в группу
-// "MID" (усреднение midfield+winger+passing) — здесь используем его же,
-// чтобы просто уточнить подпись внутри уже посчитанной группы, не меняя саму
-// группу/цвет/сортировку по 4 амплуа.
+// Обозначения амплуа для "Состава"/"Расстановки" (латинские сокращения
+// вместо русских слов) — сама группа/сортировка по 4 амплуа не меняется,
+// "W" — лишь уточнение подписи (и, ниже, цвета) внутри уже посчитанной
+// группы MID. Для "MID" отдельно решаем между "CM" (центральный
+// полузащитник) и "W" (фланговый) по тому, какой из навыков у ИМЕННО ЭТОГО
+// игрока выше — тот же сигнал, что уже используется в inferPositionGroup
+// (src/lib/squadPlayers.ts) при отнесении игрока в группу "MID" (усреднение
+// midfield+winger+passing) — здесь используем его же.
 export function positionAbbrev(group: PositionGroup, skills: SquadSkills): string {
   if (group === "GK") return "GK";
   if (group === "DEF") return "CD";
   if (group === "FWD") return "ST";
   const centralScore = (skills.midfield + skills.passing) / 2;
   return skills.winger > centralScore ? "W" : "CM";
+}
+
+// Акцентный цвет по итоговой метке (GK/CD/CM/ST/W), а не по 4-значной группе
+// напрямую — по запросу "Фланговый" (W) получил собственный бледно-тиффани
+// цвет вместо того, чтобы совпадать с жёлтым MID (у "CM" тот же жёлтый, что
+// и раньше). GK/DEF/FWD не меняются — берутся из positionGroupAccentColor
+// один в один.
+const positionAbbrevAccentColor: Record<string, string> = {
+  GK: positionGroupAccentColor.GK,
+  CD: positionGroupAccentColor.DEF,
+  CM: positionGroupAccentColor.MID,
+  ST: positionGroupAccentColor.FWD,
+  W: "#81D8D0",
+};
+
+export function positionAccentColor(group: PositionGroup, skills: SquadSkills): string {
+  return positionAbbrevAccentColor[positionAbbrev(group, skills)];
 }
 
 // Короткий код игрока для компактного маркера (на поле и в перетаскивании)

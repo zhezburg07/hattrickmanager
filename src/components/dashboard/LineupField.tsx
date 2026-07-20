@@ -5,7 +5,7 @@ import type { Assignments, BoardSlot, RoleAccent } from "@/data/pitchBoard";
 import { roleAccent, roleFullLabel } from "@/data/pitchBoard";
 import {
   formWord,
-  positionGroupAccentColor,
+  positionAccentColor,
   positionGroupLabel,
   skillWordWithLevel,
   type PositionGroup,
@@ -214,7 +214,7 @@ export default function LineupField({
               // он пуст, это просто подсказка "кто здесь ожидается".
               const cardAccentClass = player ? "" : accentClassByKey[roleAccent[slot.role]];
               const cardAccentStyle = player
-                ? ({ "--slot-accent": positionGroupAccentColor[effectiveGroup!] } as React.CSSProperties)
+                ? ({ "--slot-accent": positionAccentColor(effectiveGroup!, player!.skills) } as React.CSSProperties)
                 : undefined;
 
               return (

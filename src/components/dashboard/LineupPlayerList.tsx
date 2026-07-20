@@ -2,8 +2,8 @@
 
 import { useMemo, useRef, useState } from "react";
 import {
-  positionGroupShort,
-  positionGroupAccentColor,
+  positionAbbrev,
+  positionAccentColor,
   skillLabel,
   skillWord,
   formWord,
@@ -32,7 +32,7 @@ function diffClass(dir: "up" | "down" | "none"): string {
 // где он сейчас числится (на поле/на скамейке/в общем списке).
 function AmpluaAccent({ player, overrides }: { player: SquadPlayer; overrides: PositionOverrides }) {
   const effective = effectivePositionGroup(player, overrides);
-  return <span className={styles.ampluaAccent} style={{ background: positionGroupAccentColor[effective] }} />;
+  return <span className={styles.ampluaAccent} style={{ background: positionAccentColor(effective, player.skills) }} />;
 }
 
 type SkillKey = keyof SquadSkills;
@@ -85,7 +85,7 @@ function getValue(player: SquadPlayer, key: SortKey): string | number {
     case "name":
       return player.name;
     case "positionGroup":
-      return positionGroupShort[player.positionGroup];
+      return positionAbbrev(player.positionGroup, player.skills);
     case "age":
       return player.age;
     case "experience":
@@ -243,7 +243,7 @@ export default function LineupPlayerList({
                   <AmpluaAccent player={p} overrides={overrides} />
                   {p.name}
                 </td>
-                <td>{positionGroupShort[p.positionGroup]}</td>
+                <td className={styles.gridFlagCell}>{positionAbbrev(p.positionGroup, p.skills)}</td>
                 <td className={styles.gridNumCell}>{p.age}</td>
                 <td
                   className={`${styles.gridNumCell} ${diffClass(diffDirection(p.experience, prev?.experience))}`}

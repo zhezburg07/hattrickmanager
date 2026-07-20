@@ -181,6 +181,14 @@
   font-size: 11.5px;
   border-radius: 6px;
   padding: 3px 8px;
+  /* Фиксированная ширина + центрирование текста — иначе "select" по
+     умолчанию рендерит выбранный текст не по центру, и метки на 1 букву
+     ("W") выглядят смещённее, чем на 2 ("CD"/"CM"/"ST"). text-align-last
+     нужен отдельно от text-align для корректного центрирования именно
+     выбранного option в select в некоторых браузерах (Firefox). */
+  width: 34px;
+  text-align: center;
+  text-align-last: center;
   cursor: pointer;
   transition: filter 0.12s ease;
 }
