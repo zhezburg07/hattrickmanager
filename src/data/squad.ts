@@ -181,6 +181,13 @@ export function positionAccentColor(group: PositionGroup, skills: SquadSkills): 
   return positionAbbrevAccentColor[positionAbbrev(group, skills)];
 }
 
+// Цвет напрямую по уже известной метке (GK/CD/CM/ST/W) — используется, когда
+// метка задана вручную (переопределение амплуа в "Составе", см.
+// SquadTable.tsx) и не должна заново пересчитываться по навыкам игрока.
+export function positionAccentColorForAbbrev(abbrev: string): string {
+  return positionAbbrevAccentColor[abbrev];
+}
+
 // Короткий код игрока для компактного маркера (на поле и в перетаскивании)
 export function playerBadgeCode(player: Pick<SquadPlayer, "name" | "positionGroup">): string {
   const short = player.name.split(" ")[1]?.slice(0, 3).toUpperCase();

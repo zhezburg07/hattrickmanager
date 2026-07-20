@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import {
   positionGroupLabel,
-  positionAccentColor,
   positionAbbrev,
+  positionAccentColorForAbbrev,
   statusLabel,
   specialtyLabel,
   skillLabel,
@@ -16,9 +16,13 @@ import {
   type PlayerStatus,
   type PlayerStatSnapshot,
   type SquadSkills,
-  type PositionGroup,
 } from "@/data/squad";
-import { usePositionOverrides, effectivePositionGroup, type PositionOverrides } from "@/data/positionOverrides";
+import {
+  usePositionOverrides,
+  effectivePositionGroup,
+  type PositionOverrides,
+  type PositionOverrideValue,
+} from "@/data/positionOverrides";
 import NationalityTag from "./NationalityTag";
 import FlagIcon from "./FlagIcon";
 import HeartIcon from "./HeartIcon";
@@ -79,20 +83,24 @@ const skillShortLabel: Record<SkillKey, string> = {
   setPieces: "Ст",
 };
 
+// Подписи столбцов укорочены по сравнению с "Расстановкой" (там ширины не
+// поджаты так туго) — иначе сама надпись заголовка (не содержимое ячеек)
+// оказывается самой широкой частью узких столбцов и не даёт таблице
+// поместиться на обычном десктопе без горизонтальной прокрутки.
 const baseColumns: { key: SortKey; label: string; title?: string }[] = [
-  { key: "positionGroup", label: "Позиция" },
+  { key: "positionGroup", label: "Поз." },
   { key: "name", label: "Имя" },
-  { key: "age", label: "Возраст" },
+  { key: "age", label: "Возр." },
   { key: "flag", label: "Флаг", title: "Национальность" },
   { key: "status", label: "Статус" },
   { key: "tsi", label: "TSI" },
   { key: "form", label: "Форма" },
   { key: "experience", label: "Опыт" },
-  { key: "stamina", label: "Вынос-ть" },
+  { key: "stamina", label: "Вын-ть", title: "Выносливость" },
   ...skillKeys.map((k) => ({ key: k as SortKey, label: skillShortLabel[k], title: skillLabel[k] })),
   { key: "loyalty", label: "Предан.", title: "Преданность клубу" },
   { key: "rating", label: "Рейтинг", title: "Рейтинг за последний сыгранный матч" },
-  { key: "potential", label: "Потенциал", title: "Потенциальный рейтинг при текущих навыках и форме" },
+  { key: "potential", label: "Потен.", title: "Потенциальный рейтинг при текущих навыках и форме" },
 ];
 
 // текстовые колонки по умолчанию сортируются от А до Я,
@@ -101,7 +109,58 @@ const textColumns = new Set<SortKey>(["flag", "name", "positionGroup", "status"]
 
 const statusRank: Record<PlayerStatus, number> = { starting: 0, bench: 1, squad: 1, injured: 2 };
 
-const positionOptions: PositionGroup[] = ["GK", "DEF", "MID", "FWD"];
+// 5 явно выбираемых вариантов вместо 4 — полузащита разделена на "MID"
+// (центральный, CM) и "WING" (фланговый, W), чтобы оба были доступны для
+// ручного выбора наравне с GK/DEF/FWD, а не только тот, что подсказывают
+// навыки игрока (см. PositionOverrideValue в data/positionOverrides.ts).
+const positionOptions: PositionOverrideValue[] = ["GK", "DEF", "MID", "WING", "FWD"];
+
+const overrideAbbrevLabel: Record<PositionOverrideValue, string> = {
+  GK: "GK",
+  DEF: "CD",
+  MID: "CM",
+  WING: "W",
+  FWD: "ST",
+};
+
+// Итоговая подпись амплуа с учётом ручного переопределения: если оно явно
+// задаёт "MID" или "WING", берём соответствующую подпись напрямую (CM/W), а
+// не пересчитываем по навыкам заново — иначе выбор "CM" для игрока с
+// доминирующим флангом (или наоборот) сразу же откатился бы обратно.
+// Без переопределения — обычная positionAbbrev по навыкам игрока.
+function effectiveAbbrev(player: SquadPlayer, overrides: PositionOverrides): string {
+  const override = overrides[player.id];
+  if (override === "WING") return "W";
+  if (override === "MID") return "CM";
+  return positionAbbrev(effectivePositionGroup(player, overrides), player.skills);
+}
+
+function effectiveAbbrevColor(player: SquadPlayer, overrides: PositionOverrides): string {
+  return positionAccentColorForAbbrev(effectiveAbbrev(player, overrides));
+}
+
+const abbrevToOverrideValue: Record<string, PositionOverrideValue> = {
+  GK: "GK",
+  CD: "DEF",
+  CM: "MID",
+  W: "WING",
+  ST: "FWD",
+};
+
+// Что сейчас выбрано в select'е (см. PositionBadge) — ручное переопределение,
+// если задано, иначе то же значение, что вывела бы effectiveAbbrev, только в
+// словаре PositionOverrideValue (GK/DEF/MID/WING/FWD), а не готовых подписях.
+function currentSelection(player: SquadPlayer, overrides: PositionOverrides): PositionOverrideValue {
+  return abbrevToOverrideValue[effectiveAbbrev(player, overrides)];
+}
+
+// Природное значение без учёта переопределений — нужно, чтобы понять, вернул
+// ли выбор в select'е игрока к его естественному амплуа (тогда переопределение
+// снимается целиком, onChange получает null) или задаёт настоящее ручное
+// исключение.
+function naturalSelection(player: SquadPlayer): PositionOverrideValue {
+  return abbrevToOverrideValue[effectiveAbbrev(player, {})];
+}
 
 function getValue(player: SquadPlayer, key: SortKey, overrides: PositionOverrides): string | number {
   switch (key) {
@@ -111,10 +170,8 @@ function getValue(player: SquadPlayer, key: SortKey, overrides: PositionOverride
       return player.name;
     case "age":
       return player.age + player.ageDays / 112;
-    case "positionGroup": {
-      const effective = effectivePositionGroup(player, overrides);
-      return positionAbbrev(effective, player.skills);
-    }
+    case "positionGroup":
+      return effectiveAbbrev(player, overrides);
     case "form":
       return player.form;
     case "stamina":
@@ -304,14 +361,15 @@ function TrainerIcon() {
 // естественная позиция) — то есть зависит от самого игрока, а не от того,
 // где он сейчас числится в составе (основа/запас/список).
 function AmpluaAccent({ player, overrides }: { player: SquadPlayer; overrides: PositionOverrides }) {
-  const effective = effectivePositionGroup(player, overrides);
-  return <span className={styles.ampluaAccent} style={{ background: positionAccentColor(effective, player.skills) }} />;
+  return <span className={styles.ampluaAccent} style={{ background: effectiveAbbrevColor(player, overrides) }} />;
 }
 
-// Амплуа игрока — цветной бейдж-селект (акцент по эффективному амплуа: ручное
-// переопределение, если оно задано, иначе естественная позиция из тестовых
-// данных). Клик открывает нативный выбор из 4 амплуа; при выборе значения,
-// отличного от естественного, рядом появляется значок "✎" с подсказкой.
+// Амплуа игрока — цветной бейдж-селект (акцент по эффективной подписи: ручное
+// переопределение, если оно задано, иначе естественная позиция/навыки из
+// тестовых данных). Клик открывает нативный выбор из 5 вариантов (GK/CD/CM/
+// W/ST — "W" теперь можно выбрать явно, а не только когда навыки игрока сами
+// на него указывают); при выборе значения, отличного от естественного, рядом
+// появляется значок "✎" с подсказкой.
 function PositionBadge({
   player,
   overrides,
@@ -319,27 +377,29 @@ function PositionBadge({
 }: {
   player: SquadPlayer;
   overrides: PositionOverrides;
-  onChange: (playerId: number, group: PositionGroup | null) => void;
+  onChange: (playerId: number, value: PositionOverrideValue | null) => void;
 }) {
-  const effective = effectivePositionGroup(player, overrides);
-  const isOverridden = effective !== player.positionGroup;
-  const overrideTitle = `Амплуа изменено вручную — естественная позиция: ${positionGroupLabel[player.positionGroup]}`;
+  const selection = currentSelection(player, overrides);
+  const natural = naturalSelection(player);
+  const isOverridden = selection !== natural;
+  const naturalAbbrev = effectiveAbbrev(player, {});
+  const overrideTitle = `Амплуа изменено вручную — естественная позиция: ${naturalAbbrev} (${positionGroupLabel[player.positionGroup]})`;
 
   return (
     <span className={styles.positionWrap} onClick={(e) => e.stopPropagation()}>
       <select
         className={styles.positionBadge}
-        style={{ "--position-accent": positionAccentColor(effective, player.skills) } as React.CSSProperties}
-        value={effective}
+        style={{ "--position-accent": effectiveAbbrevColor(player, overrides) } as React.CSSProperties}
+        value={selection}
         title={isOverridden ? overrideTitle : undefined}
         onChange={(e) => {
-          const next = e.target.value as PositionGroup;
-          onChange(player.id, next === player.positionGroup ? null : next);
+          const next = e.target.value as PositionOverrideValue;
+          onChange(player.id, next === natural ? null : next);
         }}
       >
-        {positionOptions.map((g) => (
-          <option key={g} value={g}>
-            {positionAbbrev(g, player.skills)}
+        {positionOptions.map((v) => (
+          <option key={v} value={v}>
+            {overrideAbbrevLabel[v]}
           </option>
         ))}
       </select>

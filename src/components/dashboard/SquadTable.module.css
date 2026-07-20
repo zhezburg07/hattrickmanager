@@ -28,7 +28,7 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -41,16 +41,16 @@
 .th {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   width: 100%;
   background: none;
   border: none;
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
-  padding: 0 8px 10px;
+  letter-spacing: 0.2px;
+  padding: 0 5px 8px;
   cursor: pointer;
   text-align: left;
 }
@@ -68,7 +68,7 @@
 }
 
 .table td {
-  padding: 9px 8px;
+  padding: 7px 5px;
   border-bottom: 1px solid rgba(44, 74, 64, 0.6);
   vertical-align: middle;
 }
@@ -321,7 +321,13 @@
   font-weight: 700;
 }
 
-@media (max-width: 720px) {
+/* Порог поднят с 720px до 1100px: даже после уплотнения (уменьшенный шрифт,
+   отступы и подписи столбцов выше) полная таблица (19 столбцов) физически
+   не помещается без горизонтальной прокрутки на всём, что уже ~1080px по
+   ширине контейнера — измерено вживую. Ниже этого порога честнее сразу
+   показать карточки (уже не требуют скролла вообще), чем полу-помещающуюся
+   таблицу со скроллом вбок. */
+@media (max-width: 1100px) {
   .tableWrap {
     display: none;
   }
