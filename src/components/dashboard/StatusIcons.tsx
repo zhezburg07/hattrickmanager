@@ -25,17 +25,26 @@ function IconBase({
   );
 }
 
-// Техничный — гаечный ключ
+// Техничный — шестерёнка (по запросу, вместо гаечного ключа)
 function TechnicalGlyph() {
+  const teeth = [0, 45, 90, 135, 180, 225, 270, 315];
   return (
-    <path
-      d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"
-      fill="none"
-      stroke="var(--color-accent)"
-      strokeWidth="1.6"
-      strokeLinejoin="round"
-      strokeLinecap="round"
-    />
+    <>
+      {teeth.map((angle) => (
+        <rect
+          key={angle}
+          x="10.8"
+          y="1.5"
+          width="2.4"
+          height="3.2"
+          rx="0.6"
+          fill="var(--color-accent)"
+          transform={`rotate(${angle} 12 12)`}
+        />
+      ))}
+      <circle cx="12" cy="12" r="6" fill="none" stroke="var(--color-accent)" strokeWidth="1.6" />
+      <circle cx="12" cy="12" r="2" fill="var(--color-accent)" />
+    </>
   );
 }
 
@@ -123,24 +132,67 @@ export function SpecialtyIcon({ specialty, label }: { specialty: PlayerSpecialty
 }
 
 // Травма — 3 ступени по сроку восстановления (InjuryLevel из players.xml,
-// см. src/lib/squadPlayers.ts): 0 недель — лёгкая (ушиб, матчей не
-// пропускает), 1 неделя — среднее восстановление, 2+ недель — серьёзная.
-// По запросу — обычные emoji вместо SVG-глифов (в отличие от остальных
-// значков в этом файле, см. комментарий выше): здесь важны именно узнаваемые
-// бытовые символы (пластырь/крест/скорая), не однотонный минималистичный
-// стиль.
-export function InjuryIcon({ weeksRemaining }: { weeksRemaining: number }) {
-  const symbol = weeksRemaining >= 2 ? "🚑" : weeksRemaining === 1 ? "➕" : "🩹";
-  const title =
-    weeksRemaining >= 2
-      ? `Травма, осталось недель: ${weeksRemaining}`
-      : weeksRemaining === 1
-        ? "Травма, осталось около недели"
-        : "Лёгкая травма — матчей не пропускает";
+// см. src/lib/squadPlayers.ts): 0 недель — лёгкая, 1 неделя — среднее
+// восстановление, 2+ недель — серьёзная.
+//
+// НАЙДЕННЫЙ баг предыдущей версии: лёгкая/средняя ступени рисовались emoji
+// ("🩹"/"➕") с цветом через CSS style — но это не работает: оба символа
+// рисуются шрифтом как многоцветные глиф-картинки (тот же принцип, что и у
+// цветных эмодзи вроде 👍/❤, см. комментарий в начале файла), и CSS-свойство
+// color на такую картинку не влияет вообще — цвет целиком определяет шрифт
+// конкретного устройства/браузера (жалоба: "➕" выходил фиолетовым на одном
+// устройстве). Единственный способ гарантировать ОДИНАКОВЫЙ цвет везде —
+// нарисовать эти две ступени как обычные SVG-фигуры с явным fill/stroke, а
+// не эмодзи-текстом. Серьёзная ступень (🚑) оставлена emoji по запросу — она
+// заведомо многоцветная (машина скорой помощи), фиксировать один цвет там
+// не имеет смысла.
+const LIGHT_INJURY_COLOR = "#F5A623";
+const MEDIUM_INJURY_COLOR = "#E53E3E";
+
+// Лёгкая травма — пластырь, наклонённый на 45°, с перфорацией из 4 точек
+// (узнаваемый силуэт бытового пластыря).
+function PlasterGlyph() {
   return (
-    <span title={title} aria-label={title} style={{ display: "inline-flex", flex: "none", fontSize: 13, lineHeight: 1 }}>
-      {symbol}
-    </span>
+    <g transform="rotate(-45 12 12)">
+      <rect x="2" y="8" width="20" height="8" rx="4" fill="none" stroke={LIGHT_INJURY_COLOR} strokeWidth="1.8" />
+      <circle cx="10" cy="10.5" r="0.7" fill={LIGHT_INJURY_COLOR} />
+      <circle cx="14" cy="10.5" r="0.7" fill={LIGHT_INJURY_COLOR} />
+      <circle cx="10" cy="13.5" r="0.7" fill={LIGHT_INJURY_COLOR} />
+      <circle cx="14" cy="13.5" r="0.7" fill={LIGHT_INJURY_COLOR} />
+    </g>
+  );
+}
+
+// Средняя травма (~1 неделя) — простой медицинский крест/плюс.
+function CrossGlyph() {
+  return (
+    <>
+      <line x1="12" y1="5" x2="12" y2="19" stroke={MEDIUM_INJURY_COLOR} strokeWidth="3" strokeLinecap="round" />
+      <line x1="5" y1="12" x2="19" y2="12" stroke={MEDIUM_INJURY_COLOR} strokeWidth="3" strokeLinecap="round" />
+    </>
+  );
+}
+
+export function InjuryIcon({ weeksRemaining }: { weeksRemaining: number }) {
+  if (weeksRemaining >= 2) {
+    const title = `Травма, осталось недель: ${weeksRemaining}`;
+    return (
+      <span title={title} aria-label={title} style={{ display: "inline-flex", flex: "none", fontSize: 13, lineHeight: 1 }}>
+        🚑
+      </span>
+    );
+  }
+  if (weeksRemaining === 1) {
+    return (
+      <IconBase title="Травма, осталось около недели">
+        <CrossGlyph />
+      </IconBase>
+    );
+  }
+  return (
+    <IconBase title="Лёгкая травма — матчей не пропускает">
+      <PlasterGlyph />
+    </IconBase>
   );
 }
 
