@@ -9,3 +9,20 @@
   background: rgba(192, 80, 63, 0.24);
   border-radius: 4px;
 }
+
+/* Цвет самой цифры (не только фон ячейки) при изменении значения — тот же
+   зелёный/красный, что и у фона выше, плюс маленький треугольник рядом
+   (см. DiffArrow в SquadTable.tsx). */
+.statUpText {
+  color: var(--color-good);
+}
+
+.statDownText {
+  color: var(--color-bad);
+}
+
+.diffArrow {
+  font-size: 9px;
+  margin-left: 3px;
+  display: inline-block;
+}

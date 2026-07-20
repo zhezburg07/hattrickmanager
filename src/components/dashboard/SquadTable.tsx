@@ -32,6 +32,23 @@ function diffClass(dir: DiffDirection): string {
   return dir === "up" ? diffStyles.statUp : dir === "down" ? diffStyles.statDown : "";
 }
 
+// Цвет самой цифры при изменении — тот же зелёный/красный, что и у фона
+// ячейки (diffClass выше), только это цвет текста, а не подсветка.
+function diffTextClass(dir: DiffDirection): string {
+  return dir === "up" ? diffStyles.statUpText : dir === "down" ? diffStyles.statDownText : "";
+}
+
+// Маленький треугольник рядом с числом — ▲ зелёным при росте, ▼ красным при
+// падении, ничего не показываем, если значение не изменилось (см. чат).
+function DiffArrow({ dir }: { dir: DiffDirection }) {
+  if (dir === "none") return null;
+  return (
+    <span className={`${diffStyles.diffArrow} ${diffTextClass(dir)}`} aria-hidden="true">
+      {dir === "up" ? "▲" : "▼"}
+    </span>
+  );
+}
+
 type SkillKey = keyof SquadSkills;
 type SortKey =
   | "flag"
@@ -212,9 +229,13 @@ function SkillNumberCell({
   diff?: DiffDirection;
   hoverWord: string;
 }) {
+  const valueColorClass = diff !== "none" ? diffTextClass(diff) : tierFromRatio(value / max);
   return (
     <td className={`${styles.skillCell} ${diffClass(diff)}`} title={hoverWord}>
-      <span className={`${styles.skillWord} ${tierFromRatio(value / max)}`}>{value}</span>
+      <span className={`${styles.skillWord} ${valueColorClass}`}>
+        {value}
+        <DiffArrow dir={diff} />
+      </span>
     </td>
   );
 }
@@ -430,7 +451,8 @@ export default function SquadTable({
                   className={`${styles.moneyCell} ${diffClass(tsiDiff)}`}
                   title={diffTitle("TSI", prev?.tsi, p.tsi, (n) => n.toLocaleString("ru-RU"))}
                 >
-                  {p.tsi.toLocaleString("ru-RU")}
+                  <span className={diffTextClass(tsiDiff)}>{p.tsi.toLocaleString("ru-RU")}</span>
+                  <DiffArrow dir={tsiDiff} />
                 </td>
                 <SkillNumberCell
                   value={p.form}
@@ -472,6 +494,10 @@ export default function SquadTable({
           const prev = resolvedPrevByPlayerId[p.id];
           const staminaLevel = staminaToLevel(p.stamina);
           const prevStaminaLevel = prev?.stamina !== undefined ? staminaToLevel(prev.stamina) : undefined;
+          const formDiff = diffDirection(p.form, prev?.form);
+          const staminaDiff = diffDirection(staminaLevel, prevStaminaLevel);
+          const tsiDiff = diffDirection(p.tsi, prev?.tsi);
+          const experienceDiff = diffDirection(p.experience, prev?.experience);
           return (
           <div className={`${styles.playerCard} ${styles.playerCardClickable}`} key={p.id} onClick={() => setSelectedPlayer(p)}>
             <div className={styles.playerCardHead}>
@@ -489,17 +515,16 @@ export default function SquadTable({
                 <b>{formatAge(p.age, p.ageDays)}</b> лет
               </span>
               <PositionBadge player={p} overrides={overrides} onChange={setOverride} />
-              <span
-                className={diffClass(diffDirection(p.form, prev?.form))}
-                title={diffTitle("Форма", prev?.form, p.form) ?? formWord(p.form)}
-              >
-                Форма <b>{p.form}</b>
+              <span className={diffClass(formDiff)} title={diffTitle("Форма", prev?.form, p.form) ?? formWord(p.form)}>
+                Форма <b className={diffTextClass(formDiff)}>{p.form}</b>
+                <DiffArrow dir={formDiff} />
               </span>
               <span
-                className={diffClass(diffDirection(staminaLevel, prevStaminaLevel))}
+                className={diffClass(staminaDiff)}
                 title={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? formWord(staminaLevel)}
               >
-                Вын-ть <b>{staminaLevel}</b>
+                Вын-ть <b className={diffTextClass(staminaDiff)}>{staminaLevel}</b>
+                <DiffArrow dir={staminaDiff} />
               </span>
               {p.lastMatchRating !== undefined && (
                 <span title={`${p.lastMatchRating.toFixed(1)} из 10`}>
@@ -510,30 +535,40 @@ export default function SquadTable({
                 Потенциал <b>★ {estimatePotentialRating(p).toFixed(1)}</b>
               </span>
               <span
-                className={diffClass(diffDirection(p.tsi, prev?.tsi))}
+                className={diffClass(tsiDiff)}
                 title={diffTitle("TSI", prev?.tsi, p.tsi, (n) => n.toLocaleString("ru-RU"))}
               >
-                TSI <b>{p.tsi.toLocaleString("ru-RU")}</b>
+                TSI <b className={diffTextClass(tsiDiff)}>{p.tsi.toLocaleString("ru-RU")}</b>
+                <DiffArrow dir={tsiDiff} />
               </span>
             </div>
 
             <div className={styles.playerCardSkills}>
-              {skillKeys.map((k) => (
+              {skillKeys.map((k) => {
+                const skillDiff = diffDirection(p.skills[k], prev?.skills[k]);
+                return (
                 <div
-                  className={`${styles.playerCardSkillRow} ${diffClass(diffDirection(p.skills[k], prev?.skills[k]))}`}
+                  className={`${styles.playerCardSkillRow} ${diffClass(skillDiff)}`}
                   key={k}
                   title={diffTitle(skillLabel[k], prev?.skills[k], p.skills[k]) ?? skillWord(p.skills[k])}
                 >
                   <span className={styles.playerCardSkillLabel}>{skillLabel[k]}</span>
-                  <span className={styles.playerCardSkillValue}>{p.skills[k]}</span>
+                  <span className={styles.playerCardSkillValue}>
+                    <span className={diffTextClass(skillDiff)}>{p.skills[k]}</span>
+                    <DiffArrow dir={skillDiff} />
+                  </span>
                 </div>
-              ))}
+                );
+              })}
               <div
-                className={`${styles.playerCardSkillRow} ${diffClass(diffDirection(p.experience, prev?.experience))}`}
+                className={`${styles.playerCardSkillRow} ${diffClass(experienceDiff)}`}
                 title={diffTitle("Опыт", prev?.experience, p.experience) ?? skillWord(p.experience)}
               >
                 <span className={styles.playerCardSkillLabel}>Опыт</span>
-                <span className={styles.playerCardSkillValue}>{p.experience}</span>
+                <span className={styles.playerCardSkillValue}>
+                  <span className={diffTextClass(experienceDiff)}>{p.experience}</span>
+                  <DiffArrow dir={experienceDiff} />
+                </span>
               </div>
               {hasLoyalty && (
                 <div

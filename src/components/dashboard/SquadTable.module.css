@@ -155,7 +155,7 @@
 }
 
 .moneyCell {
-  text-align: right;
+  text-align: center;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
