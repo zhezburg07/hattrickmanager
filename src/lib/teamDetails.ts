@@ -19,6 +19,14 @@ export interface RealTeamDetails {
   // со StillInCup — не проверено на живом ответе, читаем защитно (см.
   // src/lib/cupMatches.ts, там же нужен параметр CupID для cupmatches.xml).
   cupId: string | null;
+  // Название этого кубка (<CupName>) — по подтверждённой реальной схеме
+  // teamdetails.xml (см. независимый CHPP-клиент github.com/lucianoq/hattrick,
+  // chpp/file_teamdetails.go) <Cup> всегда содержит РОВНО ОДИН активный кубок
+  // команды, а не список всех кубков сразу — то есть если команда выбыла из
+  // Национального Кубка, но всё ещё в Кубке Надежды, здесь должно быть имя
+  // именно Кубка Надежды. Показывается в диагностике на "Кубках", чтобы
+  // явно видеть, какому кубку соответствует найденный CupID, а не гадать.
+  cupName: string | null;
 }
 
 // Разбирает XML-ответ CHPP на файл teamdetails.xml.
@@ -43,6 +51,8 @@ export function parseTeamDetailsXml(xml: string): RealTeamDetails {
   // ответе, какое именно использует CHPP (если вообще использует).
   const cupIdRaw = team.Cup?.CupID ?? team.Cup?.CupId ?? team.CupID;
   const cupId = cupIdRaw !== undefined && String(cupIdRaw) !== "" && String(cupIdRaw) !== "0" ? String(cupIdRaw) : null;
+  const cupNameRaw = team.Cup?.CupName;
+  const cupName = cupNameRaw !== undefined && String(cupNameRaw) !== "" ? String(cupNameRaw) : null;
 
   return {
     teamId: String(team.TeamID ?? ""),
@@ -57,5 +67,6 @@ export function parseTeamDetailsXml(xml: string): RealTeamDetails {
     powerRatingGlobalRank: Number.isNaN(globalRank) ? null : globalRank,
     stillInCup: stillInCupRaw === undefined ? null : String(stillInCupRaw) === "True",
     cupId,
+    cupName,
   };
 }
