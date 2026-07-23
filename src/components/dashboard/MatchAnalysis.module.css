@@ -397,81 +397,67 @@
   color: var(--color-text-muted);
 }
 
-/* Хронология моментов — вертикальный таймлайн (тот же визуальный язык, что
-   и "Путь по сетке" на вкладке "Кубки", см. Cup.module.css: точка + соединяющая
-   линия + текст справа), а не прежний горизонтальный трек с абсолютным
-   позиционированием иконок по проценту от 90 минут. Горизонтальный трек был
-   рассчитан на пару-тройку демонстрационных голов/карточек — при реальном
-   EventList (по одной строке на КАЖДЫЙ игровой момент за матч, иногда
-   несколько десятков) иконки на нём просто наложились бы друг на друга.
-   Вертикальный список одинаково хорошо работает и с длинной хронологией
-   (events), и с короткой (goals-cards) — просто растягивается по высоте. */
-.timelineList {
-  display: flex;
-  flex-direction: column;
+/* Хронология моментов — горизонтальная лента на пропорциональной временной
+   шкале (0' слева, максимум справа — 90 или больше, если были события в
+   добавленное время), только иконки, текст — по наведению (title). Раньше
+   здесь был вертикальный список: горизонтальный трек когда-то сменили на
+   вертикальный именно потому, что тогда на ленте показывались ВСЕ 40 сырых
+   строк EventList (кикофф, составы, атаки без гола и т.п.) — они
+   накладывались друг на друга. Теперь лента показывает только
+   содержательные события (голы/карточки/травмы/замены, обычно единицы),
+   так что горизонтальное пропорциональное расположение снова уместно.
+   Контейнер скроллится по горизонтали на узких экранах — сама лента не
+   сжимается меньше .timelineHorizontalTrack min-width. */
+.timelineHorizontalWrap {
+  overflow-x: auto;
+  padding-bottom: 4px;
 }
 
-.timelineRow {
+.timelineHorizontalTrack {
   position: relative;
-  display: flex;
-  gap: 12px;
-  padding-bottom: 16px;
-}
-
-.timelineRow:last-child {
-  padding-bottom: 0;
-}
-
-.timelineMinute {
-  flex: none;
-  width: 32px;
-  padding-top: 3px;
-  text-align: right;
-  font-weight: 800;
-  font-size: 12.5px;
-  color: var(--color-accent);
-  font-variant-numeric: tabular-nums;
-}
-
-.timelineMarkerCol {
-  position: relative;
-  flex: none;
-  display: flex;
-  justify-content: center;
-}
-
-.timelineMarkerLine {
-  position: absolute;
-  left: 50%;
-  top: 24px;
-  bottom: -16px;
-  width: 2px;
-  transform: translateX(-50%);
+  min-width: 640px;
+  height: 4px;
   background: var(--color-border);
+  border-radius: 999px;
+  margin: 34px 16px 26px;
 }
 
-.timelineRow:last-child .timelineMarkerLine {
-  display: none;
+.timelineEndLabel {
+  position: absolute;
+  top: -22px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.timelineEndLabelStart {
+  left: 0;
+}
+
+.timelineEndLabelEnd {
+  right: 0;
 }
 
 .timelineMarker {
-  position: relative;
-  width: 22px;
-  height: 22px;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: none;
-  font-size: 11.5px;
+  font-size: 12px;
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
+  border: 1.5px solid var(--color-border);
+  cursor: help;
   z-index: 1;
 }
 
 .timelineMarkerGoal {
   border-color: var(--color-good);
-  background: rgba(76, 175, 111, 0.15);
+  background: rgba(76, 175, 111, 0.18);
 }
 
 /* Гол соперника — приглушённо/нейтрально, не зелёным (см. .timelineMarkerGoal
@@ -479,54 +465,27 @@
    MatchDetailAnalysis.tsx). */
 .timelineMarkerGoalOpp {
   border-color: var(--color-text-muted);
-  background: rgba(242, 237, 225, 0.08);
+  background: rgba(242, 237, 225, 0.1);
 }
 
 .timelineMarkerCardYellow {
   border-color: #e0c04a;
-  background: rgba(224, 192, 74, 0.18);
+  background: rgba(224, 192, 74, 0.2);
 }
 
 .timelineMarkerCardRed {
   border-color: var(--color-bad);
-  background: rgba(192, 80, 63, 0.18);
+  background: rgba(192, 80, 63, 0.2);
 }
 
 .timelineMarkerSub {
   border-color: var(--color-accent);
-  background: rgba(201, 162, 39, 0.15);
+  background: rgba(201, 162, 39, 0.18);
 }
 
 .timelineMarkerInjury {
   border-color: #e0913f;
-  background: rgba(224, 145, 63, 0.18);
-}
-
-.timelineText {
-  flex: 1;
-  min-width: 0;
-  padding-top: 2px;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.timelineTextGoal {
-  color: var(--color-good);
-  font-weight: 700;
-}
-
-.timelineTextGoalOpp {
-  color: var(--color-text-muted);
-  font-weight: 700;
-}
-
-.timelineTextCard {
-  color: #e0c04a;
-  font-weight: 700;
-}
-
-.timelineTextInjury {
-  color: #e0913f;
+  background: rgba(224, 145, 63, 0.2);
 }
 
 /* Посещаемость */

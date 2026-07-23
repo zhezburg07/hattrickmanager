@@ -539,57 +539,66 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
                 {data.timelineError}
               </p>
             ) : (
-              data.timeline && (
-                <>
-                  {data.timelineSource === "without-subs" && (
-                    <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 12 }}>
-                      Полный список событий для этого матча не вернулся — показаны голы, карточки и травмы (всегда
-                      доступны), но не замены (их можно распознать только из полного отчёта).
-                    </p>
-                  )}
-                  <div className={styles.timelineList}>
-                    {data.timeline.map((ev, i) => {
-                      const ourSide = match.home ? "home" : "away";
-                      const isOurs = ev.teamSide === ourSide;
-                      const isRedCard = ev.kind === "card" && /красн/i.test(ev.text);
-                      const markerClass =
-                        ev.kind === "goal"
-                          ? isOurs
-                            ? styles.timelineMarkerGoal
-                            : styles.timelineMarkerGoalOpp
-                          : ev.kind === "card"
-                            ? isRedCard
-                              ? styles.timelineMarkerCardRed
-                              : styles.timelineMarkerCardYellow
-                            : ev.kind === "sub"
-                              ? styles.timelineMarkerSub
-                              : styles.timelineMarkerInjury;
-                      const textClass =
-                        ev.kind === "goal"
-                          ? isOurs
-                            ? styles.timelineTextGoal
-                            : styles.timelineTextGoalOpp
-                          : ev.kind === "card"
-                            ? styles.timelineTextCard
-                            : ev.kind === "injury"
-                              ? styles.timelineTextInjury
-                              : "";
-                      const icon =
-                        ev.kind === "goal" ? "⚽" : ev.kind === "card" ? (isRedCard ? "🟥" : "🟨") : ev.kind === "sub" ? "🔄" : "🩹";
-                      return (
-                        <div key={i} className={styles.timelineRow}>
-                          <span className={styles.timelineMinute}>{ev.minute}&apos;</span>
-                          <div className={styles.timelineMarkerCol}>
-                            <div className={styles.timelineMarkerLine} />
-                            <span className={`${styles.timelineMarker} ${markerClass}`}>{icon}</span>
-                          </div>
-                          <span className={`${styles.timelineText} ${textClass}`}>{ev.text}</span>
+              data.timeline &&
+                (() => {
+                  const ourSide = match.home ? "home" : "away";
+                  const maxMinute = Math.max(90, ...data.timeline.map((ev) => ev.minute));
+                  return (
+                    <>
+                      {data.timelineSource === "without-subs" && (
+                        <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 12 }}>
+                          Полный список событий для этого матча не вернулся — показаны голы, карточки и травмы (всегда
+                          доступны), но не замены (их можно распознать только из полного отчёта).
+                        </p>
+                      )}
+                      <div className={styles.timelineHorizontalWrap}>
+                        <div className={styles.timelineHorizontalTrack}>
+                          <span className={`${styles.timelineEndLabel} ${styles.timelineEndLabelStart}`}>0&apos;</span>
+                          <span className={`${styles.timelineEndLabel} ${styles.timelineEndLabelEnd}`}>{maxMinute}&apos;</span>
+                          {data.timeline.map((ev, i) => {
+                            const isOurs = ev.teamSide === ourSide;
+                            const isRedCard = ev.kind === "card" && /красн/i.test(ev.text);
+                            const isLightInjury = ev.kind === "injury" && /лёгк|ушиб/i.test(ev.text);
+                            const markerClass =
+                              ev.kind === "goal"
+                                ? isOurs
+                                  ? styles.timelineMarkerGoal
+                                  : styles.timelineMarkerGoalOpp
+                                : ev.kind === "card"
+                                  ? isRedCard
+                                    ? styles.timelineMarkerCardRed
+                                    : styles.timelineMarkerCardYellow
+                                  : ev.kind === "sub"
+                                    ? styles.timelineMarkerSub
+                                    : styles.timelineMarkerInjury;
+                            const icon =
+                              ev.kind === "goal"
+                                ? "⚽"
+                                : ev.kind === "card"
+                                  ? isRedCard
+                                    ? "🟥"
+                                    : "🟨"
+                                  : ev.kind === "sub"
+                                    ? "⇆"
+                                    : isLightInjury
+                                      ? "🩹"
+                                      : "➕";
+                            return (
+                              <span
+                                key={i}
+                                className={`${styles.timelineMarker} ${markerClass}`}
+                                style={{ left: `${(ev.minute / maxMinute) * 100}%` }}
+                                title={`${ev.minute}' — ${ev.text}`}
+                              >
+                                {icon}
+                              </span>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )
+                      </div>
+                    </>
+                  );
+                })()
             )}
           </>
         )}
