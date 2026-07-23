@@ -1,5 +1,5 @@
-import type { SquadPlayer, SquadSkills } from "@/data/squad";
-import { emptyAssignments, boardSlots, type Assignments, type BoardSlot, type SlotRole } from "@/data/pitchBoard";
+import type { PositionGroup, SquadPlayer, SquadSkills } from "@/data/squad";
+import { emptyAssignments, boardSlots, subCategories, type Assignments, type BoardSlot, type SlotRole } from "@/data/pitchBoard";
 import type { ZoneKey } from "./zoneRatings";
 
 // Уровни значимости навыка для позиции — в духе официальных приоритетов Hattrick
@@ -105,8 +105,72 @@ function buildLineup(allPlayers: SquadPlayer[], slotScoreMultiplier: (slot: Boar
   return assignments;
 }
 
-export function recommendLineup(allPlayers: SquadPlayer[]): Assignments {
-  return buildLineup(allPlayers, () => 1);
+// Категория слота скамейки (см. SubCategory в pitchBoard.ts) не совпадает
+// один-в-один с формальными ролями поля — "Фланг" (WING) не строчная
+// SlotRole, а визуальный ярлык поверх группы MID (тот же принцип, что и у
+// ручного амплуа "W" в "Составе"). Обе полузащитные категории (MID и WING)
+// поэтому берут кандидатов из одной и той же группы MID, но оценивают их по
+// разным весам (центральный/фланговый полузащитник) — сильнейшие
+// полузащитники распределяются между двумя категориями по тому же принципу
+// жадного подбора, что и слоты на поле.
+const benchRoleForCategory: Record<string, SlotRole> = {
+  GK: "GK",
+  DEF: "DEF_CENTRAL",
+  MID: "MID_CENTRAL",
+  WING: "MID_WIDE",
+  FWD: "FWD_CENTRAL",
+};
+
+const benchGroupForCategory: Record<string, PositionGroup> = {
+  GK: "GK",
+  DEF: "DEF",
+  MID: "MID",
+  WING: "MID",
+  FWD: "FWD",
+};
+
+// Заполняет 5 слотов скамейки следующими по силе игроками из числа тех, кто
+// не попал в стартовые 11 (см. recommendLineup ниже) — та же логика оценки
+// (scoreForRole), что и для основы, жадный подбор без конфликтов "один
+// игрок — один слот скамейки".
+function fillBench(remainingAvailable: SquadPlayer[]): (number | null)[] {
+  const result: (number | null)[] = subCategories.map(() => null);
+
+  const candidates: { index: number; player: SquadPlayer; score: number }[] = [];
+  subCategories.forEach((cat, index) => {
+    const role = benchRoleForCategory[cat.key];
+    const group = benchGroupForCategory[cat.key];
+    remainingAvailable
+      .filter((p) => p.positionGroup === group)
+      .forEach((player) => {
+        candidates.push({ index, player, score: scoreForRole(player, role) });
+      });
+  });
+  candidates.sort((a, b) => b.score - a.score);
+
+  const filledIndices = new Set<number>();
+  const usedPlayerIds = new Set<number>();
+  for (const c of candidates) {
+    if (filledIndices.has(c.index) || usedPlayerIds.has(c.player.id)) continue;
+    filledIndices.add(c.index);
+    usedPlayerIds.add(c.player.id);
+    result[c.index] = c.player.id;
+  }
+  return result;
+}
+
+export function recommendLineup(allPlayers: SquadPlayer[]): { assignments: Assignments; subs: (number | null)[] } {
+  const assignments = buildLineup(allPlayers, () => 1);
+
+  const usedIds = new Set<number>();
+  (Object.values(assignments) as (number | null)[][]).forEach((slotIds) =>
+    slotIds.forEach((id) => {
+      if (id !== null) usedIds.add(id);
+    }),
+  );
+  const remainingAvailable = allPlayers.filter((p) => p.status !== "injured" && !usedIds.has(p.id));
+
+  return { assignments, subs: fillBench(remainingAvailable) };
 }
 
 // Для каждой найденной слабой зоны соперника — какие из НАШИХ слотов на поле

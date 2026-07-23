@@ -610,6 +610,35 @@
   }
 }
 
+/* Карточки скамейки запасных — та же плашка/стиль, что и на поле (.slotCard),
+   но с гибкой шириной вместо фиксированной: скамейка вмещает все 5 слотов в
+   один ряд (родитель .benchSlotWrap уже даёт каждому flex: 1 1 0), а
+   фиксированная ширина карточки поля (234px на десктопе) физически не
+   позволяет уместить 5 таких карточек рядом при реалистичной ширине блока.
+   "Тот же размер" здесь означает "тот же максимум" — карточка скамейки
+   никогда не крупнее одноразмерной карточки поля на том же брейкпоинте, но
+   может сжаться уже, если общей ширины не хватает. Правило с width: 100%
+   стоит НАМЕРЕННО после всех брейкпоинтов .slotCard выше по файлу — при
+   равной специфичности класса побеждает то, что объявлено позже, поэтому это
+   правило переопределяет фиксированную ширину .slotCard на любом брейкпоинте. */
+.benchCard {
+  width: 100%;
+  min-width: 0;
+  max-width: 234px;
+}
+
+@media (max-width: 1279px) {
+  .benchCard {
+    max-width: 162px;
+  }
+}
+
+@media (max-width: 939px) {
+  .benchCard {
+    max-width: 85px;
+  }
+}
+
 /* Скрытый элемент-образец для кастомного превью перетаскивания (drag image):
    рендерится за пределами экрана, но остаётся видимым для браузера, чтобы
    setDragImage мог использовать его как "фишку" игрока вместо всей строки списка */
@@ -891,7 +920,13 @@
 .benchSlotWrap {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* stretch (не center) — иначе .benchSlot остаётся без определённой ширины
+     (сжимается по содержимому), и width: 100% у карточки внутри (.benchCard)
+     не может ни от чего оттолкнуться и тоже схлопывается по контенту вместо
+     заполнения всей доступной колонки. НАЙДЕНО вживую: с center пустой слот
+     (короткая подпись "ФЛ") получался в разы уже, чем заполненные — карточки
+     были неодинаковой ширины вместо равномерного ряда. */
+  align-items: stretch;
   gap: 3px;
   flex: 1 1 0;
   min-width: 0;
@@ -901,37 +936,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.benchSlotBadge {
-  width: 34px;
-  height: 34px;
-  font-size: 10px;
-}
-
-.benchSlotLabel {
-  font-size: 9.5px;
-  color: var(--color-text-muted);
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+  min-width: 0;
 }
 
 @media (max-width: 560px) {
   .benchStripTag {
     display: none;
-  }
-
-  .benchSlotBadge {
-    width: 28px;
-    height: 28px;
-    font-size: 9px;
-  }
-
-  .benchSlotLabel {
-    font-size: 8.5px;
   }
 }
 

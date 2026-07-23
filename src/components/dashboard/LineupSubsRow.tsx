@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { subCategories } from "@/data/pitchBoard";
-import { playerBadgeCode, type SquadPlayer } from "@/data/squad";
+import type { SquadPlayer } from "@/data/squad";
 import { parsePayload, serializePayload, type DragPayload } from "./dragPayload";
 import styles from "./Lineup.module.css";
 
@@ -45,7 +45,7 @@ export default function LineupSubsRow({
               }}
             >
               <span
-                className={`${styles.slotBadge} ${styles.benchSlotBadge} ${player ? styles.slotBadgeFilled : styles.slotBadgeEmpty} ${isSelected ? styles.slotBadgeSelected : ""}`}
+                className={`${styles.slotCard} ${styles.benchCard} ${player ? styles.slotBadgeFilled : styles.slotBadgeEmpty} ${isSelected ? styles.slotBadgeSelected : ""}`}
                 title={player ? `${player.name} — ${cat.label}` : cat.label}
                 draggable={Boolean(player)}
                 onClick={() => onSlotClick(index)}
@@ -56,10 +56,17 @@ export default function LineupSubsRow({
                   e.dataTransfer.effectAllowed = "move";
                 }}
               >
-                {player ? playerBadgeCode(player) : cat.shortLabel}
+                {player ? (
+                  <>
+                    <span className={styles.slotCardNumber}>{player.squadNumber}</span>
+                    <span className={styles.slotCardName}>{player.name.split(" ")[1] ?? player.name}</span>
+                    <span className={styles.slotCardRole}>{cat.shortLabel}</span>
+                  </>
+                ) : (
+                  cat.shortLabel
+                )}
               </span>
             </div>
-            <span className={styles.benchSlotLabel}>{cat.label}</span>
           </div>
         );
       })}

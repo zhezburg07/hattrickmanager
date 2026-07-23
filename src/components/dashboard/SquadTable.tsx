@@ -3,10 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   positionGroupLabel,
-  positionAbbrev,
-  positionAccentColorForAbbrev,
   statusLabel,
-  specialtyLabel,
   skillLabel,
   skillWord,
   formWord,
@@ -15,45 +12,36 @@ import {
   type SquadPlayer,
   type PlayerStatus,
   type PlayerStatSnapshot,
-  type SquadSkills,
 } from "@/data/squad";
 import {
   usePositionOverrides,
-  effectivePositionGroup,
   type PositionOverrides,
   type PositionOverrideValue,
 } from "@/data/positionOverrides";
 import NationalityTag from "./NationalityTag";
 import FlagIcon from "./FlagIcon";
 import HeartIcon from "./HeartIcon";
-import { SpecialtyIcon, InjuryIcon, CardIcon } from "./StatusIcons";
 import PlayerDetailModal from "./PlayerDetailModal";
-import { diffDirection, diffTitle, type DiffDirection } from "./playerStatChanges";
+import { diffDirection, diffTitle } from "./playerStatChanges";
+import {
+  skillKeys,
+  skillShortLabel,
+  diffClass,
+  diffTextClass,
+  DiffArrow,
+  formatAge,
+  effectiveAbbrev,
+  effectiveAbbrevColor,
+  AmpluaAccent,
+  StatusRow,
+  SkillNumberCell,
+  LoyaltyCell,
+  RatingCell,
+  TrainerIcon,
+  type SkillKey,
+} from "./squadCells";
 import styles from "./SquadTable.module.css";
-import diffStyles from "./StatDiff.module.css";
 
-function diffClass(dir: DiffDirection): string {
-  return dir === "up" ? diffStyles.statUp : dir === "down" ? diffStyles.statDown : "";
-}
-
-// Цвет самой цифры при изменении — тот же зелёный/красный, что и у фона
-// ячейки (diffClass выше), только это цвет текста, а не подсветка.
-function diffTextClass(dir: DiffDirection): string {
-  return dir === "up" ? diffStyles.statUpText : dir === "down" ? diffStyles.statDownText : "";
-}
-
-// Маленький треугольник рядом с числом — ▲ зелёным при росте, ▼ красным при
-// падении, ничего не показываем, если значение не изменилось (см. чат).
-function DiffArrow({ dir }: { dir: DiffDirection }) {
-  if (dir === "none") return null;
-  return (
-    <span className={`${diffStyles.diffArrow} ${diffTextClass(dir)}`} aria-hidden="true">
-      {dir === "up" ? "▲" : "▼"}
-    </span>
-  );
-}
-
-type SkillKey = keyof SquadSkills;
 type SortKey =
   | "flag"
   | "name"
@@ -70,18 +58,6 @@ type SortKey =
   | "potential";
 
 type SortDir = "asc" | "desc";
-
-const skillKeys: SkillKey[] = ["goalkeeping", "defending", "midfield", "winger", "passing", "scoring", "setPieces"];
-
-const skillShortLabel: Record<SkillKey, string> = {
-  goalkeeping: "Вр",
-  defending: "Защ",
-  midfield: "Пол",
-  winger: "Фл",
-  passing: "Пас",
-  scoring: "Нап",
-  setPieces: "Ст",
-};
 
 // Подписи столбцов укорочены по сравнению с "Расстановкой" (там ширины не
 // поджаты так туго) — иначе сама надпись заголовка (не содержимое ячеек)
@@ -122,22 +98,6 @@ const overrideAbbrevLabel: Record<PositionOverrideValue, string> = {
   WING: "W",
   FWD: "ST",
 };
-
-// Итоговая подпись амплуа с учётом ручного переопределения: если оно явно
-// задаёт "MID" или "WING", берём соответствующую подпись напрямую (CM/W), а
-// не пересчитываем по навыкам заново — иначе выбор "CM" для игрока с
-// доминирующим флангом (или наоборот) сразу же откатился бы обратно.
-// Без переопределения — обычная positionAbbrev по навыкам игрока.
-function effectiveAbbrev(player: SquadPlayer, overrides: PositionOverrides): string {
-  const override = overrides[player.id];
-  if (override === "WING") return "W";
-  if (override === "MID") return "CM";
-  return positionAbbrev(effectivePositionGroup(player, overrides), player.skills);
-}
-
-function effectiveAbbrevColor(player: SquadPlayer, overrides: PositionOverrides): string {
-  return positionAccentColorForAbbrev(effectiveAbbrev(player, overrides));
-}
 
 const abbrevToOverrideValue: Record<string, PositionOverrideValue> = {
   GK: "GK",
@@ -191,177 +151,6 @@ function getValue(player: SquadPlayer, key: SortKey, overrides: PositionOverride
     default:
       return player.skills[key as SkillKey];
   }
-}
-
-// Каждая шкала (скиллы, форма, лидерство, общая) имеет свой диапазон уровней —
-// тир (цвет) считаем по доле от максимума, чтобы раскраска была честной для каждой шкалы
-function tierFromRatio(ratio: number): string {
-  if (ratio >= 0.65) return styles.skillTierHigh;
-  if (ratio >= 0.3) return styles.skillTierMid;
-  return styles.skillTierLow;
-}
-
-// Игровой год Hattrick — 112 дней. Дробная часть возраста: округляем дни до
-// десятых доли года (Y = round(дни/112*10)/10), например 23 года и 22 дня →
-// 23.2.
-function formatAge(age: number, ageDays: number): string {
-  const tenths = Math.round((ageDays / 112) * 10);
-  return (age + tenths / 10).toFixed(1);
-}
-
-function StatusTag({ status }: { status: PlayerStatus }) {
-  const cls =
-    status === "starting"
-      ? styles.statusStarting
-      : status === "bench" || status === "squad"
-        ? styles.statusBench
-        : styles.statusInjured;
-  return (
-    <span className={`${styles.statusTag} ${cls}`}>
-      <span className={styles.statusDot} />
-      {statusLabel[status]}
-    </span>
-  );
-}
-
-// Обычная SVG вместо эмодзи-символа 👍 — та же причина, что и у иконки
-// тренера/сердца: не все эмодзи одинаково рисуются как картинка на Windows.
-function ThumbsUpIcon({ title }: { title: string }) {
-  return (
-    <span title={title} aria-label={title} style={{ display: "inline-flex", flex: "none" }}>
-      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-        <path d="M4 11h3v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z" fill="var(--color-good)" />
-        <path
-          d="M9 11l3.2-6.4a1.4 1.4 0 0 1 2.6 1l-.9 3.4H18a2 2 0 0 1 1.9 2.6l-1.6 5.6A2 2 0 0 1 16.4 19H9v-8Z"
-          fill="none"
-          stroke="var(--color-good)"
-          strokeWidth="1.6"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </span>
-  );
-}
-
-// Статус игрока — "в составе"/"в основе" (здоров, ничего особенного)
-// показываем иконкой вместо текста, чтобы не занимать место повторяющейся
-// надписью в каждой строке; "в запасе" — оставлена текстовой меткой, там
-// сама надпись несёт полезную информацию. "Травмирован" текстом больше не
-// показываем вовсе (по запросу) — статус травмы и так виден по значку
-// InjuryIcon ниже (рендерится отдельно, по injuryWeeksRemaining).
-function StatusIndicator({ status }: { status: PlayerStatus }) {
-  if (status === "starting" || status === "squad") {
-    return <ThumbsUpIcon title={statusLabel[status]} />;
-  }
-  if (status === "injured") {
-    return null;
-  }
-  return <StatusTag status={status} />;
-}
-
-// Компактный ряд значков в столбце "Статус": базовый статус (👍/в запасе,
-// без иконки для "травмирован" — см. StatusIndicator) + специализация (если
-// есть) + значок травмы по сроку восстановления (см. InjuryIcon) + карточки
-// (жёлтые с числом предупреждений в сезоне, красная — при дисквалификации).
-function StatusRow({ player }: { player: SquadPlayer }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "nowrap" }}>
-      <StatusIndicator status={player.status} />
-      {player.specialty && <SpecialtyIcon specialty={player.specialty} label={specialtyLabel[player.specialty]} />}
-      {player.injuryWeeksRemaining !== undefined && <InjuryIcon weeksRemaining={player.injuryWeeksRemaining} />}
-      {player.isSuspended && <CardIcon color="red" />}
-      {!player.isSuspended && player.yellowCards !== undefined && player.yellowCards > 0 && (
-        <CardIcon color="yellow" count={player.yellowCards} />
-      )}
-    </span>
-  );
-}
-
-// Навыки (Вратарь/Защита/.../Стандарты), Опыт и Преданность — числом по
-// официальной шкале 0-20; Форма и Выносливость — по короткой шкале 0-8 (см.
-// чат). max задаёт диапазон для цветовой раскраски (тира) и подсказки.
-function SkillNumberCell({
-  value,
-  max = 20,
-  diff = "none",
-  hoverWord,
-}: {
-  value: number;
-  max?: number;
-  diff?: DiffDirection;
-  hoverWord: string;
-}) {
-  const valueColorClass = diff !== "none" ? diffTextClass(diff) : tierFromRatio(value / max);
-  return (
-    <td className={`${styles.skillCell} ${diffClass(diff)}`} title={hoverWord}>
-      <span className={`${styles.skillWord} ${valueColorClass}`}>
-        {value}
-        <DiffArrow dir={diff} />
-      </span>
-    </td>
-  );
-}
-
-// Преданность клубу — числом 0-20 (см. SkillNumberCell), либо сердцем у
-// воспитанников родного клуба вместо цифры.
-function LoyaltyCell({ player }: { player: SquadPlayer }) {
-  if (player.isClubProduct) {
-    return (
-      <td className={styles.skillCell} title="Воспитанник родного клуба">
-        <HeartIcon />
-      </td>
-    );
-  }
-  if (player.loyalty === undefined) {
-    return <td className={styles.skillCell}>—</td>;
-  }
-  return <SkillNumberCell value={player.loyalty} hoverWord={skillWord(player.loyalty)} />;
-}
-
-// Универсальная звёздная ячейка (0-10, с десятыми) — переиспользуется для
-// Рейтинга последнего матча, Потенциала и лучшего из последних 3 матчей (см.
-// src/lib/lastMatchRating.ts, src/data/squad.ts). "—", если значения нет
-// (игрок не выходил на поле / данные не удалось получить).
-function RatingCell({ rating }: { rating?: number }) {
-  if (rating === undefined) {
-    return <td className={styles.skillCell}>—</td>;
-  }
-  return (
-    <td className={styles.skillCell} title={`${rating.toFixed(1)} из 10`}>
-      <span className={`${styles.skillWord} ${tierFromRatio(rating / 10)}`}>★ {rating.toFixed(1)}</span>
-    </td>
-  );
-}
-
-// Тренер команды в Hattrick — один из собственных игроков (см.
-// src/lib/teamDetails.ts, trainerPlayerId) — небольшая нейтральная иконка
-// рядом с именем, чтобы выделить его в общем списке. Обычная SVG вместо
-// эмодзи — эмодзи-символы на Windows не всегда рисуются как картинка (см.
-// историю с флагами стран).
-function TrainerIcon() {
-  return (
-    <span
-      title="Тренер команды"
-      aria-label="Тренер команды"
-      style={{ display: "inline-flex", marginLeft: 6, verticalAlign: "middle", flex: "none" }}
-    >
-      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-        <circle cx="8" cy="12" r="6" fill="none" stroke="var(--color-accent)" strokeWidth="1.8" />
-        <circle cx="8" cy="12" r="1.6" fill="var(--color-accent)" />
-        <path d="M14 12h6" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M18 9v6" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    </span>
-  );
-}
-
-// Цветовая метка амплуа перед именем игрока — та же акцентная полоска, что и
-// на карточках игроков на поле вкладки "Расстановка". Цвет всегда берётся из
-// эффективного амплуа (ручное переопределение, если оно задано, иначе
-// естественная позиция) — то есть зависит от самого игрока, а не от того,
-// где он сейчас числится в составе (основа/запас/список).
-function AmpluaAccent({ player, overrides }: { player: SquadPlayer; overrides: PositionOverrides }) {
-  return <span className={styles.ampluaAccent} style={{ background: effectiveAbbrevColor(player, overrides) }} />;
 }
 
 // Амплуа игрока — цветной бейдж-селект (акцент по эффективной подписи: ручное

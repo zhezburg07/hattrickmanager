@@ -1,4 +1,4 @@
-import type { Assignments } from "@/data/pitchBoard";
+import type { Assignments, SlotRole } from "@/data/pitchBoard";
 import type { PositionGroup, SquadPlayer, SquadSkills } from "@/data/squad";
 
 export type ZoneKey =
@@ -65,10 +65,34 @@ export interface ZoneRatingsResult {
 // Взвешенное среднее по парам [значение, вес]. Незанятый слот даёт значению 0,
 // поэтому дыра в составе (например, нет крайнего защитника) ощутимо тянет
 // рейтинг соответствующей зоны вниз — как и в реальном Hattrick.
-function weighted(terms: Array<[number, number]>): number {
+export function weighted(terms: Array<[number, number]>): number {
   const totalWeight = terms.reduce((sum, [, w]) => sum + w, 0);
   const total = terms.reduce((sum, [value, w]) => sum + value * w, 0);
   return totalWeight > 0 ? total / totalWeight : 0;
+}
+
+// Веса навыков по каждой из 7 формальных ролей слота (см. SlotRole в
+// pitchBoard.ts) — тот же дух приоритетов, что и в зональных формулах выше,
+// только применённый к ОДНОМУ игроку на конкретном слоте, а не усреднённый
+// по всей линии. Используется, чтобы показать на занятом слоте поля честный
+// расчётный рейтинг силы игрока именно в этой роли (не выдуманную скрытую
+// характеристику "Потенциал" — просто взвешенную сумму его реальных навыков).
+const slotRoleWeights: Record<SlotRole, Array<[keyof SquadSkills, number]>> = {
+  GK: [["goalkeeping", 4], ["defending", 0.5]],
+  DEF_WIDE: [["defending", 3], ["winger", 1.5], ["passing", 1]],
+  DEF_CENTRAL: [["defending", 3.5], ["passing", 0.8]],
+  MID_WIDE: [["winger", 3], ["passing", 1.5], ["defending", 0.8], ["scoring", 0.5]],
+  MID_CENTRAL: [["midfield", 3], ["passing", 1.5], ["defending", 0.8], ["scoring", 0.5]],
+  FWD_CENTRAL: [["scoring", 3], ["passing", 1], ["winger", 0.5]],
+  FWD_WIDE: [["scoring", 2.5], ["winger", 1.5], ["passing", 1]],
+};
+
+// Расчётный рейтинг силы игрока на конкретном слоте — по той же логике
+// взвешенного среднего, что и командные зональные показатели, просто на
+// одного игрока вместо усреднения по линии.
+export function computeSlotRating(player: SquadPlayer, role: SlotRole): number {
+  const terms = slotRoleWeights[role].map(([skillKey, weight]): [number, number] => [player.skills[skillKey], weight]);
+  return weighted(terms);
 }
 
 // Приблизительный, демонстрационный расчёт 7 секторов расстановки (как в

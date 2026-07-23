@@ -2,92 +2,91 @@
 
 import { useMemo, useRef, useState } from "react";
 import {
-  positionAbbrev,
-  positionAccentColor,
   skillLabel,
   skillWord,
   formWord,
   staminaToLevel,
   playerBadgeCode,
+  estimatePotentialRating,
   type SquadPlayer,
-  type SquadSkills,
+  type PlayerStatus,
   type PlayerStatSnapshot,
 } from "@/data/squad";
-import { usePositionOverrides, effectivePositionGroup, type PositionOverrides } from "@/data/positionOverrides";
+import { usePositionOverrides, type PositionOverrides } from "@/data/positionOverrides";
 import { parsePayload, serializePayload, type DragPayload } from "./dragPayload";
 import { diffDirection, diffTitle } from "./playerStatChanges";
 import FlagIcon from "./FlagIcon";
-import HeartIcon from "./HeartIcon";
-import styles from "./Lineup.module.css";
-import diffStyles from "./StatDiff.module.css";
+import {
+  skillKeys,
+  skillShortLabel,
+  diffClass,
+  diffTextClass,
+  DiffArrow,
+  formatAge,
+  effectiveAbbrev,
+  AmpluaAccent,
+  PositionBadgeReadOnly,
+  StatusRow,
+  SkillNumberCell,
+  LoyaltyCell,
+  RatingCell,
+  type SkillKey,
+} from "./squadCells";
+import styles from "./SquadTable.module.css";
+import lineupStyles from "./Lineup.module.css";
 
-function diffClass(dir: "up" | "down" | "none"): string {
-  return dir === "up" ? diffStyles.statUp : dir === "down" ? diffStyles.statDown : "";
-}
-
-// Цветовая метка амплуа перед именем — та же акцентная полоска, что и на
-// карточках игроков на поле и в таблице "Состав". Цвет берётся из
-// эффективного амплуа (ручное переопределение, если оно задано, иначе
-// естественная позиция) — зависит только от самого игрока, а не от того,
-// где он сейчас числится (на поле/на скамейке/в общем списке).
-function AmpluaAccent({ player, overrides }: { player: SquadPlayer; overrides: PositionOverrides }) {
-  const effective = effectivePositionGroup(player, overrides);
-  return <span className={styles.ampluaAccent} style={{ background: positionAccentColor(effective, player.skills) }} />;
-}
-
-type SkillKey = keyof SquadSkills;
 type SortKey =
-  | "nationality"
+  | "flag"
   | "name"
   | "positionGroup"
   | "age"
+  | "status"
   | "experience"
   | "form"
   | "stamina"
   | SkillKey
   | "tsi"
   | "loyalty"
-  | "rating";
+  | "rating"
+  | "potential";
 type SortDir = "asc" | "desc";
 
-const skillKeys: SkillKey[] = ["goalkeeping", "defending", "midfield", "winger", "passing", "scoring", "setPieces"];
-
-const skillShortLabel: Record<SkillKey, string> = {
-  goalkeeping: "ВР",
-  defending: "ЗАЩ",
-  midfield: "ПЗ",
-  winger: "ФЛ",
-  passing: "ПАС",
-  scoring: "НАП",
-  setPieces: "СТ",
-};
-
+// Тот же порядок и подписи столбцов, что и в "Составе" (SquadTable.tsx) —
+// этот список нарочно держим один-в-один, без возможности менять амплуа
+// (см. PositionBadgeReadOnly ниже) и без клика по строке, открывающего
+// карточку игрока: клик здесь по-прежнему выбирает игрока для расстановки.
 const baseColumns: { key: SortKey; label: string; title?: string }[] = [
-  { key: "nationality", label: "Флаг", title: "Национальность" },
+  { key: "positionGroup", label: "Поз." },
   { key: "name", label: "Имя" },
-  { key: "positionGroup", label: "Поз", title: "Позиция" },
-  { key: "age", label: "Возр", title: "Возраст" },
-  { key: "experience", label: "Опыт" },
-  { key: "form", label: "Форма" },
-  { key: "stamina", label: "Вын", title: "Выносливость" },
-  ...skillKeys.map((k) => ({ key: k as SortKey, label: skillShortLabel[k], title: skillLabel[k] })),
+  { key: "age", label: "Возр." },
+  { key: "flag", label: "Флаг", title: "Национальность" },
+  { key: "status", label: "Статус" },
   { key: "tsi", label: "TSI" },
+  { key: "form", label: "Форма" },
+  { key: "experience", label: "Опыт" },
+  { key: "stamina", label: "Вын-ть", title: "Выносливость" },
+  ...skillKeys.map((k) => ({ key: k as SortKey, label: skillShortLabel[k], title: skillLabel[k] })),
   { key: "loyalty", label: "Предан.", title: "Преданность клубу" },
   { key: "rating", label: "Рейтинг", title: "Рейтинг за последний сыгранный матч" },
+  { key: "potential", label: "Потен.", title: "Потенциальный рейтинг при текущих навыках и форме" },
 ];
 
-const textColumns = new Set<SortKey>(["nationality", "name", "positionGroup"]);
+const textColumns = new Set<SortKey>(["flag", "name", "positionGroup", "status"]);
 
-function getValue(player: SquadPlayer, key: SortKey): string | number {
+const statusRank: Record<PlayerStatus, number> = { starting: 0, bench: 1, squad: 1, injured: 2 };
+
+function getValue(player: SquadPlayer, key: SortKey, overrides: PositionOverrides): string | number {
   switch (key) {
-    case "nationality":
+    case "flag":
       return player.nationality.name;
     case "name":
       return player.name;
     case "positionGroup":
-      return positionAbbrev(player.positionGroup, player.skills);
+      return effectiveAbbrev(player, overrides);
     case "age":
-      return player.age;
+      return player.age + player.ageDays / 112;
+    case "status":
+      return statusRank[player.status];
     case "experience":
       return player.experience;
     case "form":
@@ -100,6 +99,8 @@ function getValue(player: SquadPlayer, key: SortKey): string | number {
       return player.isClubProduct ? 21 : (player.loyalty ?? -1);
     case "rating":
       return player.lastMatchRating ?? -1;
+    case "potential":
+      return estimatePotentialRating(player);
     default:
       return player.skills[key as SkillKey];
   }
@@ -125,29 +126,28 @@ export default function LineupPlayerList({
   prevByPlayerId?: Record<number, PlayerStatSnapshot | undefined>;
 }) {
   const [isOver, setIsOver] = useState(false);
-  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("status");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const dragGhostRef = useRef<HTMLSpanElement>(null);
   const { overrides } = usePositionOverrides();
 
-  // Прячем столбцы целиком, если ни у одного игрока нет данных, вместо
-  // пустых прочерков в каждой строке (см. SquadTable.tsx, тот же принцип).
+  // Прячем столбцы целиком, если ни у одного игрока нет данных (см.
+  // SquadTable.tsx, тот же принцип).
   const hasLoyalty = players.some((p) => p.loyalty !== undefined || p.isClubProduct);
   const hasRating = players.some((p) => p.lastMatchRating !== undefined);
   const columns = baseColumns.filter((c) => (c.key === "loyalty" ? hasLoyalty : c.key === "rating" ? hasRating : true));
 
   const sorted = useMemo(() => {
-    if (!sortKey) return players;
     const list = [...players];
     list.sort((a, b) => {
-      const va = getValue(a, sortKey);
-      const vb = getValue(b, sortKey);
+      const va = getValue(a, sortKey, overrides);
+      const vb = getValue(b, sortKey, overrides);
       const cmp =
         typeof va === "string" && typeof vb === "string" ? va.localeCompare(vb, "ru") : (va as number) - (vb as number);
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
-  }, [players, sortKey, sortDir]);
+  }, [players, sortKey, sortDir, overrides]);
 
   function handleSort(key: SortKey) {
     if (key === sortKey) {
@@ -159,7 +159,7 @@ export default function LineupPlayerList({
   }
 
   return (
-    <div className={`${styles.card} ${styles.gridCard}`}>
+    <div className={`${styles.card} ${lineupStyles.gridCard}`}>
       <div className={styles.cardTitle}>Все игроки ({players.length})</div>
       <p className={styles.hint}>
         Строка подсвечена зелёным — игрок в основе, золотым — в запасе, без подсветки — не в составе. Перетащите
@@ -171,11 +171,11 @@ export default function LineupPlayerList({
       <span
         ref={dragGhostRef}
         aria-hidden="true"
-        className={`${styles.dragGhost} ${styles.slotBadge} ${styles.slotBadgeFilled}`}
+        className={`${lineupStyles.dragGhost} ${lineupStyles.slotBadge} ${lineupStyles.slotBadgeFilled}`}
       />
 
       <div
-        className={`${styles.gridWrap} ${isOver ? styles.gridWrapOver : ""}`}
+        className={`${lineupStyles.gridWrap} ${isOver ? lineupStyles.gridWrapOver : ""}`}
         onDragOver={(e) => {
           e.preventDefault();
           if (!isOver) setIsOver(true);
@@ -188,20 +188,18 @@ export default function LineupPlayerList({
           if (payload) onDropToBench(payload);
         }}
       >
-        <table className={styles.grid}>
+        <table className={styles.table}>
           <thead>
             <tr>
-              {columns.map((col, i) => (
-                <th key={`${col.key}-${i}`} title={col.title}>
+              {columns.map((col) => (
+                <th key={col.key} title={col.title}>
                   <button
                     type="button"
-                    className={`${styles.gridSortBtn} ${sortKey === col.key ? styles.gridSortActive : ""}`}
+                    className={`${styles.th} ${sortKey === col.key ? styles.thActive : ""}`}
                     onClick={() => handleSort(col.key)}
                   >
                     {col.label}
-                    {sortKey === col.key && (
-                      <span className={styles.gridSortArrow}>{sortDir === "asc" ? "▲" : "▼"}</span>
-                    )}
+                    {sortKey === col.key && <span className={styles.sortArrow}>{sortDir === "asc" ? "▲" : "▼"}</span>}
                   </button>
                 </th>
               ))}
@@ -210,85 +208,84 @@ export default function LineupPlayerList({
           <tbody>
             {sorted.map((p) => {
               const statusClass = assignedIds.has(p.id)
-                ? styles.gridRowStarting
+                ? lineupStyles.gridRowStarting
                 : subIds.has(p.id)
-                  ? styles.gridRowSub
+                  ? lineupStyles.gridRowSub
                   : "";
               const prev = prevByPlayerId?.[p.id];
+              const tsiDiff = diffDirection(p.tsi, prev?.tsi);
               const staminaLevel = staminaToLevel(p.stamina);
               const prevStaminaLevel = prev?.stamina !== undefined ? staminaToLevel(prev.stamina) : undefined;
+              const staminaDiff = diffDirection(staminaLevel, prevStaminaLevel);
 
               return (
-              <tr
-                key={p.id}
-                className={`${styles.gridRow} ${statusClass} ${p.id === selectedPlayerId ? styles.gridRowSelected : ""}`}
-                draggable
-                onClick={() => onSelectPlayer(p.id)}
-                onDragStart={(e) => {
-                  const payload = payloadForPlayer(p.id);
-                  e.dataTransfer.setData("text/plain", serializePayload(payload));
-                  e.dataTransfer.effectAllowed = "move";
+                <tr
+                  key={p.id}
+                  className={`${styles.rowClickable} ${statusClass} ${p.id === selectedPlayerId ? lineupStyles.gridRowSelected : ""}`}
+                  draggable
+                  onClick={() => onSelectPlayer(p.id)}
+                  onDragStart={(e) => {
+                    const payload = payloadForPlayer(p.id);
+                    e.dataTransfer.setData("text/plain", serializePayload(payload));
+                    e.dataTransfer.effectAllowed = "move";
 
-                  const ghost = dragGhostRef.current;
-                  if (ghost) {
-                    ghost.textContent = playerBadgeCode(p);
-                    e.dataTransfer.setDragImage(ghost, 22, 22);
-                  }
-                }}
-              >
-                <td className={styles.gridFlagCell}>
-                  <FlagIcon country={p.nationality} />
-                </td>
-                <td className={styles.gridNameCell}>
-                  <AmpluaAccent player={p} overrides={overrides} />
-                  {p.name}
-                </td>
-                <td className={styles.gridFlagCell}>{positionAbbrev(p.positionGroup, p.skills)}</td>
-                <td className={styles.gridNumCell}>{p.age}</td>
-                <td
-                  className={`${styles.gridNumCell} ${diffClass(diffDirection(p.experience, prev?.experience))}`}
-                  title={diffTitle("Опыт", prev?.experience, p.experience) ?? skillWord(p.experience)}
+                    const ghost = dragGhostRef.current;
+                    if (ghost) {
+                      ghost.textContent = playerBadgeCode(p);
+                      e.dataTransfer.setDragImage(ghost, 22, 22);
+                    }
+                  }}
                 >
-                  {p.experience}
-                </td>
-                <td
-                  className={`${styles.gridNumCell} ${diffClass(diffDirection(p.form, prev?.form))}`}
-                  title={diffTitle("Форма", prev?.form, p.form) ?? formWord(p.form)}
-                >
-                  {p.form}
-                </td>
-                <td
-                  className={`${styles.gridNumCell} ${diffClass(diffDirection(staminaLevel, prevStaminaLevel))}`}
-                  title={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? formWord(staminaLevel)}
-                >
-                  {staminaLevel}
-                </td>
-                {skillKeys.map((k) => (
+                  <td>
+                    <PositionBadgeReadOnly player={p} overrides={overrides} />
+                  </td>
+                  <td className={styles.nameCell}>
+                    <AmpluaAccent player={p} overrides={overrides} />
+                    {p.name}
+                  </td>
+                  <td className={styles.numCell}>{formatAge(p.age, p.ageDays)}</td>
+                  <td className={styles.flagCell}>
+                    <FlagIcon country={p.nationality} />
+                  </td>
+                  <td>
+                    <StatusRow player={p} />
+                  </td>
                   <td
-                    className={`${styles.gridNumCell} ${diffClass(diffDirection(p.skills[k], prev?.skills[k]))}`}
-                    key={k}
-                    title={diffTitle(skillLabel[k], prev?.skills[k], p.skills[k]) ?? skillWord(p.skills[k])}
+                    className={`${styles.moneyCell} ${diffClass(tsiDiff)}`}
+                    title={diffTitle("TSI", prev?.tsi, p.tsi, (n) => n.toLocaleString("ru-RU"))}
                   >
-                    {p.skills[k]}
+                    <span className={diffTextClass(tsiDiff)}>{p.tsi.toLocaleString("ru-RU")}</span>
+                    <DiffArrow dir={tsiDiff} />
                   </td>
-                ))}
-                <td
-                  className={`${styles.gridNumCell} ${diffClass(diffDirection(p.tsi, prev?.tsi))}`}
-                  title={diffTitle("TSI", prev?.tsi, p.tsi, (n) => n.toLocaleString("ru-RU"))}
-                >
-                  {p.tsi.toLocaleString("ru-RU")}
-                </td>
-                {hasLoyalty && (
-                  <td className={styles.gridNumCell} title={p.isClubProduct ? "Воспитанник родного клуба" : p.loyalty !== undefined ? skillWord(p.loyalty) : undefined}>
-                    {p.isClubProduct ? <HeartIcon /> : (p.loyalty ?? "—")}
-                  </td>
-                )}
-                {hasRating && (
-                  <td className={styles.gridNumCell} title={p.lastMatchRating !== undefined ? `${p.lastMatchRating.toFixed(1)} из 10` : undefined}>
-                    {p.lastMatchRating !== undefined ? `★ ${p.lastMatchRating.toFixed(1)}` : "—"}
-                  </td>
-                )}
-              </tr>
+                  <SkillNumberCell
+                    value={p.form}
+                    max={8}
+                    diff={diffDirection(p.form, prev?.form)}
+                    hoverWord={diffTitle("Форма", prev?.form, p.form) ?? formWord(p.form)}
+                  />
+                  <SkillNumberCell
+                    value={p.experience}
+                    diff={diffDirection(p.experience, prev?.experience)}
+                    hoverWord={diffTitle("Опыт", prev?.experience, p.experience) ?? skillWord(p.experience)}
+                  />
+                  <SkillNumberCell
+                    value={staminaLevel}
+                    max={8}
+                    diff={staminaDiff}
+                    hoverWord={diffTitle("Выносливость", prevStaminaLevel, staminaLevel) ?? formWord(staminaLevel)}
+                  />
+                  {skillKeys.map((k) => (
+                    <SkillNumberCell
+                      key={k}
+                      value={p.skills[k]}
+                      diff={diffDirection(p.skills[k], prev?.skills[k])}
+                      hoverWord={diffTitle(skillLabel[k], prev?.skills[k], p.skills[k]) ?? skillWord(p.skills[k])}
+                    />
+                  ))}
+                  {hasLoyalty && <LoyaltyCell player={p} />}
+                  {hasRating && <RatingCell rating={p.lastMatchRating} />}
+                  <RatingCell rating={estimatePotentialRating(p)} />
+                </tr>
               );
             })}
           </tbody>

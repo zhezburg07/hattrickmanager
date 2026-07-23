@@ -13,7 +13,7 @@ import {
 } from "@/data/squad";
 import { usePositionOverrides, effectivePositionGroup } from "@/data/positionOverrides";
 import { parsePayload, serializePayload, type DragPayload } from "./dragPayload";
-import { computeZoneRatings, zoneLabel, type ZoneKey } from "./zoneRatings";
+import { computeZoneRatings, computeSlotRating, zoneLabel, type ZoneKey } from "./zoneRatings";
 import { applicableInstructions, instructionArrow, instructionLabel, type PlayerInstruction } from "@/data/playerInstructions";
 import { formationExperienceHint } from "./formationExperience";
 import LineupSubsRow from "./LineupSubsRow";
@@ -257,7 +257,12 @@ export default function LineupField({
                         <>
                           <span className={styles.slotCardNumber}>{player.squadNumber}</span>
                           <span className={styles.slotCardName}>{player.name.split(" ")[1] ?? player.name}</span>
-                          <span className={styles.slotCardRole}>{slot.roleLabel}</span>
+                          <span
+                            className={styles.slotCardRole}
+                            title={`Расчётный рейтинг на позиции ${roleFullLabel[slot.role]}`}
+                          >
+                            {computeSlotRating(player, slot.role).toFixed(1)}
+                          </span>
                         </>
                       ) : (
                         slot.roleLabel

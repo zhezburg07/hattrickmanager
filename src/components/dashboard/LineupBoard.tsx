@@ -356,7 +356,9 @@ export default function LineupBoard({
   }
 
   function handleRecommend() {
-    setAssignments(recommendLineup(roster));
+    const { assignments: nextAssignments, subs: nextSubs } = recommendLineup(roster);
+    setAssignments(nextAssignments);
+    setSubs(nextSubs);
   }
 
   const assignedIds = useMemo(() => {
