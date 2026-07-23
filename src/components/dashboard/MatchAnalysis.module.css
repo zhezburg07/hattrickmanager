@@ -332,6 +332,14 @@
   background: rgba(76, 175, 111, 0.15);
 }
 
+/* Гол соперника — приглушённо/нейтрально, не зелёным (см. .timelineMarkerGoal
+   выше — тот акцент оставлен только для голов НАШЕЙ команды, см. isOurs в
+   MatchDetailAnalysis.tsx). */
+.timelineMarkerGoalOpp {
+  border-color: var(--color-text-muted);
+  background: rgba(242, 237, 225, 0.08);
+}
+
 .timelineMarkerCardYellow {
   border-color: #e0c04a;
   background: rgba(224, 192, 74, 0.18);
@@ -340,6 +348,16 @@
 .timelineMarkerCardRed {
   border-color: var(--color-bad);
   background: rgba(192, 80, 63, 0.18);
+}
+
+.timelineMarkerSub {
+  border-color: var(--color-accent);
+  background: rgba(201, 162, 39, 0.15);
+}
+
+.timelineMarkerInjury {
+  border-color: #e0913f;
+  background: rgba(224, 145, 63, 0.18);
 }
 
 .timelineText {
@@ -355,9 +373,18 @@
   font-weight: 700;
 }
 
+.timelineTextGoalOpp {
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
 .timelineTextCard {
   color: #e0c04a;
   font-weight: 700;
+}
+
+.timelineTextInjury {
+  color: #e0913f;
 }
 
 /* Посещаемость */

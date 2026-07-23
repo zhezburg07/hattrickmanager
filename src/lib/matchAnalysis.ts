@@ -73,8 +73,12 @@ export interface MatchAttendance {
   total: number;
 }
 
-export type MatchTimelineKind = "goal" | "card" | "event";
-export type MatchTimelineSource = "events" | "goals-cards";
+export type MatchTimelineKind = "goal" | "card" | "sub" | "injury";
+// Есть ли в ответе полный EventList (matchEvents=true сработал) — от этого
+// зависит только наличие замен (см. parseSubstitutionsFromEventList выше):
+// голы/карточки/травмы всегда из своих отдельных подтверждённых контейнеров,
+// EventList не нужен ни для чего, кроме попытки распознать замены.
+export type MatchTimelineSource = "with-subs" | "without-subs";
 
 export interface MatchTimelineEntry {
   minute: number;
@@ -169,43 +173,12 @@ function parseAttendance(match: Record<string, unknown>): MatchAttendance | null
   };
 }
 
-// Полный текстовый отчёт Hattrick (EventList/Event) — основной источник
-// хронологии (см. приоритет в resolveMatchAnalysis ниже): по одной строке
-// на каждый игровой момент за все 90 минут, а не только на голы/карточки,
-// поэтому раздел выглядит как настоящая подробная хронология, а не куцая
-// сводка счёта. EventText — HTML-размеченный текст (ссылки на игроков/
-// арену/судей), чистится через stripHtml. Оборачивается в try/catch на
-// уровне вызывающего кода — один элемент со неожиданной формой не должен
-// обрушивать разбор всех остальных.
-function parseEventListTimeline(match: Record<string, unknown>, homeTeamId: string): { entries: MatchTimelineEntry[]; rawCount: number } {
-  const eventList = match.EventList as Record<string, unknown> | undefined;
-  const rawEvents = asArray(eventList?.Event);
-  const entries: MatchTimelineEntry[] = [];
-  for (const e of rawEvents) {
-    try {
-      const teamId = String(e.SubjectTeamID ?? e.SubjectTeamId ?? "");
-      const text = stripHtml(String(e.EventText ?? ""));
-      const minute = Number(e.Minute ?? NaN);
-      entries.push({
-        minute: Number.isNaN(minute) ? 0 : minute,
-        matchPart: Number(e.MatchPart ?? 0) || 0,
-        text: text || `Событие (тип ${e.EventTypeID ?? "?"})`,
-        kind: "event",
-        teamSide: teamSideOf(teamId, homeTeamId),
-      });
-    } catch {
-      // Пропускаем один нестандартный элемент, не теряя остальные.
-    }
-  }
-  entries.sort((a, b) => a.minute - b.minute);
-  return { entries, rawCount: rawEvents.length };
-}
-
-// Запасной источник хронологии — голы (Scorers) и карточки (Bookings), оба
-// всегда приходят без доп. параметров (в отличие от EventList, который
-// требует matchEvents=true и иногда всё равно не приходит). Используется,
-// только если полный EventList выше пуст — сам по себе он охватывает лишь
-// голы и карточки, без остальных игровых моментов.
+// Голы (Scorers) и карточки (Bookings) — оба всегда приходят без доп.
+// параметров (не зависят от matchEvents=true) и дают точную структурированную
+// информацию (игрок/команда/минута), поэтому это ЕДИНСТВЕННЫЙ и всегда
+// используемый источник для этих двух видов событий — никогда не читаются
+// из EventList, чтобы не задваивать одно и то же событие двумя разными
+// текстами.
 function parseGoalsAndCardsTimeline(
   match: Record<string, unknown>,
   homeTeamId: string,
@@ -253,6 +226,82 @@ function parseGoalsAndCardsTimeline(
   }
   entries.sort((a, b) => a.minute - b.minute);
   return { entries, goalsRawCount: goals.length, bookingsRawCount: bookings.length };
+}
+
+// Травмы — ПОДТВЕРЖДЁННЫЙ реальный контейнер <Injuries><Injury> (см.
+// независимый CHPP-клиент github.com/lucianoq/hattrick, chpp/file_matchdetails.go)
+// — приходит всегда, без matchEvents=true, той же структурой (по одной
+// записи на игрока/команду/минуту), что и Scorers/Bookings выше. Раньше
+// травмы вообще не читались из matchdetails — только предполагались через
+// EventList. InjuryType переиспользует ту же нумерацию, что и BookingType,
+// но означает другое: 1 = ушиб (лёгкая), 2 = травма (серьёзная).
+function parseInjuriesTimeline(
+  match: Record<string, unknown>,
+  homeTeamId: string,
+  homeTeamName: string,
+  awayTeamName: string,
+): { entries: MatchTimelineEntry[]; rawCount: number } {
+  const injuries = asArray((match.Injuries as Record<string, unknown> | undefined)?.Injury);
+  const teamName = (teamId: string) => (teamId === homeTeamId ? homeTeamName : awayTeamName);
+
+  const entries: MatchTimelineEntry[] = [];
+  for (const inj of injuries) {
+    try {
+      const teamId = String(inj.InjuryTeamID ?? "");
+      const playerName = String(inj.InjuryPlayerName ?? "").trim() || "Неизвестный игрок";
+      const severity = Number(inj.InjuryType ?? 0) === 2 ? "серьёзная травма" : "лёгкая травма (ушиб)";
+      const minute = Number(inj.InjuryMinute ?? NaN);
+      entries.push({
+        minute: Number.isNaN(minute) ? 0 : minute,
+        matchPart: Number(inj.MatchPart ?? 0) || 0,
+        text: `Травма — ${playerName} (${teamName(teamId)}), ${severity}`,
+        kind: "injury",
+        teamSide: teamSideOf(teamId, homeTeamId),
+      });
+    } catch {
+      // Пропускаем один нестандартный элемент.
+    }
+  }
+  return { entries, rawCount: injuries.length };
+}
+
+// Замены — у CHPP НЕТ отдельного подтверждённого контейнера для замен (в
+// отличие от голов/карточек/травм выше), единственный источник — полный
+// список событий EventList (доступен только при matchEvents=true). Точное
+// значение EventTypeID для замены нигде не подтверждено, поэтому здесь
+// используется определение по ключевым словам в самом тексте события —
+// ЛУЧШАЯ ДОСТУПНАЯ ОЦЕНКА, не гарантия (текст EventText приходит от Hattrick
+// на языке аккаунта, поэтому проверяются и английские, и русские варианты).
+// Все остальные 30+ событий EventList (начало тайма, составы, атаки без
+// гола и т.п.) сюда НЕ попадают и в хронологии не показываются — по запросу
+// показываем только содержательные события (голы/карточки/травмы/замены).
+const SUBSTITUTION_PATTERN = /(substitut|comes on for|replaces .*(for|as)|заменил|заменяет|выходит вместо|вышел вместо)/i;
+
+function parseSubstitutionsFromEventList(
+  match: Record<string, unknown>,
+  homeTeamId: string,
+): { entries: MatchTimelineEntry[]; rawCount: number } {
+  const eventList = match.EventList as Record<string, unknown> | undefined;
+  const rawEvents = asArray(eventList?.Event);
+  const entries: MatchTimelineEntry[] = [];
+  for (const e of rawEvents) {
+    try {
+      const text = stripHtml(String(e.EventText ?? ""));
+      if (!SUBSTITUTION_PATTERN.test(text)) continue;
+      const teamId = String(e.SubjectTeamID ?? e.SubjectTeamId ?? "");
+      const minute = Number(e.Minute ?? NaN);
+      entries.push({
+        minute: Number.isNaN(minute) ? 0 : minute,
+        matchPart: Number(e.MatchPart ?? 0) || 0,
+        text,
+        kind: "sub",
+        teamSide: teamSideOf(teamId, homeTeamId),
+      });
+    } catch {
+      // Пропускаем один нестандартный элемент, не теряя остальные.
+    }
+  }
+  return { entries, rawCount: rawEvents.length };
 }
 
 async function fetchTeamLineupRatings(
@@ -391,35 +440,36 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
   let timelineSource: MatchTimelineSource | null = null;
   let timelineError: string | null = null;
   try {
-    const { entries: eventEntries, rawCount: eventRawCount } = parseEventListTimeline(match, homeTeamId);
-    const { entries: fallbackEntries, goalsRawCount, bookingsRawCount } = parseGoalsAndCardsTimeline(
+    const { entries: goalsCardsEntries, goalsRawCount, bookingsRawCount } = parseGoalsAndCardsTimeline(
       match,
       homeTeamId,
       homeTeamName,
       awayTeamName,
     );
-    debug.push(
-      `хронология — сырые элементы: EventList=${eventRawCount}, Scorers/Goal=${goalsRawCount}, Bookings/Booking=${bookingsRawCount}`,
+    const { entries: injuryEntries, rawCount: injuriesRawCount } = parseInjuriesTimeline(
+      match,
+      homeTeamId,
+      homeTeamName,
+      awayTeamName,
     );
-    // Приоритет — полный EventList (по одной строке на каждый игровой
-    // момент за все 90 минут: атаки, стандарты, замены и т.п., а не только
-    // голы/карточки — именно это и делает раздел похожим на настоящую
-    // хронологию). Голы/карточки (Scorers/Bookings) — запасной источник:
-    // они всегда приходят без matchEvents=true, но покрывают только сами
-    // голы и карточки, поэтому при их коротком списке (например, матч 1:0
-    // без единой карточки) раздел выглядел куце — почти как одна строка со
-    // счётом, а не подробная хронология (см. чат — вернули как было).
-    if (eventEntries.length > 0) {
-      timeline = eventEntries;
-      timelineSource = "events";
-    } else if (fallbackEntries.length > 0) {
-      timeline = fallbackEntries;
-      timelineSource = "goals-cards";
+    const { entries: subEntries, rawCount: eventRawCount } = parseSubstitutionsFromEventList(match, homeTeamId);
+    debug.push(
+      `хронология — сырые элементы: Scorers/Goal=${goalsRawCount}, Bookings/Booking=${bookingsRawCount}, ` +
+        `Injuries/Injury=${injuriesRawCount}, EventList=${eventRawCount} (из них похоже на замену: ${subEntries.length})`,
+    );
+
+    const merged = [...goalsCardsEntries, ...injuryEntries, ...subEntries].sort((a, b) => a.minute - b.minute);
+    if (merged.length > 0) {
+      timeline = merged;
+      // EventList (matchEvents=true) нужен ТОЛЬКО для попытки распознать
+      // замены выше — если сырых элементов не пришло вовсе, значит для
+      // этого матча замены просто не будут показаны (честно, а не молча).
+      timelineSource = eventRawCount > 0 ? "with-subs" : "without-subs";
     } else {
       timeline = null;
       timelineSource = null;
       timelineError =
-        "Хронология событий недоступна для этого матча — ни список голов/карточек, ни полный список событий (EventList, запрошен с matchEvents=true) не вернулись из matchdetails.";
+        "Хронология событий недоступна для этого матча — ни голы/карточки/травмы, ни список событий (EventList) не вернулись из matchdetails.";
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";

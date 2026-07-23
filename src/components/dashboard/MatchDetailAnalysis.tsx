@@ -50,7 +50,7 @@ interface MatchAttendance {
   total: number;
 }
 
-type MatchTimelineKind = "goal" | "card" | "event";
+type MatchTimelineKind = "goal" | "card" | "sub" | "injury";
 
 interface MatchTimelineEntry {
   minute: number;
@@ -72,7 +72,7 @@ interface MatchAnalysisResponse {
   attendance: MatchAttendance | null;
   attendanceError: string | null;
   timeline: MatchTimelineEntry[] | null;
-  timelineSource: "events" | "goals-cards" | null;
+  timelineSource: "with-subs" | "without-subs" | null;
   timelineError: string | null;
   debug: string[];
   error: string | null;
@@ -428,26 +428,41 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
             ) : (
               data.timeline && (
                 <>
-                  {data.timelineSource === "goals-cards" && (
+                  {data.timelineSource === "without-subs" && (
                     <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 12 }}>
-                      Полный текстовый отчёт для этого матча не вернулся — хронология собрана только из голов и
-                      карточек, без остальных игровых моментов.
+                      Полный список событий для этого матча не вернулся — показаны голы, карточки и травмы (всегда
+                      доступны), но не замены (их можно распознать только из полного отчёта).
                     </p>
                   )}
                   <div className={styles.timelineList}>
                     {data.timeline.map((ev, i) => {
+                      const ourSide = match.home ? "home" : "away";
+                      const isOurs = ev.teamSide === ourSide;
                       const isRedCard = ev.kind === "card" && /красн/i.test(ev.text);
                       const markerClass =
                         ev.kind === "goal"
-                          ? styles.timelineMarkerGoal
+                          ? isOurs
+                            ? styles.timelineMarkerGoal
+                            : styles.timelineMarkerGoalOpp
                           : ev.kind === "card"
                             ? isRedCard
                               ? styles.timelineMarkerCardRed
                               : styles.timelineMarkerCardYellow
-                            : "";
+                            : ev.kind === "sub"
+                              ? styles.timelineMarkerSub
+                              : styles.timelineMarkerInjury;
                       const textClass =
-                        ev.kind === "goal" ? styles.timelineTextGoal : ev.kind === "card" ? styles.timelineTextCard : "";
-                      const icon = ev.kind === "goal" ? "⚽" : ev.kind === "card" ? (isRedCard ? "🟥" : "🟨") : "•";
+                        ev.kind === "goal"
+                          ? isOurs
+                            ? styles.timelineTextGoal
+                            : styles.timelineTextGoalOpp
+                          : ev.kind === "card"
+                            ? styles.timelineTextCard
+                            : ev.kind === "injury"
+                              ? styles.timelineTextInjury
+                              : "";
+                      const icon =
+                        ev.kind === "goal" ? "⚽" : ev.kind === "card" ? (isRedCard ? "🟥" : "🟨") : ev.kind === "sub" ? "🔄" : "🩹";
                       return (
                         <div key={i} className={styles.timelineRow}>
                           <span className={styles.timelineMinute}>{ev.minute}&apos;</span>
