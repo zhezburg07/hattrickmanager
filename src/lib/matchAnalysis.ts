@@ -304,10 +304,22 @@ function parseSubstitutionsFromEventList(
   return { entries, rawCount: rawEvents.length };
 }
 
+// Подтверждённая реальная схема matchlineup.xml (независимый CHPP-клиент
+// github.com/lucianoq/hattrick, chpp/file_matchlineup.go): RatingStars и
+// RatingStarsEndOfMatch — оба типа float64, то есть Hattrick уже присылает
+// готовое десятичное число звёзд (например "7.5"), никакого масштабирования
+// (÷10, ÷100 и т.п.) быть не должно — Number() и toFixed(1) в вызывающем
+// коде (MatchDetailAnalysis.tsx) тут ничего не портят. Если рейтинг всё
+// равно выглядит неверным на реальном ответе — см. rawSample в debug
+// (RATINGS RAW): там сырые строковые значения ДО Number(), чтобы увидеть
+// точно, что именно прислал Hattrick для конкретного игрока, а не гадать
+// про масштаб вслепую.
 async function fetchTeamLineupRatings(
   tokens: StoredHattrickTokens,
   matchId: string,
   teamId: string,
+  debug: string[],
+  sideLabel: string,
 ): Promise<MatchPlayerRating[]> {
   const raw = await requestChppXmlRaw(
     "matchlineup",
@@ -333,9 +345,15 @@ async function fetchTeamLineupRatings(
   // предпочитаем ту запись, где формальная позиция определена; это
   // защищает и от задвоения игрока в списке, и от потери его позиции.
   const byId = new Map<number, MatchPlayerRating>();
+  const rawSample: string[] = [];
   for (const p of players) {
     const id = Number(p.PlayerID ?? 0);
     const ratingRaw = p.RatingStarsEndOfMatch ?? p.RatingStars;
+    if (rawSample.length < 4) {
+      rawSample.push(
+        `#${id}: RatingStars=${JSON.stringify(p.RatingStars)}, RatingStarsEndOfMatch=${JSON.stringify(p.RatingStarsEndOfMatch)}, использовано=${JSON.stringify(ratingRaw)}`,
+      );
+    }
     if (!id || ratingRaw === undefined) continue;
     const rating = Number(ratingRaw);
     if (Number.isNaN(rating)) continue;
@@ -349,6 +367,9 @@ async function fetchTeamLineupRatings(
     if (!existing || isFieldRole) {
       byId.set(id, { playerId: id, name, rating, roleId: isFieldRole ? roleId : (existing?.roleId ?? roleId) });
     }
+  }
+  if (rawSample.length > 0) {
+    debug.push(`matchlineup (${sideLabel}) — сырые значения рейтинга: ${rawSample.join(" | ")}`);
   }
   return [...byId.values()].sort((a, b) => b.rating - a.rating);
 }
@@ -478,8 +499,8 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
   }
 
   const [homeResult, awayResult] = await Promise.allSettled([
-    fetchTeamLineupRatings(tokens, matchId, homeTeamId),
-    fetchTeamLineupRatings(tokens, matchId, awayTeamId),
+    fetchTeamLineupRatings(tokens, matchId, homeTeamId, debug, "хозяева"),
+    fetchTeamLineupRatings(tokens, matchId, awayTeamId, debug, "гости"),
   ]);
 
   const homeRatings = homeResult.status === "fulfilled" ? homeResult.value : [];
