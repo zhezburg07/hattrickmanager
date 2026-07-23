@@ -434,28 +434,31 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
                       карточек, без остальных игровых моментов.
                     </p>
                   )}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {data.timeline.map((ev, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          display: "flex",
-                          gap: 12,
-                          alignItems: "baseline",
-                          borderBottom: "1px solid rgba(44, 74, 64, 0.6)",
-                          paddingBottom: 8,
-                        }}
-                      >
-                        <span style={{ fontWeight: 800, color: "var(--color-accent)", minWidth: 34 }}>{ev.minute}&apos;</span>
-                        <span
-                          style={{
-                            color: ev.kind === "goal" ? "var(--color-good)" : ev.kind === "card" ? "#e0c04a" : "var(--color-text)",
-                          }}
-                        >
-                          {ev.text}
-                        </span>
-                      </div>
-                    ))}
+                  <div className={styles.timelineList}>
+                    {data.timeline.map((ev, i) => {
+                      const isRedCard = ev.kind === "card" && /красн/i.test(ev.text);
+                      const markerClass =
+                        ev.kind === "goal"
+                          ? styles.timelineMarkerGoal
+                          : ev.kind === "card"
+                            ? isRedCard
+                              ? styles.timelineMarkerCardRed
+                              : styles.timelineMarkerCardYellow
+                            : "";
+                      const textClass =
+                        ev.kind === "goal" ? styles.timelineTextGoal : ev.kind === "card" ? styles.timelineTextCard : "";
+                      const icon = ev.kind === "goal" ? "⚽" : ev.kind === "card" ? (isRedCard ? "🟥" : "🟨") : "•";
+                      return (
+                        <div key={i} className={styles.timelineRow}>
+                          <span className={styles.timelineMinute}>{ev.minute}&apos;</span>
+                          <div className={styles.timelineMarkerCol}>
+                            <div className={styles.timelineMarkerLine} />
+                            <span className={`${styles.timelineMarker} ${markerClass}`}>{icon}</span>
+                          </div>
+                          <span className={`${styles.timelineText} ${textClass}`}>{ev.text}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )
