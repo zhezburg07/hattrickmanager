@@ -202,6 +202,11 @@ export function debugRawMatchFields(xml: string, count = 3): Record<string, unkn
     SourceSystem: m.SourceSystem,
     MatchRuleId: m.MatchRuleId ?? m.MatchRuleID,
     CupID: m.CupID ?? m.CupId,
+    // Настоящий источник CupID для обычного matches.xml (см. cupId в
+    // parseMatchesXml выше) — показан здесь отдельно от уже вычисленного
+    // cupId, чтобы при диагностике сразу видеть сырое значение поля, а не
+    // только конечный результат.
+    MatchContextId: m.MatchContextId ?? m.MatchContextID,
   }));
 }
 
