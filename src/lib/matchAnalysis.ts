@@ -73,6 +73,31 @@ export interface MatchAttendance {
   total: number;
 }
 
+// Тактический приказ команды на матч — подтверждённое поле <TacticType>
+// (независимый CHPP-клиент github.com/lucianoq/hattrick,
+// chpp/type_match_tactic_type.go), присылается для обеих команд без
+// ограничений.
+const MATCH_TACTIC_LABEL: Record<number, string> = {
+  0: "Обычная игра",
+  1: "Прессинг",
+  2: "Контратаки",
+  3: "Атака по центру",
+  4: "Атака по флангам",
+  7: "Игра на публику",
+  8: "Дальние удары",
+};
+
+// "Отношение к матчу" (мотивационная речь тренера) — подтверждённое поле
+// <TeamAttitude> (chpp/type_match_team_attitude.go), НО по документации
+// того же клиента отдаётся только владельцу команды — для чужой стороны
+// поле просто отсутствует в ответе, что здесь честно даёт null (не "0"/
+// "Обычная" по умолчанию).
+const TEAM_ATTITUDE_LABEL: Record<number, string> = {
+  [-1]: "Не гореть желанием",
+  0: "Как обычно",
+  1: "Матч сезона",
+};
+
 export type MatchTimelineKind = "goal" | "card" | "sub" | "injury";
 // Есть ли в ответе полный EventList (matchEvents=true сработал) — от этого
 // зависит только наличие замен (см. parseSubstitutionsFromEventList выше):
@@ -99,6 +124,14 @@ export interface MatchAnalysisResult {
   homeZones: MatchZoneRatings | null;
   awayZones: MatchZoneRatings | null;
   zonesError: string | null;
+
+  // Тактика — подтверждённое поле <TacticType>, есть для обеих команд.
+  homeTactic: string | null;
+  awayTactic: string | null;
+  // "Отношение к матчу" — подтверждённое поле <TeamAttitude>, но CHPP
+  // отдаёт его только владельцу команды: для чужой стороны честно null.
+  homeTeamAttitude: string | null;
+  awayTeamAttitude: string | null;
 
   attendance: MatchAttendance | null;
   attendanceError: string | null;
@@ -152,6 +185,36 @@ function parseZoneRatings(team: Record<string, unknown> | undefined): MatchZoneR
   };
   const hasAny = Object.values(zones).some((v) => v !== null);
   return hasAny ? zones : null;
+}
+
+function parseTacticLabel(team: Record<string, unknown> | undefined): string | null {
+  if (!team || team.TacticType === undefined) return null;
+  const n = Number(team.TacticType);
+  return MATCH_TACTIC_LABEL[n] ?? `Тактика (тип ${n})`;
+}
+
+function parseTeamAttitudeLabel(team: Record<string, unknown> | undefined): string | null {
+  if (!team) return null;
+  const raw = team.TeamAttitude;
+  if (raw === undefined || raw === null || raw === "") return null;
+  const n = Number(raw);
+  if (Number.isNaN(n)) return null;
+  return TEAM_ATTITUDE_LABEL[n] ?? `Настрой (${n})`;
+}
+
+// ВРЕМЕННАЯ диагностика — вкладка "Зоны поля" по запросу должна показать ещё
+// два блока показателей ("Loddar Stats" и тройку Тайм/Состав/Рейтинг), для
+// которых подтверждённого источника в matchdetails.xml НЕ найдено (ни один
+// известный клиент CHPP не описывает поле с таким названием) — вместо того
+// чтобы гадать и показывать выдуманные числа, здесь дамп ВСЕХ скалярных
+// (не вложенных) полей <HomeTeam>/<AwayTeam>, включая уже неиспользуемые в
+// интерфейсе NrOfChances*/TacticSkill/DressURI и т.п. — чтобы на реальном
+// ответе увидеть, какое из этих полей (если оно вообще существует) и есть
+// искомые показатели, а не додумывать вслепую.
+function debugScalarTeamFields(team: Record<string, unknown> | undefined): string {
+  if (!team) return "(нет данных)";
+  const entries = Object.entries(team).filter(([, v]) => typeof v !== "object" || v === null);
+  return entries.length > 0 ? entries.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ") : "(только вложенные контейнеры)";
 }
 
 function parseAttendance(match: Record<string, unknown>): MatchAttendance | null {
@@ -390,6 +453,10 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     homeZones: null,
     awayZones: null,
     zonesError: null,
+    homeTactic: null,
+    awayTactic: null,
+    homeTeamAttitude: null,
+    awayTeamAttitude: null,
     attendance: null,
     attendanceError: null,
     timeline: null,
@@ -447,6 +514,22 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     zonesError = `Не удалось разобрать зональные показатели: ${message}`;
     debug.push(`zones: исключение при разборе — ${message}`);
+  }
+
+  let homeTactic: string | null = null;
+  let awayTactic: string | null = null;
+  let homeTeamAttitude: string | null = null;
+  let awayTeamAttitude: string | null = null;
+  try {
+    homeTactic = parseTacticLabel(homeTeam);
+    awayTactic = parseTacticLabel(awayTeam);
+    homeTeamAttitude = parseTeamAttitudeLabel(homeTeam);
+    awayTeamAttitude = parseTeamAttitudeLabel(awayTeam);
+    debug.push(`HomeTeam сырые поля: ${debugScalarTeamFields(homeTeam)}`);
+    debug.push(`AwayTeam сырые поля: ${debugScalarTeamFields(awayTeam)}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "неизвестная ошибка";
+    debug.push(`тактика/настрой: исключение при разборе — ${message}`);
   }
 
   let attendance: MatchAttendance | null = null;
@@ -531,6 +614,10 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     homeZones,
     awayZones,
     zonesError,
+    homeTactic,
+    awayTactic,
+    homeTeamAttitude,
+    awayTeamAttitude,
     attendance,
     attendanceError,
     timeline,

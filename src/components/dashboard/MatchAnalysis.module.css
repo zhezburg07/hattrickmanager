@@ -255,6 +255,148 @@
   opacity: 0.6;
 }
 
+/* Верхняя панель показателей команд (тактика/настрой) — две колонки,
+   домашняя зелёная, гостевая красная/розовая, разделены вертикальной
+   линией. Цвета — те же переменные темы, что и везде в проекте для "свой/
+   чужой" (var(--color-good)/var(--color-bad)), без хардкода. */
+.zoneInfoPanel {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.zoneInfoCol {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.zoneInfoColHome {
+  background: rgba(76, 175, 111, 0.12);
+}
+
+.zoneInfoColAway {
+  background: rgba(192, 80, 63, 0.12);
+  text-align: right;
+  align-items: flex-end;
+}
+
+.zoneInfoDivider {
+  width: 2px;
+  background: var(--color-border);
+  flex: none;
+}
+
+.zoneInfoTeamName {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zoneInfoRow {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* Поле с секторами — обычный зелёный газон (как и раньше), команды-акценты
+   только на самих боксах секторов, а не на фоне поля целиком. */
+.zonePitch {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: linear-gradient(90deg, #1e4436 0%, #17362a 50%, #1e4436 100%);
+  border: 2px solid rgba(242, 237, 225, 0.35);
+  border-radius: var(--radius);
+  padding: 16px 12px;
+  margin-top: 4px;
+}
+
+.zonePitchDivider {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
+  width: 2px;
+  background: rgba(242, 237, 225, 0.4);
+}
+
+.zonePitchRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zonePitchHalf {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: space-around;
+  gap: 6px;
+}
+
+/* Ряд полузащиты — по одному сектору на команду, специально сдвинуты
+   вплотную к центральной линии (а не по центру своей половины), чтобы два
+   сектора полузащиты обеих команд визуально сближались друг с другом. */
+.zonePitchHalfEnd {
+  justify-content: flex-end;
+}
+
+.zonePitchHalfStart {
+  justify-content: flex-start;
+}
+
+.zoneBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 44px;
+  padding: 5px 7px;
+  border-radius: 8px;
+  border: 1.5px solid;
+  background: var(--color-bg-card);
+}
+
+.zoneBoxHome {
+  border-color: var(--color-good);
+  background: rgba(76, 175, 111, 0.15);
+}
+
+.zoneBoxAway {
+  border-color: var(--color-bad);
+  background: rgba(192, 80, 63, 0.15);
+}
+
+.zoneBoxTop {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zoneBoxRating {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.zoneBoxIcon {
+  font-size: 11px;
+}
+
+.zoneBoxShare {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
 /* Хронология моментов — вертикальный таймлайн (тот же визуальный язык, что
    и "Путь по сетке" на вкладке "Кубки", см. Cup.module.css: точка + соединяющая
    линия + текст справа), а не прежний горизонтальный трек с абсолютным

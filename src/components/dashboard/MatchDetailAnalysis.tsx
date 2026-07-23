@@ -69,6 +69,10 @@ interface MatchAnalysisResponse {
   homeZones: MatchZoneRatings | null;
   awayZones: MatchZoneRatings | null;
   zonesError: string | null;
+  homeTactic: string | null;
+  awayTactic: string | null;
+  homeTeamAttitude: string | null;
+  awayTeamAttitude: string | null;
   attendance: MatchAttendance | null;
   attendanceError: string | null;
   timeline: MatchTimelineEntry[] | null;
@@ -114,6 +118,46 @@ function fieldPosition(roleId: number | null, side: "home" | "away"): { x: numbe
   return side === "home" ? base : { x: 100 - base.x, y: base.y };
 }
 
+type ZoneKey = "leftDef" | "midDef" | "rightDef" | "midfield" | "leftAtt" | "midAtt" | "rightAtt";
+type ZoneRow = "defense" | "midfield" | "attack";
+
+// 3 ряда по глубине поля: защита (ближе к своим воротам) → полузащита
+// (средний ряд, один сектор на команду) → атака (ближе к воротам соперника).
+const ZONE_ROWS: { row: ZoneRow; keys: ZoneKey[] }[] = [
+  { row: "defense", keys: ["leftDef", "midDef", "rightDef"] },
+  { row: "midfield", keys: ["midfield"] },
+  { row: "attack", keys: ["leftAtt", "midAtt", "rightAtt"] },
+];
+
+// "Лево"/"право" в matchdetails.xml — с точки зрения самой команды, а команды
+// стоят на поле лицом друг к другу — поэтому мой левый защитник встречается
+// не с левым, а с ПРАВЫМ нападающим соперника (и наоборот). Через эту пару
+// считается процент — доля именно этого сектора в очном противостоянии.
+const ZONE_CONTEST: Record<ZoneKey, ZoneKey> = {
+  leftDef: "rightAtt",
+  midDef: "midAtt",
+  rightDef: "leftAtt",
+  midfield: "midfield",
+  leftAtt: "rightDef",
+  midAtt: "midDef",
+  rightAtt: "leftDef",
+};
+
+const ZONE_ROW_ICON: Record<ZoneRow, string> = {
+  defense: "🛡",
+  midfield: "⚙",
+  attack: "⚽",
+};
+
+function zoneSharePercent(own: number | null, opponentContest: number | null): number | null {
+  if (own === null && opponentContest === null) return null;
+  const o = own ?? 0;
+  const p = opponentContest ?? 0;
+  const total = o + p;
+  if (total <= 0) return null;
+  return Math.round((o / total) * 100);
+}
+
 // Реальные данные конкретного матча (см. src/lib/matchAnalysis.ts,
 // /api/dashboard/match-analysis). Раньше рейтинги игроков всегда приходили
 // пустыми — читались из несуществующего в matchdetails.xml поля Lineup;
@@ -143,6 +187,10 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
             homeZones: null,
             awayZones: null,
             zonesError: "Не удалось загрузить",
+            homeTactic: null,
+            awayTactic: null,
+            homeTeamAttitude: null,
+            awayTeamAttitude: null,
             attendance: null,
             attendanceError: "Не удалось загрузить",
             timeline: null,
@@ -165,14 +213,10 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
   const homeName = match.home ? ourName : match.opponent;
   const awayName = match.home ? match.opponent : ourName;
 
-  const zoneRows: { label: string; homeKey: keyof MatchZoneRatings; awayKey: keyof MatchZoneRatings }[] = [
-    { label: "Защита (левый фланг)", homeKey: "leftDef", awayKey: "leftDef" },
-    { label: "Защита (центр)", homeKey: "midDef", awayKey: "midDef" },
-    { label: "Защита (правый фланг)", homeKey: "rightDef", awayKey: "rightDef" },
-    { label: "Полузащита", homeKey: "midfield", awayKey: "midfield" },
-    { label: "Атака (левый фланг)", homeKey: "leftAtt", awayKey: "leftAtt" },
-    { label: "Атака (центр)", homeKey: "midAtt", awayKey: "midAtt" },
-    { label: "Атака (правый фланг)", homeKey: "rightAtt", awayKey: "rightAtt" },
+  // Стандарты — отдельная пара показателей (не входит в 7 секторов поля по
+  // запросу), показана отдельной узкой полосой под полем в том же виде, что
+  // и раньше.
+  const setPieceRows: { label: string; homeKey: keyof MatchZoneRatings; awayKey: keyof MatchZoneRatings }[] = [
     { label: "Стандарты в защите", homeKey: "setPiecesDef", awayKey: "setPiecesDef" },
     { label: "Стандарты в атаке", homeKey: "setPiecesAtt", awayKey: "setPiecesAtt" },
   ];
@@ -326,37 +370,106 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
               </p>
             ) : (
               <div>
-                <div className={styles.legendRow} style={{ justifyContent: "space-between", marginTop: 0, marginBottom: 8 }}>
-                  <span style={{ fontWeight: 700, color: "var(--color-text)" }}>{data.homeTeamName || homeName}</span>
-                  <span style={{ fontWeight: 700, color: "var(--color-text)" }}>{data.awayTeamName || awayName}</span>
+                <div className={styles.zoneInfoPanel}>
+                  <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColHome}`}>
+                    <div className={styles.zoneInfoTeamName}>{data.homeTeamName || homeName}</div>
+                    <div className={styles.zoneInfoRow}>
+                      {data.homeTactic ?? "—"}
+                      {data.homeTeamAttitude ? ` / ${data.homeTeamAttitude}` : ""}
+                    </div>
+                  </div>
+                  <div className={styles.zoneInfoDivider} />
+                  <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColAway}`}>
+                    <div className={styles.zoneInfoTeamName}>{data.awayTeamName || awayName}</div>
+                    <div className={styles.zoneInfoRow}>
+                      {data.awayTactic ?? "—"}
+                      {data.awayTeamAttitude ? ` / ${data.awayTeamAttitude}` : ""}
+                    </div>
+                  </div>
                 </div>
-                {zoneRows.map((row) => {
-                  const homeRaw = data.homeZones?.[row.homeKey] ?? null;
-                  const awayRaw = data.awayZones?.[row.awayKey] ?? null;
-                  const homeWord = zoneWord(homeRaw);
-                  const awayWord = zoneWord(awayRaw);
-                  const total = (homeRaw ?? 0) + (awayRaw ?? 0);
-                  const homeShare = total > 0 ? ((homeRaw ?? 0) / total) * 100 : 50;
-                  return (
-                    <div className={styles.zoneRow} key={row.label}>
-                      <div className={styles.zoneSide}>
-                        <span className={styles.zoneShare}>{homeWord ?? "—"}</span>
-                        <span className={styles.zoneLevel}>{homeRaw !== null ? `${homeRaw}/80` : "нет данных"}</span>
+                <p style={{ fontSize: 11.5, color: "var(--color-text-muted)", marginTop: 6, marginBottom: 16 }}>
+                  "Отношение к матчу" CHPP отдаёт только владельцу команды — для соперника поле честно отсутствует
+                  (не "—" по ошибке). Ещё два показателя из примера ("Loddar Stats" и тройка Тайм/Состав/Рейтинг) в
+                  реальном ответе matchdetails пока не опознаны — смотрите полный дамп полей команды в блоке
+                  "Диагностика" внизу этой страницы (под всеми вкладками) и подскажите, какое поле им соответствует.
+                </p>
+
+                <div className={styles.zonePitch}>
+                  <div className={styles.zonePitchDivider} />
+                  {ZONE_ROWS.map(({ row, keys }) => (
+                    <div className={styles.zonePitchRow} key={row}>
+                      <div
+                        className={`${styles.zonePitchHalf} ${row === "midfield" ? styles.zonePitchHalfEnd : ""}`}
+                      >
+                        {keys.map((k) => {
+                          const value = data.homeZones?.[k] ?? null;
+                          const contest = data.awayZones?.[ZONE_CONTEST[k]] ?? null;
+                          const share = zoneSharePercent(value, contest);
+                          return (
+                            <div className={`${styles.zoneBox} ${styles.zoneBoxHome}`} key={`home-${k}`}>
+                              <div className={styles.zoneBoxTop}>
+                                <span className={styles.zoneBoxRating}>{value !== null ? Math.round(value) : "—"}</span>
+                                <span className={styles.zoneBoxIcon}>{ZONE_ROW_ICON[row]}</span>
+                              </div>
+                              <div className={styles.zoneBoxShare}>{share !== null ? `${share}%` : "—"}</div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div className={styles.zoneLabel}>
-                        {row.label}
-                        <div className={styles.zoneBar} style={{ marginTop: 6 }}>
-                          <div className={styles.zoneBarOwn} style={{ width: `${homeShare}%` }} />
-                          <div className={styles.zoneBarOpp} style={{ width: `${100 - homeShare}%` }} />
-                        </div>
-                      </div>
-                      <div className={`${styles.zoneSide} ${styles.zoneSideRight}`}>
-                        <span className={styles.zoneShare}>{awayWord ?? "—"}</span>
-                        <span className={styles.zoneLevel}>{awayRaw !== null ? `${awayRaw}/80` : "нет данных"}</span>
+                      <div
+                        className={`${styles.zonePitchHalf} ${row === "midfield" ? styles.zonePitchHalfStart : ""}`}
+                      >
+                        {keys.map((k) => {
+                          const value = data.awayZones?.[k] ?? null;
+                          const contest = data.homeZones?.[ZONE_CONTEST[k]] ?? null;
+                          const share = zoneSharePercent(value, contest);
+                          return (
+                            <div className={`${styles.zoneBox} ${styles.zoneBoxAway}`} key={`away-${k}`}>
+                              <div className={styles.zoneBoxTop}>
+                                <span className={styles.zoneBoxRating}>{value !== null ? Math.round(value) : "—"}</span>
+                                <span className={styles.zoneBoxIcon}>{ZONE_ROW_ICON[row]}</span>
+                              </div>
+                              <div className={styles.zoneBoxShare}>{share !== null ? `${share}%` : "—"}</div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+
+                <div style={{ marginTop: 20 }}>
+                  <div className={styles.cardTitle} style={{ marginBottom: 8 }}>
+                    Стандарты
+                  </div>
+                  {setPieceRows.map((row) => {
+                    const homeRaw = data.homeZones?.[row.homeKey] ?? null;
+                    const awayRaw = data.awayZones?.[row.awayKey] ?? null;
+                    const homeWord = zoneWord(homeRaw);
+                    const awayWord = zoneWord(awayRaw);
+                    const total = (homeRaw ?? 0) + (awayRaw ?? 0);
+                    const homeShare = total > 0 ? ((homeRaw ?? 0) / total) * 100 : 50;
+                    return (
+                      <div className={styles.zoneRow} key={row.label}>
+                        <div className={styles.zoneSide}>
+                          <span className={styles.zoneShare}>{homeWord ?? "—"}</span>
+                          <span className={styles.zoneLevel}>{homeRaw !== null ? `${homeRaw}/80` : "нет данных"}</span>
+                        </div>
+                        <div className={styles.zoneLabel}>
+                          {row.label}
+                          <div className={styles.zoneBar} style={{ marginTop: 6 }}>
+                            <div className={styles.zoneBarOwn} style={{ width: `${homeShare}%` }} />
+                            <div className={styles.zoneBarOpp} style={{ width: `${100 - homeShare}%` }} />
+                          </div>
+                        </div>
+                        <div className={`${styles.zoneSide} ${styles.zoneSideRight}`}>
+                          <span className={styles.zoneShare}>{awayWord ?? "—"}</span>
+                          <span className={styles.zoneLevel}>{awayRaw !== null ? `${awayRaw}/80` : "нет данных"}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </>
