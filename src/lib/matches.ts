@@ -1,7 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import { assertNoChppError } from "./chppError";
 import { formatMatchDateTime } from "@/data/dashboard";
-import type { SeasonMatch } from "@/data/matches";
+import type { SeasonMatch, Competition } from "@/data/matches";
 
 export type RealMatchStatus = "FINISHED" | "ONGOING" | "UPCOMING";
 
@@ -19,9 +19,18 @@ export interface RealMatch {
   ourScore: number | null;
   oppScore: number | null;
   matchType: string;
-  // ID кубка — заполнено только у кубковых матчей, если Hattrick вообще
-  // кладёт это поле сюда (не проверено на живом ответе; нужно для
-  // cupmatches.xml, см. src/lib/cupMatches.ts).
+  // ID кубка — заполнено только у кубковых матчей (MatchType === 3, см.
+  // MATCH_TYPE_LABEL ниже). ИСПРАВЛЕНО по реальной схеме (подтверждено через
+  // исходный код независимого CHPP-клиента github.com/lucianoq/hattrick,
+  // chpp/file_matches.go): поле <CupID>/<CupId> на самом матче отправляется
+  // ТОЛЬКО файлом matchesarchive.xml — обычный matches.xml (который здесь и
+  // запрашивается) его никогда не присылает, поэтому прежняя попытка читать
+  // m.CupID отсюда была гарантированно пустой (не вопрос "сезон/кубок ещё не
+  // начался", а неверное поле). Настоящий источник для matches.xml —
+  // <MatchContextId>: для кубкового матча (MatchType === 3) это и есть сам
+  // CupID (для лиги там LeagueLevelUnitId, для остального — 0 или другой ID).
+  // Старое поле <CupID>/<CupId> оставлено как запасной вариант (matchesarchive
+  // всё же может его прислать) — не проверено на живом ответе этого аккаунта.
   cupId: string | null;
   // Какая игровая система сгенерировала матч — по независимому CHPP-клиенту
   // (github.com/lucianoq/hattrick), поле <SourceSystem> принимает одно из
@@ -40,6 +49,43 @@ export interface RealMatch {
   // фильтрации (см. историю — раньше пытались исключать "12" как "матч
   // сборной", отменено вместе с чисткой ненадёжных сигналов).
   matchRuleId: string | null;
+}
+
+// Официальные, полностью подтверждённые значения MatchType (см. независимый
+// CHPP-клиент github.com/lucianoq/hattrick, chpp/type_match_type.go) —
+// заменяет прежнюю грубую эвристику (диапазон 5-12 → "товарищеский",
+// подобранную только под 2 значения, подтверждённых на практике). Значения
+// 1 и 8 из этой таблицы совпадают с уже подтверждёнными на живых данных
+// этого проекта (лига и международный товарищеский соответственно), что
+// даёт уверенность и в остальных строках, хотя сама таблица целиком на
+// ЭТОМ аккаунте не проверялась. MatchType === 3 — единственное значение
+// "настоящего" кубкового матча (используется также для поиска CupID через
+// MatchContextId, см. cupId в RealMatch выше).
+export const CUP_MATCH_TYPE = 3;
+const LEAGUE_MATCH_TYPE = 1;
+
+// "Товарищеский" в широком смысле — любой вид товарищеского матча (обычный,
+// международный, по кубковым правилам, сборной, молодёжный, предсезонный) —
+// используется и для значка "Официальный матч" на Обзоре (см.
+// dashboard/page.tsx), и для подписи "Товарищеский" в toSeasonMatches ниже.
+const FRIENDLY_MATCH_TYPES = new Set([4, 5, 8, 9, 12, 61, 80, 101, 103, 105, 106]);
+
+export function isFriendlyMatchType(matchType: string): boolean {
+  const n = Number(matchType);
+  return Number.isNaN(n) || FRIENDLY_MATCH_TYPES.has(n);
+}
+
+// Сворачивает подтверждённые значения MatchType к 4 категориям витрины
+// (см. Competition в src/data/matches.ts) — квалификация/Hattrick Masters/
+// матчи сборной/турниры/лестница/молодёжная лига не входят ни в "Лига", ни
+// в "Кубок", ни в "Товарищеский", поэтому получают общую пометку
+// "Официальный" (официальный матч не по обычным правилам лиги/кубка).
+function competitionOf(matchType: string, cupId: string | null): Competition {
+  const n = Number(matchType);
+  if (n === CUP_MATCH_TYPE || cupId !== null) return "Кубок";
+  if (n === LEAGUE_MATCH_TYPE) return "Лига";
+  if (isFriendlyMatchType(matchType)) return "Товарищеский";
+  return "Официальный";
 }
 
 // Разбирает XML-ответ CHPP на файл matches.xml (или matchesarchive.xml —
@@ -81,8 +127,15 @@ export function parseMatchesXml(xml: string, ourTeamId: string, options?: { isAr
     const homeGoals = m.HomeGoals !== undefined ? Number(m.HomeGoals) : null;
     const awayGoals = m.AwayGoals !== undefined ? Number(m.AwayGoals) : null;
 
+    const matchTypeNum = Number(m.MatchType);
+    const matchContextIdRaw = m.MatchContextId ?? m.MatchContextID;
+    const cupIdFromContext =
+      matchTypeNum === CUP_MATCH_TYPE && matchContextIdRaw !== undefined && String(matchContextIdRaw) !== "0"
+        ? String(matchContextIdRaw)
+        : null;
     const cupIdRaw = m.CupID ?? m.CupId;
-    const cupId = cupIdRaw !== undefined && String(cupIdRaw) !== "" && String(cupIdRaw) !== "0" ? String(cupIdRaw) : null;
+    const legacyCupId = cupIdRaw !== undefined && String(cupIdRaw) !== "" && String(cupIdRaw) !== "0" ? String(cupIdRaw) : null;
+    const cupId = cupIdFromContext ?? legacyCupId;
 
     const sourceSystemRaw = m.SourceSystem;
     const sourceSystem = sourceSystemRaw !== undefined ? String(sourceSystemRaw).toLowerCase() : null;
@@ -200,33 +253,14 @@ export function dedupeMatches(matches: RealMatch[]): RealMatch[] {
 // round всегда null.
 //
 // Соревнование (только подпись/значок, на список матчей не влияет — см.
-// filterTrainingRelevantMatches, там MatchType вообще не проверяется):
-// "Кубок" — по CupID (см. RealMatch.cupId, не проверено на живом ответе).
-// "Товарищеский"/"Лига" — раньше здесь считалось, что только MatchType "0"
-// значит "товарищеский", а всё остальное — лига; это оказалось неверным на
-// живых данных (реальный сыгранный товарищеский матч пришёл с MatchType
-// "8", а лига — с MatchType "1"). Официальной документации по числовым
-// значениям MatchType найти не удалось (похоже, это не простая фиксированная
-// категория, а контекстный идентификатор турнира/лиги). Диапазон ниже
-// подобран так, чтобы совпадать с обоими подтверждёнными на практике
-// значениями (1 → лига, 8 → товарищеский) — это предположение, не гарантия;
-// ошибка здесь влияет только на значок/подпись, не на то, показывается ли
-// матч вообще.
-const FRIENDLY_MATCH_TYPE_MIN = 5;
-const FRIENDLY_MATCH_TYPE_MAX = 12;
-
-function isLikelyFriendlyMatchType(matchType: string): boolean {
-  if (matchType === "0") return true;
-  const n = Number(matchType);
-  return !Number.isNaN(n) && n >= FRIENDLY_MATCH_TYPE_MIN && n <= FRIENDLY_MATCH_TYPE_MAX;
-}
-
+// filterTrainingRelevantMatches, там MatchType вообще не проверяется, и
+// competitionOf/isFriendlyMatchType/CUP_MATCH_TYPE у начала файла).
 export function toSeasonMatches(matches: RealMatch[]): SeasonMatch[] {
   const sorted = [...matches].sort((a, b) => b.date.localeCompare(a.date));
   return sorted.map((m, i) => {
     // По запросу — только дата, без точного времени начала матча.
     const { shortDate } = formatMatchDateTime(m.date);
-    const competition = m.cupId !== null ? "Кубок" : isLikelyFriendlyMatchType(m.matchType) ? "Товарищеский" : "Лига";
+    const competition = competitionOf(m.matchType, m.cupId);
     return {
       id: Number(m.matchId) || i + 1,
       round: null,

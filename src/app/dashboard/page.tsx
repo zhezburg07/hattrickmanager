@@ -29,7 +29,7 @@ import { isChppAuthError } from "@/lib/chppError";
 import { parseLeagueDetailsXml } from "@/lib/leagueDetails";
 import { parseLeagueFixturesXml } from "@/lib/leagueFixtures";
 import { buildRealLeagueMatrix } from "@/lib/realLeagueMatrix";
-import { parseMatchesXml } from "@/lib/matches";
+import { parseMatchesXml, isFriendlyMatchType } from "@/lib/matches";
 import { parseEconomyXml } from "@/lib/economy";
 import { parseClubXml, type RealClubStaff } from "@/lib/clubStaff";
 import { parsePlayersXml } from "@/lib/players";
@@ -283,13 +283,13 @@ async function resolveDashboardData(tokens: StoredHattrickTokens): Promise<Dashb
         date: m.date,
         home: m.home,
         opponent: m.opponent,
-        // MatchType в CHPP — это не простая категория (лига/кубок/товарищеский),
-        // а контекстный ID конкретного турнира (LeagueLevelUnitID, CupID и
-        // т.п.). "0" достоверно значит товарищеский/квалификационный матч;
-        // расшифровать остальные значения в читаемое название турнира без
-        // отдельного справочника нельзя, поэтому просто помечаем такие матчи
-        // как официальные, не показывая сам (ничего не значащий на вид) номер.
-        competition: m.matchType !== "0" ? "Официальный матч" : undefined,
+        // ИСПРАВЛЕНО: раньше здесь стояла проверка m.matchType !== "0" — но
+        // MatchType никогда не приходит равным "0" (см. src/lib/matches.ts,
+        // MATCH_TYPE_LABEL — диапазон значений начинается с 1), поэтому эта
+        // проверка была всегда истинной и помечала абсолютно любой матч,
+        // включая обычные товарищеские, как "Официальный". Теперь — честная
+        // проверка по подтверждённой таблице типов (isFriendlyMatchType).
+        competition: isFriendlyMatchType(m.matchType) ? undefined : "Официальный матч",
       }));
   } catch (err) {
     errors.push(`Матчи (matches): ${errorMessage(err)}`);
@@ -354,11 +354,12 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "неизвестная ошибка";
 }
 
-// Временно скрыто от обычных пользователей — пугающий предупреждающий вид
-// не нужен на публичном экране. Код и сбор данных (data.debugLeague) не
-// трогаем — верните true, когда начнётся сезон лиги и понадобится ещё раз
-// проверить leaguefixtures на реальных сыгранных матчах (см. чат).
-const SHOW_LEAGUE_DEBUG_PANEL = false;
+// Временно включено обратно — сезон лиги начался, нужно ещё раз проверить
+// на реальных сыгранных турах, действительно ли leaguefixtures теперь
+// возвращает результаты (см. чат) и сколько ячеек сетки заполнилось.
+// Уберите снова (false), как только это подтвердится и панель станет не
+// нужна — пугающий вид не рассчитан на постоянный показ обычным пользователям.
+const SHOW_LEAGUE_DEBUG_PANEL = true;
 
 // Временно скрыт по запросу — блок "Кого поддерживаем / кто поддерживает
 // нас" убран с экрана, код и src/lib/supporters.ts не удалены. Заодно не
