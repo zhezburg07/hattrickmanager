@@ -11,7 +11,7 @@ import { parseMatchesXml } from "./matches";
 //
 // Схема: 1) teamdetails.xml → наш TeamID; 2) matches.xml → последние N
 // матчей со статусом FINISHED; 3) matchlineup.xml по каждому MatchID →
-// наш состав и рейтинг (RatingStarsEndOfMatch) вышедших на поле игроков.
+// наш состав и рейтинг (RatingStars) вышедших на поле игроков.
 //
 // ИСПРАВЛЕНО: раньше здесь запрашивался matchdetails.xml и читалось
 // Team/Lineup/Player/RatingStars — это поле никогда не было подтверждено
@@ -101,10 +101,18 @@ function parseMatchLineupRatings(xml: string): Record<number, number> {
   const lineup = team?.Lineup as Record<string, unknown> | undefined;
   const players = asArray(lineup?.Player);
 
+  // ИСПРАВЛЕНО: RatingStars — основной рейтинг за матч (то, что Hattrick
+  // официально показывает как "звёзды" игрока за игру); RatingStarsEndOfMatch —
+  // отдельное поле, дающее рейтинг именно К КОНЦУ матча, уже сниженный
+  // усталостью к 90-й минуте. Раньше здесь бралось RatingStarsEndOfMatch
+  // первым — из-за этого столбец "Рейтинг последнего матча" в "Составе"
+  // систематически показывал заниженные значения по сравнению с реальным
+  // hattrick.org (подтверждено на живых данных: например, Elimbetov 7.5 на
+  // сайте Hattrick vs 5.5 здесь, Farstad 11.5 vs 9, Usenov 8 vs 5.5).
   const ratings: Record<number, number> = {};
   for (const p of players) {
     const id = Number(p.PlayerID ?? p.PlayerId ?? 0);
-    const ratingRaw = p.RatingStarsEndOfMatch ?? p.RatingStars;
+    const ratingRaw = p.RatingStars ?? p.RatingStarsEndOfMatch;
     if (!id || ratingRaw === undefined) continue;
     const rating = Number(ratingRaw);
     if (!Number.isNaN(rating)) ratings[id] = rating;

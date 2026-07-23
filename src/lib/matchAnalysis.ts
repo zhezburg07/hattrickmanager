@@ -308,12 +308,17 @@ function parseSubstitutionsFromEventList(
 // github.com/lucianoq/hattrick, chpp/file_matchlineup.go): RatingStars и
 // RatingStarsEndOfMatch — оба типа float64, то есть Hattrick уже присылает
 // готовое десятичное число звёзд (например "7.5"), никакого масштабирования
-// (÷10, ÷100 и т.п.) быть не должно — Number() и toFixed(1) в вызывающем
-// коде (MatchDetailAnalysis.tsx) тут ничего не портят. Если рейтинг всё
-// равно выглядит неверным на реальном ответе — см. rawSample в debug
-// (RATINGS RAW): там сырые строковые значения ДО Number(), чтобы увидеть
-// точно, что именно прислал Hattrick для конкретного игрока, а не гадать
-// про масштаб вслепую.
+// (÷10, ÷100 и т.п.) не требуется — Number() и toFixed(1) в вызывающем коде
+// (MatchDetailAnalysis.tsx) тут ничего не портят.
+//
+// ИСПРАВЛЕНО (подтверждено на живых данных): раньше отдавалось предпочтение
+// RatingStarsEndOfMatch — это НЕ то же самое, что "рейтинг за матч": по
+// документации того же CHPP-клиента RatingStarsEndOfMatch — рейтинг ИМЕННО
+// к концу игры, уже сниженный усталостью к 90-й минуте, тогда как RatingStars
+// — основной рейтинг за матч, который Hattrick официально показывает как
+// "звёзды" игрока. Из-за неверного приоритета рейтинги были систематически
+// занижены (например, Elimbetov 7.5 на hattrick.org vs 5.5 здесь, Farstad
+// 11.5 vs 9, Usenov 8 vs 5.5).
 async function fetchTeamLineupRatings(
   tokens: StoredHattrickTokens,
   matchId: string,
@@ -348,7 +353,7 @@ async function fetchTeamLineupRatings(
   const rawSample: string[] = [];
   for (const p of players) {
     const id = Number(p.PlayerID ?? 0);
-    const ratingRaw = p.RatingStarsEndOfMatch ?? p.RatingStars;
+    const ratingRaw = p.RatingStars ?? p.RatingStarsEndOfMatch;
     if (rawSample.length < 4) {
       rawSample.push(
         `#${id}: RatingStars=${JSON.stringify(p.RatingStars)}, RatingStarsEndOfMatch=${JSON.stringify(p.RatingStarsEndOfMatch)}, использовано=${JSON.stringify(ratingRaw)}`,
