@@ -48,6 +48,17 @@ interface MatchAttendance {
   roof: number;
   vip: number;
   total: number;
+  capacityTerraces: number | null;
+  capacityBasic: number | null;
+  capacityRoof: number | null;
+  capacityVip: number | null;
+  capacityTotal: number | null;
+}
+
+interface MatchAttackStats {
+  chancesTotal: number | null;
+  goals: number | null;
+  missed: number | null;
 }
 
 type MatchTimelineKind = "goal" | "card" | "sub" | "injury";
@@ -75,6 +86,9 @@ interface MatchAnalysisResponse {
   awayTeamAttitude: string | null;
   attendance: MatchAttendance | null;
   attendanceError: string | null;
+  weather: string | null;
+  homeAttackStats: MatchAttackStats | null;
+  awayAttackStats: MatchAttackStats | null;
   timeline: MatchTimelineEntry[] | null;
   timelineSource: "with-subs" | "without-subs" | null;
   timelineError: string | null;
@@ -187,7 +201,7 @@ function zoneSharePercent(own: number | null, opponentContest: number | null): n
 // пустыми — читались из несуществующего в matchdetails.xml поля Lineup;
 // список игроков с рейтингом отдаёт отдельный файл matchlineup.xml, откуда
 // же берётся RoleID для расстановки маркеров на поле ниже.
-export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch }) {
+export default function MatchDetailAnalysis({ match, ourTeamName }: { match: AnalyzableMatch; ourTeamName: string }) {
   const [tab, setTab] = useState<ReportTab>("ratings");
   const [data, setData] = useState<MatchAnalysisResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -217,6 +231,9 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
             awayTeamAttitude: null,
             attendance: null,
             attendanceError: "Не удалось загрузить",
+            weather: null,
+            homeAttackStats: null,
+            awayAttackStats: null,
             timeline: null,
             timelineSource: null,
             timelineError: "Не удалось загрузить",
@@ -233,7 +250,7 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
     };
   }, [match.id]);
 
-  const ourName = "Наша команда";
+  const ourName = ourTeamName;
   const homeName = match.home ? ourName : match.opponent;
   const awayName = match.home ? match.opponent : ourName;
 
@@ -498,47 +515,66 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
             ) : (
               data.attendance && (
                 <>
-                  {data.attendance.arenaName && (
-                    <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none", marginBottom: 12 }}>
-                      Стадион «{data.attendance.arenaName}»
-                    </p>
-                  )}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12, alignItems: "baseline" }}>
+                    {data.attendance.arenaName && (
+                      <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none", margin: 0 }}>
+                        Стадион «{data.attendance.arenaName}»
+                      </p>
+                    )}
+                    {data.weather && (
+                      <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none", margin: 0 }}>
+                        Погода: {data.weather}
+                      </p>
+                    )}
+                  </div>
                   <div className={styles.tableWrap}>
                     <table className={styles.table}>
                       <thead>
                         <tr>
                           <th>Категория мест</th>
                           <th style={{ textAlign: "right" }}>Продано билетов</th>
+                          <th style={{ textAlign: "right" }}>Вместимость</th>
                         </tr>
                       </thead>
                       <tbody>
-                        <tr>
-                          <td>Террасы</td>
-                          <td className={styles.numCell}>{data.attendance.terraces.toLocaleString("ru-RU")}</td>
-                        </tr>
-                        <tr>
-                          <td>Обычные</td>
-                          <td className={styles.numCell}>{data.attendance.basic.toLocaleString("ru-RU")}</td>
-                        </tr>
-                        <tr>
-                          <td>Под крышей</td>
-                          <td className={styles.numCell}>{data.attendance.roof.toLocaleString("ru-RU")}</td>
-                        </tr>
-                        <tr>
-                          <td>VIP</td>
-                          <td className={styles.numCell}>{data.attendance.vip.toLocaleString("ru-RU")}</td>
-                        </tr>
+                        {(
+                          [
+                            ["Террасы", data.attendance.terraces, data.attendance.capacityTerraces],
+                            ["Обычные", data.attendance.basic, data.attendance.capacityBasic],
+                            ["Под крышей", data.attendance.roof, data.attendance.capacityRoof],
+                            ["VIP", data.attendance.vip, data.attendance.capacityVip],
+                          ] as [string, number, number | null][]
+                        ).map(([label, sold, capacity]) => (
+                          <tr key={label}>
+                            <td>{label}</td>
+                            <td className={styles.numCell}>{sold.toLocaleString("ru-RU")}</td>
+                            <td className={styles.numCell}>{capacity !== null ? capacity.toLocaleString("ru-RU") : "—"}</td>
+                          </tr>
+                        ))}
                         <tr className={styles.totalRow}>
                           <td>Итого</td>
                           <td className={styles.numCell}>{data.attendance.total.toLocaleString("ru-RU")}</td>
+                          <td className={styles.numCell}>
+                            {data.attendance.capacityTotal !== null ? data.attendance.capacityTotal.toLocaleString("ru-RU") : "—"}
+                          </td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
                   <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 12 }}>
-                    Количество проданных билетов — реальные данные CHPP. Доход от продажи билетов именно за этот матч
-                    Hattrick отдельным полем не сообщает (только количество мест по категориям) — цена за место не
-                    входит в ответ CHPP.
+                    {data.attendance.capacityTotal !== null && data.attendance.capacityTotal > 0 ? (
+                      <>
+                        Заполненность стадиона:{" "}
+                        <b style={{ color: "var(--color-text)" }}>
+                          {Math.round((data.attendance.total / data.attendance.capacityTotal) * 100)}%
+                        </b>{" "}
+                        ({data.attendance.total.toLocaleString("ru-RU")} из {data.attendance.capacityTotal.toLocaleString("ru-RU")} мест).{" "}
+                      </>
+                    ) : (
+                      "Вместимость стадиона для этого матча получить не удалось (см. диагностику внизу). "
+                    )}
+                    Доход от продажи билетов именно за этот матч Hattrick отдельным полем не сообщает — цена за место
+                    не входит в ответ CHPP.
                   </p>
                 </>
               )
@@ -555,8 +591,9 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
             ) : (
               data.timeline &&
                 (() => {
+                  const timeline = data.timeline as MatchTimelineEntry[];
                   const ourSide = match.home ? "home" : "away";
-                  const maxMinute = Math.max(90, ...data.timeline.map((ev) => ev.minute));
+                  const maxMinute = Math.max(90, ...timeline.map((ev) => ev.minute));
                   return (
                     <>
                       {data.timelineSource === "without-subs" && (
@@ -565,11 +602,58 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
                           доступны), но не замены (их можно распознать только из полного отчёта).
                         </p>
                       )}
+                      <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 4 }}>
+                        Статистика атакующих моментов: строка «Голы» — реальные отметки по минутам (те же данные, что и
+                        на самой ленте ниже). Hattrick отдаёт «нереализовано»/«всего моментов» только итоговым числом за
+                        весь матч, без разбивки по минутам — расставить их точками по шкале означало бы придумать
+                        позиции, поэтому вместо этого показаны настоящие итоговые числа. Полная разбивка событий по
+                        EventTypeID — в «Диагностика» внизу страницы.
+                      </p>
+                      {(
+                        [
+                          ["home", data.homeTeamName || homeName, data.homeAttackStats] as const,
+                        ]
+                      ).map(([side, label, stats]) => (
+                        <div className={styles.attackStatsSide} key={side}>
+                          <div className={styles.attackStatsSideLabel}>{label}</div>
+                          <div className={`${styles.attackStatsRow} ${styles.attackStatsRowGoals}`}>
+                            <span className={styles.attackStatsRowLabel}>Голы</span>
+                            <div className={styles.attackStatsDotTrack}>
+                              {timeline
+                                .filter((ev) => ev.kind === "goal" && ev.teamSide === side)
+                                .map((ev, i) => (
+                                  <span
+                                    key={i}
+                                    className={`${styles.attackStatsDot} ${styles.attackStatsDotGoals}`}
+                                    style={{ left: `${(ev.minute / maxMinute) * 100}%` }}
+                                    title={`${ev.minute}'`}
+                                  />
+                                ))}
+                            </div>
+                          </div>
+                          <div className={`${styles.attackStatsRow} ${styles.attackStatsRowMissed}`}>
+                            <span className={styles.attackStatsRowLabel}>Нереализовано</span>
+                            <span className={styles.attackStatsStatic}>
+                              {stats?.missed !== null && stats?.missed !== undefined
+                                ? `${stats.missed} за весь матч (без разбивки по минутам)`
+                                : "нет данных"}
+                            </span>
+                          </div>
+                          <div className={`${styles.attackStatsRow} ${styles.attackStatsRowTotal}`}>
+                            <span className={styles.attackStatsRowLabel}>Всего моментов</span>
+                            <span className={styles.attackStatsStatic}>
+                              {stats?.chancesTotal !== null && stats?.chancesTotal !== undefined
+                                ? `${stats.chancesTotal} за весь матч (без разбивки по минутам)`
+                                : "нет данных"}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
                       <div className={styles.timelineHorizontalWrap}>
                         <div className={styles.timelineHorizontalTrack}>
                           <span className={`${styles.timelineEndLabel} ${styles.timelineEndLabelStart}`}>0&apos;</span>
                           <span className={`${styles.timelineEndLabel} ${styles.timelineEndLabelEnd}`}>{maxMinute}&apos;</span>
-                          {data.timeline.map((ev, i) => {
+                          {timeline.map((ev, i) => {
                             const isOurs = ev.teamSide === ourSide;
                             const isRedCard = ev.kind === "card" && /красн/i.test(ev.text);
                             const isLightInjury = ev.kind === "injury" && /лёгк|ушиб/i.test(ev.text);
@@ -610,6 +694,46 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
                           })}
                         </div>
                       </div>
+                      {(
+                        [
+                          ["away", data.awayTeamName || awayName, data.awayAttackStats] as const,
+                        ]
+                      ).map(([side, label, stats]) => (
+                        <div className={styles.attackStatsSide} key={side}>
+                          <div className={`${styles.attackStatsRow} ${styles.attackStatsRowTotal}`}>
+                            <span className={styles.attackStatsRowLabel}>Всего моментов</span>
+                            <span className={styles.attackStatsStatic}>
+                              {stats?.chancesTotal !== null && stats?.chancesTotal !== undefined
+                                ? `${stats.chancesTotal} за весь матч (без разбивки по минутам)`
+                                : "нет данных"}
+                            </span>
+                          </div>
+                          <div className={`${styles.attackStatsRow} ${styles.attackStatsRowMissed}`}>
+                            <span className={styles.attackStatsRowLabel}>Нереализовано</span>
+                            <span className={styles.attackStatsStatic}>
+                              {stats?.missed !== null && stats?.missed !== undefined
+                                ? `${stats.missed} за весь матч (без разбивки по минутам)`
+                                : "нет данных"}
+                            </span>
+                          </div>
+                          <div className={`${styles.attackStatsRow} ${styles.attackStatsRowGoals}`}>
+                            <span className={styles.attackStatsRowLabel}>Голы</span>
+                            <div className={styles.attackStatsDotTrack}>
+                              {timeline
+                                .filter((ev) => ev.kind === "goal" && ev.teamSide === side)
+                                .map((ev, i) => (
+                                  <span
+                                    key={i}
+                                    className={`${styles.attackStatsDot} ${styles.attackStatsDotGoals}`}
+                                    style={{ left: `${(ev.minute / maxMinute) * 100}%` }}
+                                    title={`${ev.minute}'`}
+                                  />
+                                ))}
+                            </div>
+                          </div>
+                          <div className={styles.attackStatsSideLabel}>{label}</div>
+                        </div>
+                      ))}
                     </>
                   );
                 })()

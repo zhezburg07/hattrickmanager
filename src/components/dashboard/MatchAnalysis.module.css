@@ -318,6 +318,7 @@
   position: relative;
   display: flex;
   flex-direction: row;
+  justify-content: center;
   align-items: stretch;
   gap: 4px;
   background: linear-gradient(90deg, #1e4436 0%, #17362a 50%, #1e4436 100%);
@@ -329,9 +330,11 @@
 
 .zonePitchSection {
   flex: 1;
+  max-width: 260px;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: space-around;
   gap: 10px;
   padding: 0 8px;
@@ -488,6 +491,84 @@
 .timelineMarkerInjury {
   border-color: #e0913f;
   background: rgba(224, 145, 63, 0.2);
+}
+
+/* Статистика атакующих моментов — 3 строки над/под временной шкалой (см.
+   комментарий у MatchAttackStats в src/lib/matchAnalysis.ts): "Голы" —
+   реальные точки по минутам (те же данные, что и на самой ленте), а
+   "Нереализовано"/"Всего моментов" Hattrick отдаёт только итоговым числом
+   за весь матч — показаны как текст, а не выдуманные точки на шкале. */
+.attackStatsSide {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 640px;
+  margin: 2px 0;
+}
+
+.attackStatsSideLabel {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.attackStatsRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.attackStatsRowLabel {
+  flex: none;
+  width: 108px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.attackStatsRowGoals .attackStatsRowLabel {
+  color: var(--color-good);
+}
+
+.attackStatsRowMissed .attackStatsRowLabel {
+  color: var(--color-bad);
+}
+
+.attackStatsRowTotal .attackStatsRowLabel {
+  color: var(--color-text-muted);
+}
+
+.attackStatsDotTrack {
+  position: relative;
+  flex: 1;
+  height: 3px;
+  background: rgba(242, 237, 225, 0.12);
+  border-radius: 999px;
+}
+
+.attackStatsDot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.attackStatsDotGoals {
+  background: var(--color-good);
+}
+
+.attackStatsStatic {
+  font-size: 11.5px;
+  color: var(--color-text);
+}
+
+.attackStatsRowMissed .attackStatsStatic {
+  color: var(--color-bad);
+}
+
+.attackStatsRowTotal .attackStatsStatic {
+  color: var(--color-text-muted);
 }
 
 /* Посещаемость */

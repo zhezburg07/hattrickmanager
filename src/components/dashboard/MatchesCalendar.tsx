@@ -78,6 +78,7 @@ export default function MatchesCalendar({
                       ourScore: m.ourScore as number,
                       oppScore: m.oppScore as number,
                     }}
+                    ourTeamName={ourTeamName}
                   />
                 </div>
               )}

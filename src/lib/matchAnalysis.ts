@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import { assertNoChppError } from "./chppError";
+import { parseArenaDetailsXml } from "./arena";
 import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
 import { stripHtml } from "./htmlText";
 
@@ -71,6 +72,30 @@ export interface MatchAttendance {
   roof: number;
   vip: number;
   total: number;
+  // Вместимость стадиона по категориям — ОТДЕЛЬНЫЙ реальный запрос
+  // arenadetails.xml (см. src/lib/arena.ts), по ArenaID именно ЭТОГО матча
+  // (matchdetails->Arena->ArenaID), а не "своего" стадиона: на выездном
+  // матче посещаемость считается от вместимости стадиона СОПЕРНИКА.
+  // null, если запрос не удался или ArenaID не пришёл.
+  capacityTerraces: number | null;
+  capacityBasic: number | null;
+  capacityRoof: number | null;
+  capacityVip: number | null;
+  capacityTotal: number | null;
+}
+
+// Статистика атакующих моментов команды за матч — реальные подтверждённые
+// поля matchdetails.xml (chpp/file_matchdetails.go, независимый CHPP-клиент
+// github.com/lucianoq/hattrick): NrOfChancesLeft/Center/Right/
+// SpecialEvents/Other — ЭТО ИТОГИ ЗА ВЕСЬ МАТЧ, без разбивки по минутам
+// (в отличие от Scorers/Goal, у которых есть точная минута каждого гола).
+// goals — HomeGoals/AwayGoals, тоже итог за матч (используется просто как
+// точное число реализованных моментов). missed — производное значение
+// (chancesTotal - goals), тоже итог за матч, НЕ распределённый по времени.
+export interface MatchAttackStats {
+  chancesTotal: number | null;
+  goals: number | null;
+  missed: number | null;
 }
 
 // Тактический приказ команды на матч — подтверждённое поле <TacticType>
@@ -97,6 +122,45 @@ const TEAM_ATTITUDE_LABEL: Record<number, string> = {
   0: "Как обычно",
   1: "Матч сезона",
 };
+
+// Погода — подтверждённое поле <WeatherID> (chpp/type_weather.go): значения
+// описывают только облачность/осадки, отдельного поля температуры в
+// matchdetails.xml не найдено ни в одном независимом CHPP-клиенте.
+const MATCH_WEATHER_LABEL: Record<number, string> = {
+  0: "Дождь",
+  1: "Пасмурно",
+  2: "Переменная облачность",
+  3: "Солнечно",
+};
+
+function parseWeatherLabel(match: Record<string, unknown>): string | null {
+  const arena = match.Arena as Record<string, unknown> | undefined;
+  if (!arena || arena.WeatherID === undefined || arena.WeatherID === null || arena.WeatherID === "") return null;
+  const n = Number(arena.WeatherID);
+  if (Number.isNaN(n)) return null;
+  return MATCH_WEATHER_LABEL[n] ?? `Погода (тип ${n})`;
+}
+
+// Итоговая (не по минутам) статистика атакующих моментов — см. MatchAttackStats
+// выше. NrOfChances* — подтверждённые поля, но каждое всегда присутствует как
+// число (0, если моментов не было), поэтому "нет данных" отличаем по
+// отсутствию самого контейнера team, а не по конкретному полю.
+function parseAttackStats(team: Record<string, unknown> | undefined, goalsRaw: unknown): MatchAttackStats | null {
+  if (!team) return null;
+  const chanceFields = [
+    team.NrOfChancesLeft,
+    team.NrOfChancesCenter,
+    team.NrOfChancesRight,
+    team.NrOfChancesSpecialEvents,
+    team.NrOfChancesOther,
+  ];
+  const hasChanceData = chanceFields.some((v) => v !== undefined && v !== null);
+  const chancesTotal = hasChanceData ? chanceFields.reduce((sum: number, v) => sum + (Number(v) || 0), 0) : null;
+  const goals = numOrNull(goalsRaw);
+  const missed = chancesTotal !== null && goals !== null ? chancesTotal - goals : null;
+  if (chancesTotal === null && goals === null) return null;
+  return { chancesTotal, goals, missed };
+}
 
 export type MatchTimelineKind = "goal" | "card" | "sub" | "injury";
 // Есть ли в ответе полный EventList (matchEvents=true сработал) — от этого
@@ -135,6 +199,15 @@ export interface MatchAnalysisResult {
 
   attendance: MatchAttendance | null;
   attendanceError: string | null;
+
+  // Погода матча — подтверждённое поле <Arena><WeatherID> (chpp/type_weather.go,
+  // независимый CHPP-клиент github.com/lucianoq/hattrick): 0=дождь,
+  // 1=пасмурно, 2=переменная облачность, 3=солнечно. Отдельного поля
+  // температуры в matchdetails.xml не подтверждено — не выдумываем.
+  weather: string | null;
+
+  homeAttackStats: MatchAttackStats | null;
+  awayAttackStats: MatchAttackStats | null;
 
   timeline: MatchTimelineEntry[] | null;
   timelineSource: MatchTimelineSource | null;
@@ -233,6 +306,11 @@ function parseAttendance(match: Record<string, unknown>): MatchAttendance | null
     roof: roof ?? 0,
     vip: vip ?? 0,
     total: total ?? 0,
+    capacityTerraces: null,
+    capacityBasic: null,
+    capacityRoof: null,
+    capacityVip: null,
+    capacityTotal: null,
   };
 }
 
@@ -339,6 +417,37 @@ function parseInjuriesTimeline(
 // гола и т.п.) сюда НЕ попадают и в хронологии не показываются — по запросу
 // показываем только содержательные события (голы/карточки/травмы/замены).
 const SUBSTITUTION_PATTERN = /(substitut|comes on for|replaces .*(for|as)|заменил|заменяет|выходит вместо|вышел вместо)/i;
+
+// ВРЕМЕННАЯ диагностика для пункта "статистика атакующих моментов по ходу
+// матча": EventTypeID в EventList официально не документирован НИ для
+// одного значения, и неизвестно, помечены ли там отдельно нереализованные
+// атакующие моменты (в отличие от голов/карточек/травм — у них есть свои
+// подтверждённые контейнеры Scorers/Bookings/Injuries с точной минутой).
+// Комментарий в chpp/file_matchdetails.go у SubjectTeamID/SubjectPlayerID/
+// ObjectPlayerID прямо упоминает "for goals AND CHANCES" — значит отдельные
+// нереализованные моменты, вероятно, ЕСТЬ где-то в EventList, но под каким
+// именно EventTypeID — не подтверждено. Этот дамп считает, сколько раз
+// встретился каждый EventTypeID в реальном ответе, и даёт пример текста —
+// чтобы можно было визуально сопоставить (а не гадать), какие ID похожи на
+// "момент/атаку", прежде чем строить по ним точную по минутам диаграмму.
+function debugEventTypeBreakdown(match: Record<string, unknown>): string {
+  const eventList = match.EventList as Record<string, unknown> | undefined;
+  const events = asArray(eventList?.Event);
+  if (events.length === 0) return "EventList пуст или отсутствует (matchEvents=true не вернул событий).";
+  const byType = new Map<string, { count: number; sample: string }>();
+  for (const e of events) {
+    const typeId = String(e.EventTypeID ?? "?");
+    if (!byType.has(typeId)) {
+      byType.set(typeId, { count: 1, sample: stripHtml(String(e.EventText ?? "")).slice(0, 70) });
+    } else {
+      byType.get(typeId)!.count += 1;
+    }
+  }
+  return [...byType.entries()]
+    .sort((a, b) => b[1].count - a[1].count)
+    .map(([id, { count, sample }]) => `#${id}×${count} ("${sample}")`)
+    .join(" | ");
+}
 
 function parseSubstitutionsFromEventList(
   match: Record<string, unknown>,
@@ -459,6 +568,9 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     awayTeamAttitude: null,
     attendance: null,
     attendanceError: null,
+    weather: null,
+    homeAttackStats: null,
+    awayAttackStats: null,
     timeline: null,
     timelineSource: null,
     timelineError: null,
@@ -545,6 +657,64 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     debug.push(`attendance: исключение при разборе — ${message}`);
   }
 
+  // Вместимость стадиона — ОТДЕЛЬНЫЙ запрос arenadetails.xml по ArenaID
+  // именно ЭТОГО матча (arenadetails поддерживает произвольный arenaID, не
+  // только "свой" стадион — подтверждено, chpp/api/arenadetails.go:
+  // GetArena(arenaID)). Важно брать ArenaID из matchdetails, а не всегда
+  // запрашивать "свой" стадион: на выездном матче посещаемость считается от
+  // вместимости стадиона СОПЕРНИКА, а не нашего.
+  if (attendance) {
+    const arena = match.Arena as Record<string, unknown> | undefined;
+    const arenaId = arena?.ArenaID !== undefined && arena?.ArenaID !== null ? String(arena.ArenaID) : "";
+    if (arenaId) {
+      try {
+        const arenaRaw = await requestChppXmlRaw("arenadetails", { arenaID: arenaId, sourceSystem: "hattrick" }, tokens);
+        if (arenaRaw.httpStatus < 200 || arenaRaw.httpStatus >= 300) {
+          throw new Error(`HTTP ${arenaRaw.httpStatus}`);
+        }
+        const capacity = parseArenaDetailsXml(arenaRaw.rawXml);
+        attendance = {
+          ...attendance,
+          capacityTerraces: capacity.terraces,
+          capacityBasic: capacity.basic,
+          capacityRoof: capacity.roof,
+          capacityVip: capacity.vip,
+          capacityTotal: capacity.total,
+        };
+        debug.push(`arenadetails (ArenaID=${arenaId}): вместимость всего ${capacity.total}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "неизвестная ошибка";
+        debug.push(`arenadetails (ArenaID=${arenaId}): не удалось получить вместимость — ${message}`);
+      }
+    } else {
+      debug.push("arenadetails: ArenaID не пришёл в matchdetails, вместимость не запрошена.");
+    }
+  }
+
+  let weather: string | null = null;
+  try {
+    weather = parseWeatherLabel(match);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "неизвестная ошибка";
+    debug.push(`погода: исключение при разборе — ${message}`);
+  }
+
+  let homeAttackStats: MatchAttackStats | null = null;
+  let awayAttackStats: MatchAttackStats | null = null;
+  try {
+    homeAttackStats = parseAttackStats(homeTeam, homeTeam?.HomeGoals);
+    awayAttackStats = parseAttackStats(awayTeam, awayTeam?.AwayGoals);
+    debug.push(
+      `attackStats — хозяева: моментов всего=${homeAttackStats?.chancesTotal ?? "—"}, голов=${homeAttackStats?.goals ?? "—"}, ` +
+        `нереализовано=${homeAttackStats?.missed ?? "—"}; гости: моментов всего=${awayAttackStats?.chancesTotal ?? "—"}, ` +
+        `голов=${awayAttackStats?.goals ?? "—"}, нереализовано=${awayAttackStats?.missed ?? "—"} (итоги за весь матч, без разбивки по минутам)`,
+    );
+    debug.push(`EventList — разбивка по EventTypeID: ${debugEventTypeBreakdown(match)}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "неизвестная ошибка";
+    debug.push(`attackStats: исключение при разборе — ${message}`);
+  }
+
   let timeline: MatchTimelineEntry[] | null = null;
   let timelineSource: MatchTimelineSource | null = null;
   let timelineError: string | null = null;
@@ -620,6 +790,9 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     awayTeamAttitude,
     attendance,
     attendanceError,
+    weather,
+    homeAttackStats,
+    awayAttackStats,
     timeline,
     timelineSource,
     timelineError,
