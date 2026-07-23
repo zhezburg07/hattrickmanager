@@ -342,17 +342,6 @@
   gap: 6px;
 }
 
-/* Ряд полузащиты — по одному сектору на команду, специально сдвинуты
-   вплотную к центральной линии (а не по центру своей половины), чтобы два
-   сектора полузащиты обеих команд визуально сближались друг с другом. */
-.zonePitchHalfEnd {
-  justify-content: flex-end;
-}
-
-.zonePitchHalfStart {
-  justify-content: flex-start;
-}
-
 .zoneBox {
   display: flex;
   flex-direction: column;

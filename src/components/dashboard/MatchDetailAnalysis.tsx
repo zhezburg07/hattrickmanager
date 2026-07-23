@@ -119,14 +119,15 @@ function fieldPosition(roleId: number | null, side: "home" | "away"): { x: numbe
 }
 
 type ZoneKey = "leftDef" | "midDef" | "rightDef" | "midfield" | "leftAtt" | "midAtt" | "rightAtt";
-type ZoneRow = "defense" | "midfield" | "attack";
 
-// 3 ряда по глубине поля: защита (ближе к своим воротам) → полузащита
-// (средний ряд, один сектор на команду) → атака (ближе к воротам соперника).
-const ZONE_ROWS: { row: ZoneRow; keys: ZoneKey[] }[] = [
-  { row: "defense", keys: ["leftDef", "midDef", "rightDef"] },
-  { row: "midfield", keys: ["midfield"] },
-  { row: "attack", keys: ["leftAtt", "midAtt", "rightAtt"] },
+// 3 ряда по ШИРИНЕ поля (не по глубине — защита/атака внутри одного и того
+// же ряда): левый фланг (защита+атака слева), центр (защита+полузащита+
+// атака по центру), правый фланг (защита+атака справа) — так это выглядит
+// на реальном скриншоте Hattrick, показанном в чате.
+const ZONE_ROWS: { row: string; keys: ZoneKey[] }[] = [
+  { row: "flankLeft", keys: ["leftDef", "leftAtt"] },
+  { row: "center", keys: ["midDef", "midfield", "midAtt"] },
+  { row: "flankRight", keys: ["rightDef", "rightAtt"] },
 ];
 
 // "Лево"/"право" в matchdetails.xml — с точки зрения самой команды, а команды
@@ -143,10 +144,14 @@ const ZONE_CONTEST: Record<ZoneKey, ZoneKey> = {
   rightAtt: "leftDef",
 };
 
-const ZONE_ROW_ICON: Record<ZoneRow, string> = {
-  defense: "🛡",
+const ZONE_ICON: Record<ZoneKey, string> = {
+  leftDef: "🛡",
+  midDef: "🛡",
+  rightDef: "🛡",
   midfield: "⚙",
-  attack: "⚽",
+  leftAtt: "⚽",
+  midAtt: "⚽",
+  rightAtt: "⚽",
 };
 
 function zoneSharePercent(own: number | null, opponentContest: number | null): number | null {
@@ -399,7 +404,7 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
                   {ZONE_ROWS.map(({ row, keys }) => (
                     <div className={styles.zonePitchRow} key={row}>
                       <div
-                        className={`${styles.zonePitchHalf} ${row === "midfield" ? styles.zonePitchHalfEnd : ""}`}
+                        className={styles.zonePitchHalf}
                       >
                         {keys.map((k) => {
                           const value = data.homeZones?.[k] ?? null;
@@ -409,16 +414,14 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
                             <div className={`${styles.zoneBox} ${styles.zoneBoxHome}`} key={`home-${k}`}>
                               <div className={styles.zoneBoxTop}>
                                 <span className={styles.zoneBoxRating}>{value !== null ? Math.round(value) : "—"}</span>
-                                <span className={styles.zoneBoxIcon}>{ZONE_ROW_ICON[row]}</span>
+                                <span className={styles.zoneBoxIcon}>{ZONE_ICON[k]}</span>
                               </div>
                               <div className={styles.zoneBoxShare}>{share !== null ? `${share}%` : "—"}</div>
                             </div>
                           );
                         })}
                       </div>
-                      <div
-                        className={`${styles.zonePitchHalf} ${row === "midfield" ? styles.zonePitchHalfStart : ""}`}
-                      >
+                      <div className={styles.zonePitchHalf}>
                         {keys.map((k) => {
                           const value = data.awayZones?.[k] ?? null;
                           const contest = data.homeZones?.[ZONE_CONTEST[k]] ?? null;
@@ -427,7 +430,7 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
                             <div className={`${styles.zoneBox} ${styles.zoneBoxAway}`} key={`away-${k}`}>
                               <div className={styles.zoneBoxTop}>
                                 <span className={styles.zoneBoxRating}>{value !== null ? Math.round(value) : "—"}</span>
-                                <span className={styles.zoneBoxIcon}>{ZONE_ROW_ICON[row]}</span>
+                                <span className={styles.zoneBoxIcon}>{ZONE_ICON[k]}</span>
                               </div>
                               <div className={styles.zoneBoxShare}>{share !== null ? `${share}%` : "—"}</div>
                             </div>
