@@ -120,16 +120,6 @@ function fieldPosition(roleId: number | null, side: "home" | "away"): { x: numbe
 
 type ZoneKey = "leftDef" | "midDef" | "rightDef" | "midfield" | "leftAtt" | "midAtt" | "rightAtt";
 
-// 3 ряда по ШИРИНЕ поля (не по глубине — защита/атака внутри одного и того
-// же ряда): левый фланг (защита+атака слева), центр (защита+полузащита+
-// атака по центру), правый фланг (защита+атака справа) — так это выглядит
-// на реальном скриншоте Hattrick, показанном в чате.
-const ZONE_ROWS: { row: string; keys: ZoneKey[] }[] = [
-  { row: "flankLeft", keys: ["leftDef", "leftAtt"] },
-  { row: "center", keys: ["midDef", "midfield", "midAtt"] },
-  { row: "flankRight", keys: ["rightDef", "rightAtt"] },
-];
-
 // "Лево"/"право" в matchdetails.xml — с точки зрения самой команды, а команды
 // стоят на поле лицом друг к другу — поэтому мой левый защитник встречается
 // не с левым, а с ПРАВЫМ нападающим соперника (и наоборот). Через эту пару
@@ -143,6 +133,20 @@ const ZONE_CONTEST: Record<ZoneKey, ZoneKey> = {
   midAtt: "midDef",
   rightAtt: "leftDef",
 };
+
+// 3 ряда поля по ГЛУБИНЕ, сверху вниз (от наших ворот к воротам соперника):
+// в 1-м ряду наша Защита физически сталкивается с Атакой соперника (не с
+// его защитой!) — это та же самая точка поля, где наши защитники встречают
+// их нападающих. В центре — полузащита обеих команд (по одной зоне, не
+// разбита на лево/центр/право). В 3-м ряду — наша Атака против защиты
+// соперника. homeKeys[i] и awayKeys[i] — всегда пара из ZONE_CONTEST выше,
+// поэтому i-й столбец ряда показывает ровно то противостояние, по которому
+// считается процент.
+const ZONE_PITCH_ROWS: { homeKeys: ZoneKey[]; awayKeys: ZoneKey[] }[] = [
+  { homeKeys: ["leftDef", "midDef", "rightDef"], awayKeys: ["rightAtt", "midAtt", "leftAtt"] },
+  { homeKeys: ["midfield"], awayKeys: ["midfield"] },
+  { homeKeys: ["leftAtt", "midAtt", "rightAtt"], awayKeys: ["rightDef", "midDef", "leftDef"] },
+];
 
 const ZONE_ICON: Record<ZoneKey, string> = {
   leftDef: "🛡",
@@ -400,18 +404,15 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
                 </p>
 
                 <div className={styles.zonePitch}>
-                  <div className={styles.zonePitchDivider} />
-                  {ZONE_ROWS.map(({ row, keys }) => (
-                    <div className={styles.zonePitchRow} key={row}>
-                      <div
-                        className={styles.zonePitchHalf}
-                      >
-                        {keys.map((k) => {
+                  {ZONE_PITCH_ROWS.map(({ homeKeys, awayKeys }, rowIndex) => (
+                    <div className={styles.zonePitchBand} key={rowIndex}>
+                      <div className={styles.zonePitchBandLine}>
+                        {homeKeys.map((k, i) => {
                           const value = data.homeZones?.[k] ?? null;
-                          const contest = data.awayZones?.[ZONE_CONTEST[k]] ?? null;
+                          const contest = data.awayZones?.[awayKeys[i]] ?? null;
                           const share = zoneSharePercent(value, contest);
                           return (
-                            <div className={`${styles.zoneBox} ${styles.zoneBoxHome}`} key={`home-${k}`}>
+                            <div className={`${styles.zoneBox} ${styles.zoneBoxHome}`} key={`home-${k}-${i}`}>
                               <div className={styles.zoneBoxTop}>
                                 <span className={styles.zoneBoxRating}>{value !== null ? Math.round(value) : "—"}</span>
                                 <span className={styles.zoneBoxIcon}>{ZONE_ICON[k]}</span>
@@ -421,13 +422,13 @@ export default function MatchDetailAnalysis({ match }: { match: AnalyzableMatch 
                           );
                         })}
                       </div>
-                      <div className={styles.zonePitchHalf}>
-                        {keys.map((k) => {
+                      <div className={styles.zonePitchBandLine}>
+                        {awayKeys.map((k, i) => {
                           const value = data.awayZones?.[k] ?? null;
-                          const contest = data.homeZones?.[ZONE_CONTEST[k]] ?? null;
+                          const contest = data.homeZones?.[homeKeys[i]] ?? null;
                           const share = zoneSharePercent(value, contest);
                           return (
-                            <div className={`${styles.zoneBox} ${styles.zoneBoxAway}`} key={`away-${k}`}>
+                            <div className={`${styles.zoneBox} ${styles.zoneBoxAway}`} key={`away-${k}-${i}`}>
                               <div className={styles.zoneBoxTop}>
                                 <span className={styles.zoneBoxRating}>{value !== null ? Math.round(value) : "—"}</span>
                                 <span className={styles.zoneBoxIcon}>{ZONE_ICON[k]}</span>

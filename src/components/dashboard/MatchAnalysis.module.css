@@ -305,41 +305,38 @@
   color: var(--color-text-muted);
 }
 
-/* Поле с секторами — обычный зелёный газон (как и раньше), команды-акценты
-   только на самих боксах секторов, а не на фоне поля целиком. */
+/* Поле с секторами — обычный зелёный газон, команды-акценты только на самих
+   боксах секторов. Раскладка теперь по ГЛУБИНЕ поля сверху вниз (от наших
+   ворот к воротам соперника, см. ZONE_PITCH_ROWS) — 3 "полосы", в каждой
+   своя пара строк: наша линия сверху, линия соперника снизу, оба ряда
+   показывают зоны, которые физически сталкиваются в этом месте поля
+   (наша защита — с их атакой, и т.п.), а не просто "наша половина/их
+   половина" — поэтому вертикальный разделитель по центру больше не нужен,
+   вместо него — отступ между тремя полосами по вертикали.
+   Ratio: 3 полосы, вертикальный (не горизонтальный, как раньше) газонный
+   градиент — под сверху-вниз ориентацию полос. */
 .zonePitch {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  background: linear-gradient(90deg, #1e4436 0%, #17362a 50%, #1e4436 100%);
+  gap: 22px;
+  background: linear-gradient(180deg, #1e4436 0%, #17362a 50%, #1e4436 100%);
   border: 2px solid rgba(242, 237, 225, 0.35);
   border-radius: var(--radius);
-  padding: 16px 12px;
+  padding: 18px 12px;
   margin-top: 4px;
 }
 
-.zonePitchDivider {
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 50%;
-  width: 2px;
-  background: rgba(242, 237, 225, 0.4);
-}
-
-.zonePitchRow {
+.zonePitchBand {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
 }
 
-.zonePitchHalf {
-  flex: 1;
-  min-width: 0;
+.zonePitchBandLine {
   display: flex;
-  justify-content: space-around;
-  gap: 6px;
+  justify-content: center;
+  gap: 10px;
 }
 
 .zoneBox {
