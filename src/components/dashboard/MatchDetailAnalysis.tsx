@@ -197,6 +197,14 @@ const ZONE_ICON: Record<ZoneKey, string> = {
   rightAtt: "⚽",
 };
 
+// Координаты (x = глубина поля 0-100, y = ширина поля 0-100) для 7 боксов
+// зон, встроенных теперь прямо в единое персистентное поле .matchPitch (см.
+// ZONE_PITCH_SECTIONS выше для группировки по секциям/парам) — та же логика
+// "глубины", что и в FIELD_POSITIONS для маркеров игроков (наши ворота
+// слева ~x=20, центр поля x=50, ворота соперника ~x=80).
+const SECTION_X: Record<"myHalf" | "center" | "oppHalf", number> = { myHalf: 20, center: 50, oppHalf: 80 };
+const ROW_Y = [22, 50, 78];
+
 function zoneSharePercent(own: number | null, opponentContest: number | null): number | null {
   if (own === null && opponentContest === null) return null;
   const o = own ?? 0;
@@ -379,8 +387,17 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
   const homeBench = data?.homeRatings.filter((p) => fieldPosition(p.roleId, "home") === null) ?? [];
   const awayBench = data?.awayRatings.filter((p) => fieldPosition(p.roleId, "away") === null) ?? [];
 
+  const timeline = !data?.timelineError ? (data?.timeline ?? null) : null;
+  const ourSide = match.home ? "home" : "away";
+  const maxMinute = timeline ? Math.max(90, ...timeline.map((ev) => ev.minute)) : 90;
+  const RULER_MINUTES = [0, 15, 30, 45, 60, 75, 90].filter((m) => m <= maxMinute);
+
   return (
     <div className={styles.card}>
+      {/* ВРЕМЕННЫЙ маркер для проверки деплоя — убрать после подтверждения,
+          что эта версия дошла до продакшена. */}
+      <div className={styles.testBgMarker}>ТЕСТ ФОНА v2</div>
+
       <div className={styles.reportTabs}>
         {reportTabs.map((t) => (
           <button
@@ -416,21 +433,23 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
           </p>
         )}
 
-        {!loading && data && !data.error && tab === "ratings" && (
-          <>
-            {data.ratingsError && (
-              <p
-                className={`${styles.cardTitle} ${styles.dataPanel}`}
-                style={{ fontWeight: 400, textTransform: "none", marginBottom: 12 }}
-              >
-                {data.ratingsError}
-              </p>
-            )}
+        {/* ЕДИНОЕ персистентное поле — один и тот же DOM-узел при любой
+            вкладке (форма/размер не зависят от tab, как счёт матча выше).
+            Меняется только содержимое ВНУТРИ него — маркеры/зоны/таймлайн/
+            панель посещаемости — через абсолютное позиционирование. Ничего
+            перед этим div не рендерится условно по вкладке, чтобы React не
+            пересоздавал его при переключении (см. комментарий у .matchPitch
+            в MatchAnalysis.module.css). */}
+        {!loading && data && !data.error && (
+          <div className={styles.matchPitch}>
+            <div className={styles.matchPitchCenterLine} />
+            <div className={styles.matchPitchCenterCircle} />
 
-            {(homeStarters.length > 0 || awayStarters.length > 0) && (
-              <>
-                <div className={styles.splitPitch}>
-                  <div className={styles.splitDivider} />
+            {tab === "ratings" &&
+              (data.ratingsError ? (
+                <div className={styles.matchPitchEmpty}>{data.ratingsError}</div>
+              ) : (
+                <>
                   {homeStarters.map((p) => {
                     const pos = fieldPosition(p.roleId, "home");
                     if (!pos) return null;
@@ -455,21 +474,201 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                       </div>
                     );
                   })}
-                </div>
-                <div className={styles.legendRow}>
-                  <span>
-                    <span className={styles.legendDot} style={{ background: "var(--color-good)" }} />
-                    {data.homeTeamName || homeName}
-                  </span>
-                  <span>
-                    <span className={styles.legendDot} style={{ background: "var(--color-text-muted)" }} />
-                    {data.awayTeamName || awayName}
-                  </span>
-                </div>
-              </>
-            )}
+                </>
+              ))}
 
-            <div className={styles.dataPanel} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginTop: 24 }}>
+            {tab === "zones" &&
+              (data.zonesError ? (
+                <div className={styles.matchPitchEmpty}>{data.zonesError}</div>
+              ) : (
+                ZONE_PITCH_SECTIONS.flatMap(({ section, pairs }) =>
+                  pairs.map(({ homeKey, awayKey }, i) => {
+                    const homeValue = data.homeZones?.[homeKey] ?? null;
+                    const awayValue = data.awayZones?.[awayKey] ?? null;
+                    const homeShare = zoneSharePercent(homeValue, awayValue);
+                    const awayShare = zoneSharePercent(awayValue, homeValue);
+                    const x = SECTION_X[section];
+                    const y = pairs.length === 1 ? 50 : ROW_Y[i];
+                    return (
+                      <div className={styles.pitchZoneSlot} style={{ left: `${x}%`, top: `${y}%` }} key={`${section}-${i}`}>
+                        <div className={`${styles.pitchZoneBox} ${styles.zoneBoxHome}`}>
+                          <div className={styles.pitchZoneBoxTop}>
+                            <span className={styles.pitchZoneBoxRating}>{homeValue !== null ? Math.round(homeValue) : "—"}</span>
+                            <span className={styles.pitchZoneBoxIcon}>{ZONE_ICON[homeKey]}</span>
+                          </div>
+                          <div className={styles.pitchZoneBoxShare}>{homeShare !== null ? `${homeShare}%` : "—"}</div>
+                        </div>
+                        <div className={`${styles.pitchZoneBox} ${styles.zoneBoxAway}`}>
+                          <div className={styles.pitchZoneBoxTop}>
+                            <span className={styles.pitchZoneBoxRating}>{awayValue !== null ? Math.round(awayValue) : "—"}</span>
+                            <span className={styles.pitchZoneBoxIcon}>{ZONE_ICON[awayKey]}</span>
+                          </div>
+                          <div className={styles.pitchZoneBoxShare}>{awayShare !== null ? `${awayShare}%` : "—"}</div>
+                        </div>
+                      </div>
+                    );
+                  }),
+                )
+              ))}
+
+            {tab === "timeline" &&
+              (data.timelineError || !timeline ? (
+                <div className={styles.matchPitchEmpty}>{data.timelineError ?? "Хронология недоступна для этого матча."}</div>
+              ) : (
+                <div className={styles.pitchTimelineTrack}>
+                  {RULER_MINUTES.map((m) => (
+                    <span key={m} className={styles.pitchTimelineTick} style={{ left: `${(m / maxMinute) * 100}%` }}>
+                      {m}&apos;
+                    </span>
+                  ))}
+                  {maxMinute > 90 && (
+                    <span className={styles.pitchTimelineTick} style={{ left: "100%" }}>
+                      {maxMinute}&apos;
+                    </span>
+                  )}
+                  {timeline.map((ev, i) => {
+                    const isOurs = ev.teamSide === ourSide;
+                    const isRedCard = ev.kind === "card" && /красн/i.test(ev.text);
+                    const isLightInjury = ev.kind === "injury" && /лёгк|ушиб/i.test(ev.text);
+                    const sideClass = isOurs ? styles.timelineMarkerAbove : styles.timelineMarkerBelow;
+                    const markerClass =
+                      ev.kind === "goal"
+                        ? styles.timelineMarkerGoal
+                        : ev.kind === "card"
+                          ? isRedCard
+                            ? styles.timelineMarkerCardRed
+                            : styles.timelineMarkerCardYellow
+                          : ev.kind === "sub"
+                            ? styles.timelineMarkerSub
+                            : styles.timelineMarkerInjury;
+                    const icon =
+                      ev.kind === "goal" ? (
+                        <GoalBallIcon size={14} />
+                      ) : ev.kind === "card" ? (
+                        isRedCard ? (
+                          "🟥"
+                        ) : (
+                          "🟨"
+                        )
+                      ) : ev.kind === "sub" ? (
+                        <SubstitutionIcon size={14} />
+                      ) : isLightInjury ? (
+                        "🩹"
+                      ) : (
+                        "➕"
+                      );
+                    return (
+                      <span
+                        key={i}
+                        className={`${styles.timelineMarker} ${sideClass} ${markerClass}`}
+                        style={{ left: `${(ev.minute / maxMinute) * 100}%` }}
+                        title={`${ev.minute}' — ${ev.text}`}
+                      >
+                        {icon}
+                      </span>
+                    );
+                  })}
+                </div>
+              ))}
+
+            {tab === "attendance" && (
+              <div className={styles.pitchOverlayPanel}>
+                {data.attendanceError ? (
+                  <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none" }}>
+                    {data.attendanceError}
+                  </p>
+                ) : (
+                  data.attendance && (
+                    <>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12, alignItems: "baseline" }}>
+                        {data.attendance.arenaName && (
+                          <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none", margin: 0 }}>
+                            Стадион «{data.attendance.arenaName}»
+                          </p>
+                        )}
+                        {data.weather && (
+                          <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none", margin: 0 }}>
+                            Погода: {data.weather}
+                          </p>
+                        )}
+                      </div>
+                      <div className={styles.tableWrap}>
+                        <table className={styles.table}>
+                          <thead>
+                            <tr>
+                              <th>Категория мест</th>
+                              <th style={{ textAlign: "right" }}>Продано билетов</th>
+                              <th style={{ textAlign: "right" }}>Вместимость</th>
+                              <th style={{ textAlign: "right" }}>Заполненность</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(
+                              [
+                                ["Террасы", data.attendance.terraces, data.attendance.capacityTerraces],
+                                ["Обычные", data.attendance.basic, data.attendance.capacityBasic],
+                                ["Под крышей", data.attendance.roof, data.attendance.capacityRoof],
+                                ["VIP", data.attendance.vip, data.attendance.capacityVip],
+                              ] as [string, number, number | null][]
+                            ).map(([label, sold, capacity]) => (
+                              <tr key={label}>
+                                <td>{label}</td>
+                                <td className={styles.numCell}>{sold.toLocaleString("ru-RU")}</td>
+                                <td className={styles.numCell}>{capacity !== null ? capacity.toLocaleString("ru-RU") : "—"}</td>
+                                <td className={styles.numCell}>
+                                  {capacity !== null && capacity > 0 ? `${Math.round((sold / capacity) * 100)}%` : "—"}
+                                </td>
+                              </tr>
+                            ))}
+                            <tr className={styles.totalRow}>
+                              <td>Итого</td>
+                              <td className={styles.numCell}>{data.attendance.total.toLocaleString("ru-RU")}</td>
+                              <td className={styles.numCell}>
+                                {data.attendance.capacityTotal !== null ? data.attendance.capacityTotal.toLocaleString("ru-RU") : "—"}
+                              </td>
+                              <td className={styles.numCell}>
+                                {data.attendance.capacityTotal !== null && data.attendance.capacityTotal > 0
+                                  ? `${Math.round((data.attendance.total / data.attendance.capacityTotal) * 100)}%`
+                                  : "—"}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 12 }}>
+                        {data.attendance.capacityTotal === null &&
+                          "Вместимость стадиона для этого матча получить не удалось (см. диагностику внизу). "}
+                        Доход от продажи билетов именно за этот матч Hattrick отдельным полем не сообщает — цена за
+                        место не входит в ответ CHPP.
+                      </p>
+                    </>
+                  )
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Сопутствующие панели — ВСЕГДА после .matchPitch (не перед), чтобы
+            появление/исчезновение этих блоков при переключении вкладок не
+            сдвигало позицию .matchPitch среди соседних элементов и не
+            приводило к его пересозданию (React сравнивает детей по
+            типу+позиции). */}
+        {!loading && data && !data.error && tab === "ratings" && (
+          <>
+            {(homeStarters.length > 0 || awayStarters.length > 0) && (
+              <div className={styles.legendRow} style={{ marginTop: 12 }}>
+                <span>
+                  <span className={styles.legendDot} style={{ background: "var(--color-good)" }} />
+                  {data.homeTeamName || homeName}
+                </span>
+                <span>
+                  <span className={styles.legendDot} style={{ background: "var(--color-text-muted)" }} />
+                  {data.awayTeamName || awayName}
+                </span>
+              </div>
+            )}
+            <div className={styles.dataPanel} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginTop: 16 }}>
               <div>
                 <div className={styles.matchHeadTeam} style={{ marginBottom: 8 }}>
                   {data.homeTeamName || homeName}
@@ -512,300 +711,101 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
           </>
         )}
 
-        {!loading && data && !data.error && tab === "zones" && (
+        {!loading && data && !data.error && tab === "zones" && !data.zonesError && (
           <>
-            {data.zonesError ? (
-              <p className={`${styles.cardTitle} ${styles.dataPanel}`} style={{ fontWeight: 400, textTransform: "none" }}>
-                {data.zonesError}
-              </p>
-            ) : (
-              <div>
-                <div className={styles.dataPanel}>
-                  <div className={styles.zoneInfoPanel}>
-                    <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColHome}`}>
-                      <div className={styles.zoneInfoTeamName}>{data.homeTeamName || homeName}</div>
-                      <div className={styles.zoneInfoRow}>
-                        {data.homeTactic ?? "—"}
-                        {data.homeTeamAttitude ? ` / ${data.homeTeamAttitude}` : ""}
-                      </div>
-                      <div
-                        className={styles.zoneInfoPowerIndex}
-                        title="Наш собственный расчётный показатель силы команды в этом матче, на основе зональных рейтингов — не официальный показатель Hattrick"
-                      >
-                        Индекс силы: <b>{data.homePowerIndex ?? "—"}</b>
-                      </div>
-                    </div>
-                    <div className={styles.zoneInfoDivider} />
-                    <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColAway}`}>
-                      <div className={styles.zoneInfoTeamName}>{data.awayTeamName || awayName}</div>
-                      <div className={styles.zoneInfoRow}>
-                        {data.awayTactic ?? "—"}
-                        {data.awayTeamAttitude ? ` / ${data.awayTeamAttitude}` : ""}
-                      </div>
-                      <div
-                        className={styles.zoneInfoPowerIndex}
-                        title="Наш собственный расчётный показатель силы команды в этом матче, на основе зональных рейтингов — не официальный показатель Hattrick"
-                      >
-                        Индекс силы: <b>{data.awayPowerIndex ?? "—"}</b>
-                      </div>
-                    </div>
+            <div className={styles.dataPanel} style={{ marginTop: 16 }}>
+              <div className={styles.zoneInfoPanel}>
+                <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColHome}`}>
+                  <div className={styles.zoneInfoTeamName}>{data.homeTeamName || homeName}</div>
+                  <div className={styles.zoneInfoRow}>
+                    {data.homeTactic ?? "—"}
+                    {data.homeTeamAttitude ? ` / ${data.homeTeamAttitude}` : ""}
                   </div>
-                  <p style={{ fontSize: 11.5, color: "var(--color-text-muted)", marginTop: 6, marginBottom: 0 }}>
-                    "Отношение к матчу" CHPP отдаёт только владельцу команды — для соперника поле честно отсутствует
-                    (не "—" по ошибке). "Индекс силы" — наш собственный расчётный показатель (защита + атака,
-                    взвешенные по силе полузащиты, 0-100), а не официальный показатель Hattrick и не формула
-                    HatStats/LoddarStats.
-                  </p>
-                </div>
-
-                <div className={styles.zonePitchWrap} style={{ marginTop: 16 }}>
-                <div className={styles.zonePitch}>
-                  {ZONE_PITCH_SECTIONS.map(({ section, pairs }) => (
-                    <div
-                      className={`${styles.zonePitchSection} ${section === "center" ? styles.zonePitchSectionCenter : ""}`}
-                      key={section}
-                    >
-                      {pairs.map(({ homeKey, awayKey }, i) => {
-                        const homeValue = data.homeZones?.[homeKey] ?? null;
-                        const awayValue = data.awayZones?.[awayKey] ?? null;
-                        const homeShare = zoneSharePercent(homeValue, awayValue);
-                        const awayShare = zoneSharePercent(awayValue, homeValue);
-                        return (
-                          <div className={styles.zonePitchSlot} key={i}>
-                            <div className={`${styles.zoneBox} ${styles.zoneBoxHome}`}>
-                              <div className={styles.zoneBoxTop}>
-                                <span className={styles.zoneBoxRating}>{homeValue !== null ? Math.round(homeValue) : "—"}</span>
-                                <span className={styles.zoneBoxIcon}>{ZONE_ICON[homeKey]}</span>
-                              </div>
-                              <div className={styles.zoneBoxShare}>{homeShare !== null ? `${homeShare}%` : "—"}</div>
-                            </div>
-                            <div className={`${styles.zoneBox} ${styles.zoneBoxAway}`}>
-                              <div className={styles.zoneBoxTop}>
-                                <span className={styles.zoneBoxRating}>{awayValue !== null ? Math.round(awayValue) : "—"}</span>
-                                <span className={styles.zoneBoxIcon}>{ZONE_ICON[awayKey]}</span>
-                              </div>
-                              <div className={styles.zoneBoxShare}>{awayShare !== null ? `${awayShare}%` : "—"}</div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-                </div>
-
-                <div className={styles.dataPanel} style={{ marginTop: 16 }}>
-                  <div className={styles.cardTitle} style={{ marginBottom: 8 }}>
-                    Стандарты
+                  <div
+                    className={styles.zoneInfoPowerIndex}
+                    title="Наш собственный расчётный показатель силы команды в этом матче, на основе зональных рейтингов — не официальный показатель Hattrick"
+                  >
+                    Индекс силы: <b>{data.homePowerIndex ?? "—"}</b>
                   </div>
-                  {setPieceRows.map((row) => {
-                    const homeRaw = data.homeZones?.[row.homeKey] ?? null;
-                    const awayRaw = data.awayZones?.[row.awayKey] ?? null;
-                    const homeWord = zoneWord(homeRaw);
-                    const awayWord = zoneWord(awayRaw);
-                    const total = (homeRaw ?? 0) + (awayRaw ?? 0);
-                    const homeShare = total > 0 ? ((homeRaw ?? 0) / total) * 100 : 50;
-                    return (
-                      <div className={styles.zoneRow} key={row.label}>
-                        <div className={styles.zoneSide}>
-                          <span className={styles.zoneShare}>{homeWord ?? "—"}</span>
-                          <span className={styles.zoneLevel}>{homeRaw !== null ? `${homeRaw}/80` : "нет данных"}</span>
-                        </div>
-                        <div className={styles.zoneLabel}>
-                          {row.label}
-                          <div className={styles.zoneBar} style={{ marginTop: 6 }}>
-                            <div className={styles.zoneBarOwn} style={{ width: `${homeShare}%` }} />
-                            <div className={styles.zoneBarOpp} style={{ width: `${100 - homeShare}%` }} />
-                          </div>
-                        </div>
-                        <div className={`${styles.zoneSide} ${styles.zoneSideRight}`}>
-                          <span className={styles.zoneShare}>{awayWord ?? "—"}</span>
-                          <span className={styles.zoneLevel}>{awayRaw !== null ? `${awayRaw}/80` : "нет данных"}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                </div>
+                <div className={styles.zoneInfoDivider} />
+                <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColAway}`}>
+                  <div className={styles.zoneInfoTeamName}>{data.awayTeamName || awayName}</div>
+                  <div className={styles.zoneInfoRow}>
+                    {data.awayTactic ?? "—"}
+                    {data.awayTeamAttitude ? ` / ${data.awayTeamAttitude}` : ""}
+                  </div>
+                  <div
+                    className={styles.zoneInfoPowerIndex}
+                    title="Наш собственный расчётный показатель силы команды в этом матче, на основе зональных рейтингов — не официальный показатель Hattrick"
+                  >
+                    Индекс силы: <b>{data.awayPowerIndex ?? "—"}</b>
+                  </div>
                 </div>
               </div>
-            )}
+              <p style={{ fontSize: 11.5, color: "var(--color-text-muted)", marginTop: 6, marginBottom: 0 }}>
+                "Отношение к матчу" CHPP отдаёт только владельцу команды — для соперника поле честно отсутствует (не
+                "—" по ошибке). "Индекс силы" — наш собственный расчётный показатель (защита + атака, взвешенные по
+                силе полузащиты, 0-100), а не официальный показатель Hattrick и не формула HatStats/LoddarStats.
+              </p>
+            </div>
+
+            <div className={styles.dataPanel} style={{ marginTop: 16 }}>
+              <div className={styles.cardTitle} style={{ marginBottom: 8 }}>
+                Стандарты
+              </div>
+              {setPieceRows.map((row) => {
+                const homeRaw = data.homeZones?.[row.homeKey] ?? null;
+                const awayRaw = data.awayZones?.[row.awayKey] ?? null;
+                const homeWord = zoneWord(homeRaw);
+                const awayWord = zoneWord(awayRaw);
+                const total = (homeRaw ?? 0) + (awayRaw ?? 0);
+                const homeShare = total > 0 ? ((homeRaw ?? 0) / total) * 100 : 50;
+                return (
+                  <div className={styles.zoneRow} key={row.label}>
+                    <div className={styles.zoneSide}>
+                      <span className={styles.zoneShare}>{homeWord ?? "—"}</span>
+                      <span className={styles.zoneLevel}>{homeRaw !== null ? `${homeRaw}/80` : "нет данных"}</span>
+                    </div>
+                    <div className={styles.zoneLabel}>
+                      {row.label}
+                      <div className={styles.zoneBar} style={{ marginTop: 6 }}>
+                        <div className={styles.zoneBarOwn} style={{ width: `${homeShare}%` }} />
+                        <div className={styles.zoneBarOpp} style={{ width: `${100 - homeShare}%` }} />
+                      </div>
+                    </div>
+                    <div className={`${styles.zoneSide} ${styles.zoneSideRight}`}>
+                      <span className={styles.zoneShare}>{awayWord ?? "—"}</span>
+                      <span className={styles.zoneLevel}>{awayRaw !== null ? `${awayRaw}/80` : "нет данных"}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </>
         )}
 
-        {!loading && data && !data.error && tab === "attendance" && (
-          <div className={styles.dataPanel}>
-            {data.attendanceError ? (
-              <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none" }}>
-                {data.attendanceError}
-              </p>
-            ) : (
-              data.attendance && (
-                <>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12, alignItems: "baseline" }}>
-                    {data.attendance.arenaName && (
-                      <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none", margin: 0 }}>
-                        Стадион «{data.attendance.arenaName}»
-                      </p>
-                    )}
-                    {data.weather && (
-                      <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none", margin: 0 }}>
-                        Погода: {data.weather}
-                      </p>
-                    )}
-                  </div>
-                  <div className={styles.tableWrap}>
-                    <table className={styles.table}>
-                      <thead>
-                        <tr>
-                          <th>Категория мест</th>
-                          <th style={{ textAlign: "right" }}>Продано билетов</th>
-                          <th style={{ textAlign: "right" }}>Вместимость</th>
-                          <th style={{ textAlign: "right" }}>Заполненность</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(
-                          [
-                            ["Террасы", data.attendance.terraces, data.attendance.capacityTerraces],
-                            ["Обычные", data.attendance.basic, data.attendance.capacityBasic],
-                            ["Под крышей", data.attendance.roof, data.attendance.capacityRoof],
-                            ["VIP", data.attendance.vip, data.attendance.capacityVip],
-                          ] as [string, number, number | null][]
-                        ).map(([label, sold, capacity]) => (
-                          <tr key={label}>
-                            <td>{label}</td>
-                            <td className={styles.numCell}>{sold.toLocaleString("ru-RU")}</td>
-                            <td className={styles.numCell}>{capacity !== null ? capacity.toLocaleString("ru-RU") : "—"}</td>
-                            <td className={styles.numCell}>
-                              {capacity !== null && capacity > 0 ? `${Math.round((sold / capacity) * 100)}%` : "—"}
-                            </td>
-                          </tr>
-                        ))}
-                        <tr className={styles.totalRow}>
-                          <td>Итого</td>
-                          <td className={styles.numCell}>{data.attendance.total.toLocaleString("ru-RU")}</td>
-                          <td className={styles.numCell}>
-                            {data.attendance.capacityTotal !== null ? data.attendance.capacityTotal.toLocaleString("ru-RU") : "—"}
-                          </td>
-                          <td className={styles.numCell}>
-                            {data.attendance.capacityTotal !== null && data.attendance.capacityTotal > 0
-                              ? `${Math.round((data.attendance.total / data.attendance.capacityTotal) * 100)}%`
-                              : "—"}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                  <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 12 }}>
-                    {data.attendance.capacityTotal === null &&
-                      "Вместимость стадиона для этого матча получить не удалось (см. диагностику внизу). "}
-                    Доход от продажи билетов именно за этот матч Hattrick отдельным полем не сообщает — цена за место
-                    не входит в ответ CHPP.
-                  </p>
-                </>
-              )
-            )}
-          </div>
-        )}
-
-        {!loading && data && !data.error && tab === "timeline" && (
+        {!loading && data && !data.error && tab === "timeline" && !data.timelineError && timeline && (
           <>
-            {!data.timelineError && data.timeline && (
-              <div className={styles.dataPanel}>
-                <AttackMomentsHeading />
-                <AttackMomentsTable teamLabel={data.homeTeamName || homeName} teamId={data.homeTeamId} stats={data.homeAttackStats} />
-              </div>
-            )}
-
-            {data.timelineError ? (
-              <p className={`${styles.cardTitle} ${styles.dataPanel}`} style={{ fontWeight: 400, textTransform: "none" }}>
-                {data.timelineError}
+            <div className={styles.dataPanel} style={{ marginTop: 16 }}>
+              {data.timelineSource === "without-subs" && (
+                <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 8 }}>
+                  Полный список событий для этого матча не вернулся — показаны голы, карточки и травмы (всегда
+                  доступны), но не замены (их можно распознать только из полного отчёта).
+                </p>
+              )}
+              <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: 0 }}>
+                {data.homeTeamName || homeName} — сверху от линии, {data.awayTeamName || awayName} — снизу.
               </p>
-            ) : (
-              data.timeline &&
-                (() => {
-                  const timeline = data.timeline as MatchTimelineEntry[];
-                  const ourSide = match.home ? "home" : "away";
-                  const maxMinute = Math.max(90, ...timeline.map((ev) => ev.minute));
-                  const RULER_MINUTES = [0, 15, 30, 45, 60, 75, 90].filter((m) => m <= maxMinute);
-                  return (
-                    <>
-                      <div className={styles.dataPanel} style={{ marginTop: 16, marginBottom: 12 }}>
-                        {data.timelineSource === "without-subs" && (
-                          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 8 }}>
-                            Полный список событий для этого матча не вернулся — показаны голы, карточки и травмы
-                            (всегда доступны), но не замены (их можно распознать только из полного отчёта).
-                          </p>
-                        )}
-                        <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: 0 }}>
-                          {data.homeTeamName || homeName} — сверху от линии, {data.awayTeamName || awayName} — снизу.
-                        </p>
-                      </div>
-                      <div className={styles.timelineHorizontalWrap}>
-                        <div className={styles.timelineHorizontalTrack}>
-                          {RULER_MINUTES.map((m) => (
-                            <span key={m} className={styles.timelineRulerTick} style={{ left: `${(m / maxMinute) * 100}%` }}>
-                              {m}&apos;
-                            </span>
-                          ))}
-                          {maxMinute > 90 && (
-                            <span className={styles.timelineRulerTick} style={{ left: "100%" }}>
-                              {maxMinute}&apos;
-                            </span>
-                          )}
-                          {timeline.map((ev, i) => {
-                            const isOurs = ev.teamSide === ourSide;
-                            const isRedCard = ev.kind === "card" && /красн/i.test(ev.text);
-                            const isLightInjury = ev.kind === "injury" && /лёгк|ушиб/i.test(ev.text);
-                            const sideClass = isOurs ? styles.timelineMarkerAbove : styles.timelineMarkerBelow;
-                            const markerClass =
-                              ev.kind === "goal"
-                                ? styles.timelineMarkerGoal
-                                : ev.kind === "card"
-                                  ? isRedCard
-                                    ? styles.timelineMarkerCardRed
-                                    : styles.timelineMarkerCardYellow
-                                  : ev.kind === "sub"
-                                    ? styles.timelineMarkerSub
-                                    : styles.timelineMarkerInjury;
-                            const icon =
-                              ev.kind === "goal" ? (
-                                <GoalBallIcon size={14} />
-                              ) : ev.kind === "card" ? (
-                                isRedCard ? (
-                                  "🟥"
-                                ) : (
-                                  "🟨"
-                                )
-                              ) : ev.kind === "sub" ? (
-                                <SubstitutionIcon size={14} />
-                              ) : isLightInjury ? (
-                                "🩹"
-                              ) : (
-                                "➕"
-                              );
-                            return (
-                              <span
-                                key={i}
-                                className={`${styles.timelineMarker} ${sideClass} ${markerClass}`}
-                                style={{ left: `${(ev.minute / maxMinute) * 100}%` }}
-                                title={`${ev.minute}' — ${ev.text}`}
-                              >
-                                {icon}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()
-            )}
+            </div>
 
-            {!data.timelineError && data.timeline && (
-              <div className={styles.dataPanel} style={{ marginTop: 16 }}>
+            <div className={styles.dataPanel} style={{ marginTop: 16 }}>
+              <AttackMomentsHeading />
+              <AttackMomentsTable teamLabel={data.homeTeamName || homeName} teamId={data.homeTeamId} stats={data.homeAttackStats} />
+              <div style={{ marginTop: 20 }}>
                 <AttackMomentsTable teamLabel={data.awayTeamName || awayName} teamId={data.awayTeamId} stats={data.awayAttackStats} />
               </div>
-            )}
+            </div>
           </>
         )}
 

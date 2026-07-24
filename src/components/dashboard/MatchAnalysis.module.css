@@ -4,6 +4,7 @@
    4 вкладками (Рейтинги игроков/Зоны поля/Посещаемость/Хронология), потому
    что это один и тот же DOM-узел .card, просто с разным содержимым внутри. */
 .card {
+  position: relative;
   background:
     radial-gradient(120% 90% at 50% 8%, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 50%),
     radial-gradient(140% 110% at 50% 100%, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0) 55%),
@@ -36,6 +37,162 @@
 
 .dataPanel + .dataPanel {
   margin-top: 16px;
+}
+
+/* ВРЕМЕННЫЙ маркер — проверка, дошла ли эта версия кода до продакшена
+   (диагностика деплоя/кэша). Убрать после проверки. */
+.testBgMarker {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  z-index: 50;
+  color: #ff3b3b;
+  background: rgba(0, 0, 0, 0.6);
+  font-weight: 800;
+  font-size: 13px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+/* ИСПРАВЛЕНО: раньше у каждой вкладки был СВОЙ отдельный элемент поля
+   (.splitPitch/.zonePitch/.timelineHorizontalWrap разных размеров и форм),
+   так что при переключении вкладок поле визуально "пересоздавалось" другим
+   по форме. Теперь это ОДИН персистентный DOM-узел .matchPitch (рендерится
+   всегда, форма/размер не зависят от вкладки — как счёт матча наверху), а
+   вкладки меняют только содержимое ВНУТРИ него через абсолютное
+   позиционирование (см. .pitch* классы ниже и разметку в
+   MatchDetailAnalysis.tsx). Тот же газон, что и .card/.pitch (Lineup). */
+.matchPitch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2.1 / 1;
+  background:
+    radial-gradient(120% 90% at 50% 8%, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 50%),
+    radial-gradient(140% 110% at 50% 100%, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0) 55%),
+    repeating-linear-gradient(180deg, #1e4a34 0px, #1a4030 16px, #163527 32px, #1a4030 48px, #1e4a34 64px);
+  border: 2px solid rgba(242, 237, 225, 0.35);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.matchPitchCenterLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  background: rgba(242, 237, 225, 0.35);
+}
+
+.matchPitchCenterCircle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 15%;
+  aspect-ratio: 1;
+  border: 1.5px solid rgba(242, 237, 225, 0.3);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.matchPitchEmpty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 20px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+/* Компактные боксы зон, встроенные прямо в .matchPitch (используют те же
+   цвета zoneBoxHome/zoneBoxAway, что и раньше, только меньшего размера,
+   т.к. теперь все 7 пар должны помещаться на общем поле фиксированного
+   размера, а не на отдельном широком поле только для этой вкладки). */
+.pitchZoneSlot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 3px;
+}
+
+.pitchZoneBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 40px;
+  padding: 3px 5px;
+  border-radius: 7px;
+  border: 1.5px solid;
+  background: var(--color-bg-card);
+}
+
+.pitchZoneBoxTop {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pitchZoneBoxRating {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.pitchZoneBoxIcon {
+  font-size: 9px;
+}
+
+.pitchZoneBoxShare {
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+/* Временная шкала, встроенная в .matchPitch — линия по центру поля слева
+   направо (0' у наших ворот, 90' у ворот соперника), метки и маркеры
+   событий переиспользуют существующие .timelineMarker/.timelineMarkerAbove/
+   .timelineMarkerBelow и цветовые варианты (те уже позиционируются
+   относительно ближайшего relative-родителя, так что подходят и здесь). */
+.pitchTimelineTrack {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 3px;
+  background: rgba(242, 237, 225, 0.4);
+  border-radius: 999px;
+}
+
+.pitchTimelineTick {
+  position: absolute;
+  top: -20px;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+}
+
+/* Плавающая полупрозрачная панель для данных без пространственного смысла
+   на поле (сейчас — Посещаемость), но которые по запросу тоже должны лежать
+   "на" неизменном поле, а не заменять его. */
+.pitchOverlayPanel {
+  position: absolute;
+  inset: 5%;
+  background: rgba(13, 30, 25, 0.9);
+  border: 1px solid rgba(242, 237, 225, 0.15);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  overflow: auto;
 }
 
 .cardTitle {
