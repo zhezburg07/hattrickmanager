@@ -295,13 +295,53 @@ function AttackMomentsHeading() {
       <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 12 }}>
         Разбивка по зонам (Л/Ц/П, спецсобытия, другое) — реальные поля matchdetails, но это ОБЩЕЕ число моментов за
         матч без отдельного счётчика именно голов или именно нереализованных попыток в каждой зоне — поэтому в этих
-        двух строках по зонам честно "нет данных" (а не 0 — 0 означает реальное известное значение, "нет данных" —
-        что CHPP это поле не прислал). Мы проверили EventList (полный список событий матча): подтверждённого способа
-        разметить в нём именно "нереализованный момент"/"спецсобытие" по зонам нет — Hattrick не документирует тип
-        события (EventTypeID). В "Диагностика" внизу страницы — сырые значения по каждой команде и разбивка EventList
-        по типам событий, включая автоматические подсказки ⚡, где число конкретного типа события точно совпало с уже
-        известным реальным показателем (это не доказательство, а проверяемая гипотеза).
+        двух строках по зонам честно "нет данных" (0 означало бы реальный известный 0, а не отсутствие поля). Что
+        именно доступно по каждому типу событий на самой временной шкале ниже — см. чеклист над лентой.
       </p>
+    </div>
+  );
+}
+
+// По запросу — не общее "нет данных", а точный статус ПО КАЖДОМУ типу
+// событий отдельно: что реально показывается на шкале, что — лучшая оценка
+// (эвристика), а что физически нечем показать (только итог за весь матч,
+// без минуты конкретного события), и почему.
+type TimelineEventStatus = "ok" | "heuristic" | "unavailable";
+const TIMELINE_EVENT_STATUS: { label: string; status: TimelineEventStatus; detail: string }[] = [
+  { label: "Голы", status: "ok", detail: "реальные данные с точной минутой (Scorers) — всегда доступны, показаны на шкале." },
+  { label: "Травмы", status: "ok", detail: "реальные данные с точной минутой (Injuries) — всегда доступны, показаны на шкале." },
+  {
+    label: "Замены",
+    status: "heuristic",
+    detail:
+      "распознаются по ключевым словам в тексте события (EventList, при matchEvents=true) — лучшая доступная оценка, не гарантия: у CHPP нет отдельного подтверждённого поля именно для замены.",
+  },
+  {
+    label: "Нереализованные моменты",
+    status: "unavailable",
+    detail:
+      "Hattrick отдаёт только ИТОГ за весь матч (см. таблицу статистики ниже) — нет поля с минутой конкретного момента, физически нечего поставить на шкалу, не придумывая позицию.",
+  },
+  {
+    label: "Специальные события",
+    status: "unavailable",
+    detail:
+      "то же самое — только итог за матч (NrOfChancesSpecialEvents), без минуты. Разбивка EventList по EventTypeID в \"Диагностика\" внизу страницы — единственный способ проверить, нет ли там скрытого признака; там же подсказки ⚡ при точном числовом совпадении.",
+  },
+];
+const TIMELINE_EVENT_ICON: Record<TimelineEventStatus, string> = { ok: "✅", heuristic: "⚠️", unavailable: "❌" };
+
+function TimelineEventTypeChecklist() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
+      {TIMELINE_EVENT_STATUS.map((r) => (
+        <div key={r.label}>
+          <b>
+            {TIMELINE_EVENT_ICON[r.status]} {r.label}
+          </b>
+          <span style={{ color: "var(--color-text-muted)" }}> — {r.detail}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -444,6 +484,12 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
           <div className={styles.matchPitch}>
             <div className={styles.matchPitchCenterLine} />
             <div className={styles.matchPitchCenterCircle} />
+            <div className={`${styles.matchPitchPenaltyArea} ${styles.matchPitchPenaltyAreaLeft}`} />
+            <div className={`${styles.matchPitchPenaltyArea} ${styles.matchPitchPenaltyAreaRight}`} />
+            <div className={`${styles.matchPitchGoalArea} ${styles.matchPitchGoalAreaLeft}`} />
+            <div className={`${styles.matchPitchGoalArea} ${styles.matchPitchGoalAreaRight}`} />
+            <div className={`${styles.matchPitchPenaltySpot} ${styles.matchPitchPenaltySpotLeft}`} />
+            <div className={`${styles.matchPitchPenaltySpot} ${styles.matchPitchPenaltySpotRight}`} />
 
             {tab === "ratings" &&
               (data.ratingsError ? (
@@ -794,9 +840,13 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                   доступны), но не замены (их можно распознать только из полного отчёта).
                 </p>
               )}
-              <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: 0 }}>
+              <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: "0 0 12px" }}>
                 {data.homeTeamName || homeName} — сверху от линии, {data.awayTeamName || awayName} — снизу.
               </p>
+              <div className={styles.cardTitle} style={{ marginBottom: 8, fontSize: 11.5 }}>
+                Что реально показано на шкале — по типу события
+              </div>
+              <TimelineEventTypeChecklist />
             </div>
 
             <div className={styles.dataPanel} style={{ marginTop: 16 }}>

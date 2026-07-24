@@ -96,6 +96,64 @@
   transform: translate(-50%, -50%);
 }
 
+/* Стандартная разметка поля — штрафные и вратарские площади с обеих сторон
+   (плюс точка пенальти), в дополнение к центральной линии/кругу выше.
+   top/bottom в процентах (не height) — тогда высота сама подстраивается
+   под aspect-ratio родителя независимо от реальной ширины экрана. */
+.matchPitchPenaltyArea {
+  position: absolute;
+  top: 19%;
+  bottom: 19%;
+  width: 16%;
+  border: 1.5px solid rgba(242, 237, 225, 0.3);
+}
+
+.matchPitchPenaltyAreaLeft {
+  left: 0;
+  border-left: none;
+}
+
+.matchPitchPenaltyAreaRight {
+  right: 0;
+  border-right: none;
+}
+
+.matchPitchGoalArea {
+  position: absolute;
+  top: 35%;
+  bottom: 35%;
+  width: 6%;
+  border: 1.5px solid rgba(242, 237, 225, 0.3);
+}
+
+.matchPitchGoalAreaLeft {
+  left: 0;
+  border-left: none;
+}
+
+.matchPitchGoalAreaRight {
+  right: 0;
+  border-right: none;
+}
+
+.matchPitchPenaltySpot {
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(242, 237, 225, 0.4);
+  transform: translate(-50%, -50%);
+}
+
+.matchPitchPenaltySpotLeft {
+  left: 11%;
+}
+
+.matchPitchPenaltySpotRight {
+  left: 89%;
+}
+
 .matchPitchEmpty {
   position: absolute;
   inset: 0;
@@ -119,17 +177,17 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 3px;
+  gap: 5px;
 }
 
 .pitchZoneBox {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
-  min-width: 40px;
-  padding: 3px 5px;
-  border-radius: 7px;
+  gap: 2px;
+  min-width: 58px;
+  padding: 5px 7px;
+  border-radius: 9px;
   border: 1.5px solid;
   background: var(--color-bg-card);
 }
@@ -137,21 +195,21 @@
 .pitchZoneBoxTop {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
 }
 
 .pitchZoneBoxRating {
-  font-size: 12px;
+  font-size: 17px;
   font-weight: 800;
   color: var(--color-text);
 }
 
 .pitchZoneBoxIcon {
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .pitchZoneBoxShare {
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 700;
   color: var(--color-text-muted);
 }
@@ -182,17 +240,21 @@
   white-space: nowrap;
 }
 
-/* Плавающая полупрозрачная панель для данных без пространственного смысла
-   на поле (сейчас — Посещаемость), но которые по запросу тоже должны лежать
-   "на" неизменном поле, а не заменять его. */
+/* Плавающая ПОЧТИ ПРОЗРАЧНАЯ панель для данных без пространственного смысла
+   на поле (сейчас — Посещаемость) — газон должен просвечивать так же, как и
+   на остальных вкладках, подложка — лишь лёгкий намёк (10% непрозрачности),
+   а не почти сплошной фон, как было раньше (0.9 — это было наоборот, почти
+   непрозрачно). text-shadow компенсирует контраст текста на полосатом
+   газоне взамен плотного фона. */
 .pitchOverlayPanel {
   position: absolute;
   inset: 5%;
-  background: rgba(13, 30, 25, 0.9);
-  border: 1px solid rgba(242, 237, 225, 0.15);
+  background: rgba(13, 30, 25, 0.1);
+  border: 1px solid rgba(242, 237, 225, 0.2);
   border-radius: var(--radius);
   padding: 14px 16px;
   overflow: auto;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
 
 .cardTitle {
