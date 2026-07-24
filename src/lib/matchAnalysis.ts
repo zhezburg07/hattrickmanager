@@ -96,6 +96,16 @@ export interface MatchAttackStats {
   chancesTotal: number | null;
   goals: number | null;
   missed: number | null;
+  // Разбивка ВСЕХ моментов (не только нереализованных) по зонам атаки —
+  // подтверждённые поля matchdetails.xml, но у Hattrick НЕТ отдельного
+  // счётчика именно "нереализованных" моментов по зоне (только их сумма с
+  // голами) — см. комментарий у parseAttackStats ниже и debugScalarTeamFields
+  // в debug. Каждое поле null, только если сам контейнер team отсутствует.
+  chancesLeft: number | null;
+  chancesCenter: number | null;
+  chancesRight: number | null;
+  chancesSpecialEvents: number | null;
+  chancesOther: number | null;
 }
 
 // Тактический приказ команды на матч — подтверждённое поле <TacticType>
@@ -147,19 +157,18 @@ function parseWeatherLabel(match: Record<string, unknown>): string | null {
 // отсутствию самого контейнера team, а не по конкретному полю.
 function parseAttackStats(team: Record<string, unknown> | undefined, goalsRaw: unknown): MatchAttackStats | null {
   if (!team) return null;
-  const chanceFields = [
-    team.NrOfChancesLeft,
-    team.NrOfChancesCenter,
-    team.NrOfChancesRight,
-    team.NrOfChancesSpecialEvents,
-    team.NrOfChancesOther,
-  ];
-  const hasChanceData = chanceFields.some((v) => v !== undefined && v !== null);
-  const chancesTotal = hasChanceData ? chanceFields.reduce((sum: number, v) => sum + (Number(v) || 0), 0) : null;
+  const chancesLeft = numOrNull(team.NrOfChancesLeft);
+  const chancesCenter = numOrNull(team.NrOfChancesCenter);
+  const chancesRight = numOrNull(team.NrOfChancesRight);
+  const chancesSpecialEvents = numOrNull(team.NrOfChancesSpecialEvents);
+  const chancesOther = numOrNull(team.NrOfChancesOther);
+  const chanceFields = [chancesLeft, chancesCenter, chancesRight, chancesSpecialEvents, chancesOther];
+  const hasChanceData = chanceFields.some((v) => v !== null);
+  const chancesTotal = hasChanceData ? chanceFields.reduce((sum: number, v) => sum + (v ?? 0), 0) : null;
   const goals = numOrNull(goalsRaw);
   const missed = chancesTotal !== null && goals !== null ? chancesTotal - goals : null;
   if (chancesTotal === null && goals === null) return null;
-  return { chancesTotal, goals, missed };
+  return { chancesTotal, goals, missed, chancesLeft, chancesCenter, chancesRight, chancesSpecialEvents, chancesOther };
 }
 
 export type MatchTimelineKind = "goal" | "card" | "sub" | "injury";
@@ -180,6 +189,8 @@ export interface MatchTimelineEntry {
 export interface MatchAnalysisResult {
   homeTeamName: string;
   awayTeamName: string;
+  homeTeamId: string;
+  awayTeamId: string;
 
   homeRatings: MatchPlayerRating[];
   awayRatings: MatchPlayerRating[];
@@ -188,6 +199,12 @@ export interface MatchAnalysisResult {
   homeZones: MatchZoneRatings | null;
   awayZones: MatchZoneRatings | null;
   zonesError: string | null;
+
+  // Индекс силы — СВОЙ собственный расчётный показатель (не официальный
+  // Hattrick, не HatStats/LoddarStats и их формула не копируется), см.
+  // computePowerIndex ниже. null, если хотя бы одна из 7 зон не пришла.
+  homePowerIndex: number | null;
+  awayPowerIndex: number | null;
 
   // Тактика — подтверждённое поле <TacticType>, есть для обеих команд.
   homeTactic: string | null;
@@ -258,6 +275,33 @@ function parseZoneRatings(team: Record<string, unknown> | undefined): MatchZoneR
   };
   const hasAny = Object.values(zones).some((v) => v !== null);
   return hasAny ? zones : null;
+}
+
+// "Индекс силы" — НАШ СОБСТВЕННЫЙ расчётный показатель силы команды в этом
+// конкретном матче, а не официальный показатель Hattrick и не формула
+// HatStats/LoddarStats (та запатентована сообществом и не публикуется —
+// здесь просто своя комбинация уже подтверждённых зональных рейтингов
+// матча, 1-80 каждая):
+//   Защита = леваяЗащита + центрЗащита + праваяЗащита (3-240)
+//   Атака  = леваяАтака + центрАтака + праваяАтака (3-240)
+//   Полузащита — одна зона (1-80), выступает МНОЖИТЕЛЕМ, а не слагаемым:
+//   команда с одинаковой защитой/атакой, но более сильной полузащитой,
+//   получает более высокий индекс — коэффициент 0.75 (полузащита=0) .. 1.25
+//   (полузащита=80), 1.0 при полузащите=40 (середина шкалы).
+//   Итог нормализован делением на теоретический максимум (защита=240,
+//   атака=240, коэффициент=1.25) так, чтобы жёстко получалось 0-100.
+// Считается только если ВСЕ 7 зон пришли реальными числами — при частичных
+// данных честно null, а не расчёт на угадываемых нулях.
+function computePowerIndex(zones: MatchZoneRatings | null): number | null {
+  if (!zones) return null;
+  const { leftDef, midDef, rightDef, midfield, leftAtt, midAtt, rightAtt } = zones;
+  if ([leftDef, midDef, rightDef, midfield, leftAtt, midAtt, rightAtt].some((v) => v === null)) return null;
+  const defense = (leftDef as number) + (midDef as number) + (rightDef as number);
+  const attack = (leftAtt as number) + (midAtt as number) + (rightAtt as number);
+  const coefficient = 0.75 + ((midfield as number) / 80) * 0.5;
+  const maxRaw = (240 + 240) * 1.25;
+  const raw = (defense + attack) * coefficient;
+  return Math.max(0, Math.min(100, Math.round((raw / maxRaw) * 100)));
 }
 
 function parseTacticLabel(team: Record<string, unknown> | undefined): string | null {
@@ -556,12 +600,16 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
   const empty: MatchAnalysisResult = {
     homeTeamName: "",
     awayTeamName: "",
+    homeTeamId: "",
+    awayTeamId: "",
     homeRatings: [],
     awayRatings: [],
     ratingsError: null,
     homeZones: null,
     awayZones: null,
     zonesError: null,
+    homePowerIndex: null,
+    awayPowerIndex: null,
     homeTactic: null,
     awayTactic: null,
     homeTeamAttitude: null,
@@ -626,6 +674,16 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     zonesError = `Не удалось разобрать зональные показатели: ${message}`;
     debug.push(`zones: исключение при разборе — ${message}`);
+  }
+
+  let homePowerIndex: number | null = null;
+  let awayPowerIndex: number | null = null;
+  try {
+    homePowerIndex = computePowerIndex(homeZones);
+    awayPowerIndex = computePowerIndex(awayZones);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "неизвестная ошибка";
+    debug.push(`Индекс силы: исключение при расчёте — ${message}`);
   }
 
   let homeTactic: string | null = null;
@@ -778,12 +836,16 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
   return {
     homeTeamName,
     awayTeamName,
+    homeTeamId,
+    awayTeamId,
     homeRatings,
     awayRatings,
     ratingsError,
     homeZones,
     awayZones,
     zonesError,
+    homePowerIndex,
+    awayPowerIndex,
     homeTactic,
     awayTactic,
     homeTeamAttitude,

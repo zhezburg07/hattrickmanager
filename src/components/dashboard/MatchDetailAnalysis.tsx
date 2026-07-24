@@ -59,6 +59,11 @@ interface MatchAttackStats {
   chancesTotal: number | null;
   goals: number | null;
   missed: number | null;
+  chancesLeft: number | null;
+  chancesCenter: number | null;
+  chancesRight: number | null;
+  chancesSpecialEvents: number | null;
+  chancesOther: number | null;
 }
 
 type MatchTimelineKind = "goal" | "card" | "sub" | "injury";
@@ -80,6 +85,8 @@ interface MatchAnalysisResponse {
   homeZones: MatchZoneRatings | null;
   awayZones: MatchZoneRatings | null;
   zonesError: string | null;
+  homePowerIndex: number | null;
+  awayPowerIndex: number | null;
   homeTactic: string | null;
   awayTactic: string | null;
   homeTeamAttitude: string | null;
@@ -225,6 +232,8 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
             homeZones: null,
             awayZones: null,
             zonesError: "Не удалось загрузить",
+            homePowerIndex: null,
+            awayPowerIndex: null,
             homeTactic: null,
             awayTactic: null,
             homeTeamAttitude: null,
@@ -418,6 +427,12 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                       {data.homeTactic ?? "—"}
                       {data.homeTeamAttitude ? ` / ${data.homeTeamAttitude}` : ""}
                     </div>
+                    <div
+                      className={styles.zoneInfoPowerIndex}
+                      title="Наш собственный расчётный показатель силы команды в этом матче, на основе зональных рейтингов — не официальный показатель Hattrick"
+                    >
+                      Индекс силы: <b>{data.homePowerIndex ?? "—"}</b>
+                    </div>
                   </div>
                   <div className={styles.zoneInfoDivider} />
                   <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColAway}`}>
@@ -426,15 +441,22 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                       {data.awayTactic ?? "—"}
                       {data.awayTeamAttitude ? ` / ${data.awayTeamAttitude}` : ""}
                     </div>
+                    <div
+                      className={styles.zoneInfoPowerIndex}
+                      title="Наш собственный расчётный показатель силы команды в этом матче, на основе зональных рейтингов — не официальный показатель Hattrick"
+                    >
+                      Индекс силы: <b>{data.awayPowerIndex ?? "—"}</b>
+                    </div>
                   </div>
                 </div>
                 <p style={{ fontSize: 11.5, color: "var(--color-text-muted)", marginTop: 6, marginBottom: 16 }}>
                   "Отношение к матчу" CHPP отдаёт только владельцу команды — для соперника поле честно отсутствует
-                  (не "—" по ошибке). Ещё два показателя из примера ("Loddar Stats" и тройка Тайм/Состав/Рейтинг) в
-                  реальном ответе matchdetails пока не опознаны — смотрите полный дамп полей команды в блоке
-                  "Диагностика" внизу этой страницы (под всеми вкладками) и подскажите, какое поле им соответствует.
+                  (не "—" по ошибке). "Индекс силы" — наш собственный расчётный показатель (защита + атака,
+                  взвешенные по силе полузащиты, 0-100), а не официальный показатель Hattrick и не формула
+                  HatStats/LoddarStats.
                 </p>
 
+                <div className={styles.zonePitchWrap}>
                 <div className={styles.zonePitch}>
                   {ZONE_PITCH_SECTIONS.map(({ section, pairs }) => (
                     <div
@@ -467,6 +489,7 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                       })}
                     </div>
                   ))}
+                </div>
                 </div>
 
                 <div style={{ marginTop: 20 }}>
@@ -534,6 +557,7 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                           <th>Категория мест</th>
                           <th style={{ textAlign: "right" }}>Продано билетов</th>
                           <th style={{ textAlign: "right" }}>Вместимость</th>
+                          <th style={{ textAlign: "right" }}>Заполненность</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -549,6 +573,9 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                             <td>{label}</td>
                             <td className={styles.numCell}>{sold.toLocaleString("ru-RU")}</td>
                             <td className={styles.numCell}>{capacity !== null ? capacity.toLocaleString("ru-RU") : "—"}</td>
+                            <td className={styles.numCell}>
+                              {capacity !== null && capacity > 0 ? `${Math.round((sold / capacity) * 100)}%` : "—"}
+                            </td>
                           </tr>
                         ))}
                         <tr className={styles.totalRow}>
@@ -557,22 +584,18 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                           <td className={styles.numCell}>
                             {data.attendance.capacityTotal !== null ? data.attendance.capacityTotal.toLocaleString("ru-RU") : "—"}
                           </td>
+                          <td className={styles.numCell}>
+                            {data.attendance.capacityTotal !== null && data.attendance.capacityTotal > 0
+                              ? `${Math.round((data.attendance.total / data.attendance.capacityTotal) * 100)}%`
+                              : "—"}
+                          </td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
                   <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 12 }}>
-                    {data.attendance.capacityTotal !== null && data.attendance.capacityTotal > 0 ? (
-                      <>
-                        Заполненность стадиона:{" "}
-                        <b style={{ color: "var(--color-text)" }}>
-                          {Math.round((data.attendance.total / data.attendance.capacityTotal) * 100)}%
-                        </b>{" "}
-                        ({data.attendance.total.toLocaleString("ru-RU")} из {data.attendance.capacityTotal.toLocaleString("ru-RU")} мест).{" "}
-                      </>
-                    ) : (
-                      "Вместимость стадиона для этого матча получить не удалось (см. диагностику внизу). "
-                    )}
+                    {data.attendance.capacityTotal === null &&
+                      "Вместимость стадиона для этого матча получить не удалось (см. диагностику внизу). "}
                     Доход от продажи билетов именно за этот матч Hattrick отдельным полем не сообщает — цена за место
                     не входит в ответ CHPP.
                   </p>
