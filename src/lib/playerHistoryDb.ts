@@ -15,22 +15,47 @@ function sql() {
   return neon(url);
 }
 
+// Ключ "тренировочной недели" — дата ближайшей пятницы НЕ ПОЗЖЕ данного
+// момента (Hattrick обновляет тренировку каждую пятницу). ИСПРАВЛЕНО: раньше
+// player_stat_snapshots хранил РОВНО один снимок на игрока, перезаписываемый
+// при КАЖДОМ визите — из-за этого стрелки роста/падения были видны только на
+// самый первый визит сразу после пятничной тренировки, а на следующий же
+// визит (хоть в тот же день) "было" уже совпадало со "стало", и подсветка
+// пропадала — не "всю неделю до следующей пятницы", как требуется, а только
+// на один заход. Обычная ISO-неделя (date_trunc('week', ...), с понедельника)
+// тоже не подошла бы: пятничное обновление попадало бы в СЕРЕДИНУ такой
+// недели, а не на её границу, и до-/после-тренировочные значения мешались бы
+// в одном бакете. Поэтому неделя здесь считается от пятницы до пятницы.
+function trainingWeekKey(date: Date): string {
+  const day = date.getUTCDay(); // 0=вс, 1=пн, …, 5=пт, 6=сб
+  const diff = (day - 5 + 7) % 7; // сколько дней назад была ближайшая пятница
+  const friday = new Date(date);
+  friday.setUTCDate(date.getUTCDate() - diff);
+  return friday.toISOString().slice(0, 10);
+}
+
 let tableEnsured = false;
 
+// Отдельная от старой player_stat_snapshots (не переиспользуем ту же
+// таблицу — она НЕ удаляется и не мигрируется, просто больше не пишется:
+// CREATE TABLE IF NOT EXISTS не меняет схему уже существующей таблицы, а
+// нужен был именно новый набор столбцов — training_week в первичном ключе
+// вместо простого "один снимок на игрока").
 async function ensureTable(): Promise<void> {
   if (tableEnsured) return;
   const db = sql();
   await db`
-    CREATE TABLE IF NOT EXISTS player_stat_snapshots (
+    CREATE TABLE IF NOT EXISTS player_weekly_stat_snapshots (
       hattrick_user_id TEXT NOT NULL,
       player_id BIGINT NOT NULL,
+      training_week DATE NOT NULL,
       skills JSONB NOT NULL,
       experience INTEGER NOT NULL,
       form INTEGER NOT NULL,
       stamina INTEGER NOT NULL,
       tsi INTEGER NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      PRIMARY KEY (hattrick_user_id, player_id)
+      PRIMARY KEY (hattrick_user_id, player_id, training_week)
     )
   `;
   tableEnsured = true;
@@ -40,18 +65,21 @@ function snapshotOf(p: SquadPlayer): PlayerStatSnapshot {
   return { skills: { ...p.skills }, experience: p.experience, form: p.form, stamina: p.stamina, tsi: p.tsi };
 }
 
-// Возвращает снимки, сохранённые при ПРЕДЫДУЩЕМ визите этого пользователя
-// (до того, как их перезапишет saveCurrentSnapshots ниже) — используются как
-// "было" для подсветки роста/падения навыков.
-export async function getPreviousSnapshots(
+// Снимок из ПОСЛЕДНЕЙ тренировочной недели строго ДО текущей (не обязательно
+// ровно "неделя назад" — если пользователь не заходил несколько недель
+// подряд, берётся самый свежий из уже сохранённых, чтобы показать
+// накопленное изменение с последнего реального визита, а не "нет данных").
+export async function getPreviousWeekSnapshots(
   hattrickUserId: string,
+  currentWeek: string,
 ): Promise<Record<number, PlayerStatSnapshot>> {
   await ensureTable();
   const db = sql();
   const rows = await db`
-    SELECT player_id, skills, experience, form, stamina, tsi
-    FROM player_stat_snapshots
-    WHERE hattrick_user_id = ${hattrickUserId}
+    SELECT DISTINCT ON (player_id) player_id, skills, experience, form, stamina, tsi
+    FROM player_weekly_stat_snapshots
+    WHERE hattrick_user_id = ${hattrickUserId} AND training_week < ${currentWeek}
+    ORDER BY player_id, training_week DESC
   `;
 
   const result: Record<number, PlayerStatSnapshot> = {};
@@ -67,11 +95,14 @@ export async function getPreviousSnapshots(
   return result;
 }
 
-// Сохраняет ТЕКУЩИЕ значения игроков как новый снимок — при следующем визите
-// именно они станут "было". Вызывается на каждой загрузке страницы состава/
-// расстановки для реальных данных (у демо-игроков сравнение уже встроено в
-// player.prev, эта функция для них не вызывается).
-export async function saveCurrentSnapshots(hattrickUserId: string, players: SquadPlayer[]): Promise<void> {
+// Сохраняет/обновляет снимок ТЕКУЩЕЙ тренировочной недели — при повторных
+// визитах в течение той же недели просто обновляет её же бакет (так что
+// "было" из getPreviousWeekSnapshots не меняется до следующей пятницы).
+export async function saveCurrentWeekSnapshot(
+  hattrickUserId: string,
+  currentWeek: string,
+  players: SquadPlayer[],
+): Promise<void> {
   await ensureTable();
   const db = sql();
 
@@ -79,9 +110,9 @@ export async function saveCurrentSnapshots(hattrickUserId: string, players: Squa
     players.map((p) => {
       const snapshot = snapshotOf(p);
       return db`
-        INSERT INTO player_stat_snapshots (hattrick_user_id, player_id, skills, experience, form, stamina, tsi, updated_at)
-        VALUES (${hattrickUserId}, ${p.id}, ${JSON.stringify(snapshot.skills)}, ${snapshot.experience}, ${snapshot.form}, ${snapshot.stamina}, ${snapshot.tsi}, now())
-        ON CONFLICT (hattrick_user_id, player_id)
+        INSERT INTO player_weekly_stat_snapshots (hattrick_user_id, player_id, training_week, skills, experience, form, stamina, tsi, updated_at)
+        VALUES (${hattrickUserId}, ${p.id}, ${currentWeek}, ${JSON.stringify(snapshot.skills)}, ${snapshot.experience}, ${snapshot.form}, ${snapshot.stamina}, ${snapshot.tsi}, now())
+        ON CONFLICT (hattrick_user_id, player_id, training_week)
         DO UPDATE SET
           skills = EXCLUDED.skills,
           experience = EXCLUDED.experience,
@@ -94,10 +125,13 @@ export async function saveCurrentSnapshots(hattrickUserId: string, players: Squa
   );
 }
 
-// Читает предыдущие снимки, сразу сохраняет текущие как новые (для
-// следующего визита) и возвращает карту playerId -> предыдущий снимок для
-// подсветки изменений. Если что-то пошло не так с базой — не ломает
-// страницу, просто сравнивать будет не с чем в этот раз.
+// Читает снимок последней ПРОШЕДШЕЙ тренировочной недели, сразу
+// сохраняет/обновляет бакет ТЕКУЩЕЙ недели и возвращает карту
+// playerId -> снимок "было" для подсветки изменений. Один и тот же вызов
+// используется и на "Составе", и на "Расстановке" (см. squad/page.tsx,
+// lineup/page.tsx) — сравнение и подсветка одинаковы на обеих вкладках.
+// Если что-то пошло не так с базой — не ломает страницу, просто сравнивать
+// будет не с чем в этот раз.
 export async function resolvePlayerHistory(
   hattrickUserId: string | null,
   players: SquadPlayer[],
@@ -105,8 +139,9 @@ export async function resolvePlayerHistory(
   if (!hattrickUserId || players.length === 0) return {};
 
   try {
-    const previous = await getPreviousSnapshots(hattrickUserId);
-    await saveCurrentSnapshots(hattrickUserId, players);
+    const currentWeek = trainingWeekKey(new Date());
+    const previous = await getPreviousWeekSnapshots(hattrickUserId, currentWeek);
+    await saveCurrentWeekSnapshot(hattrickUserId, currentWeek, players);
     // "Побочный эффект": заодно кладём/обновляем недельный снимок TSI (см.
     // ниже) — Состав и Расстановка уже и так запрашивают полный список
     // реальных игроков, так что для "Лучшего/худшего игрока недели" на
