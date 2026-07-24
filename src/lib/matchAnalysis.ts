@@ -3,6 +3,8 @@ import { assertNoChppError } from "./chppError";
 import { parseArenaDetailsXml } from "./arena";
 import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
 import { stripHtml } from "./htmlText";
+import { CUP_MATCH_TYPE } from "./matches";
+import { saveMatchForResearch } from "./matchResearchDb";
 
 // Реальный разбор матча по конкретному MatchID — раньше на "Обзоре матча"
 // (раскрытая строка сыгранного матча в календаре) показывались полностью
@@ -832,6 +834,46 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
         ? "Рейтинги игроков (matchlineup) вернулись пустыми для обеих команд."
         : null;
   debug.push(`matchlineup — рейтинги: наша сторона ${homeRatings.length}, соперник ${awayRatings.length}`);
+
+  // Долгосрочное обезличенное логирование в match_research_log (см.
+  // src/lib/matchResearchDb.ts) — "по требованию", побочным эффектом уже
+  // выполненного запроса matchdetails, а не отдельной фоновой задачей.
+  // Никогда не должно повлиять на ответ пользователю — ошибка молча
+  // проглатывается (.catch), сам вызов не await'ится (fire-and-forget).
+  try {
+    const matchContextIdRaw = match.MatchContextId ?? match.MatchContextID;
+    const matchTypeNum = match.MatchType !== undefined ? Number(match.MatchType) : null;
+    const cupId =
+      matchTypeNum === CUP_MATCH_TYPE && matchContextIdRaw !== undefined && String(matchContextIdRaw) !== "0"
+        ? String(matchContextIdRaw)
+        : null;
+    const homeTeamAttitudeRaw =
+      homeTeam?.TeamAttitude !== undefined && homeTeam.TeamAttitude !== null ? Number(homeTeam.TeamAttitude) : null;
+    const awayTeamAttitudeRaw =
+      awayTeam?.TeamAttitude !== undefined && awayTeam.TeamAttitude !== null ? Number(awayTeam.TeamAttitude) : null;
+    saveMatchForResearch({
+      matchId,
+      matchDate: match.MatchDate !== undefined ? String(match.MatchDate) : null,
+      matchType: matchTypeNum,
+      cupId,
+      homeTeamId: homeTeamId || null,
+      awayTeamId: awayTeamId || null,
+      homeFormation: homeTeam?.Formation !== undefined ? String(homeTeam.Formation) : null,
+      awayFormation: awayTeam?.Formation !== undefined ? String(awayTeam.Formation) : null,
+      homeTacticType: homeTeam?.TacticType !== undefined ? Number(homeTeam.TacticType) : null,
+      awayTacticType: awayTeam?.TacticType !== undefined ? Number(awayTeam.TacticType) : null,
+      homeTeamAttitude: homeTeamAttitudeRaw,
+      awayTeamAttitude: awayTeamAttitudeRaw,
+      homeZones,
+      awayZones,
+      homePowerIndex,
+      awayPowerIndex,
+      homeGoals: homeAttackStats?.goals ?? null,
+      awayGoals: awayAttackStats?.goals ?? null,
+    }).catch(() => {});
+  } catch {
+    // Никогда не должно ломать основной ответ.
+  }
 
   return {
     homeTeamName,
