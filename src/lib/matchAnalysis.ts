@@ -476,13 +476,21 @@ const SUBSTITUTION_PATTERN = /(substitut|comes on for|replaces .*(for|as)|зам
 // встретился каждый EventTypeID в реальном ответе, и даёт пример текста —
 // чтобы можно было визуально сопоставить (а не гадать), какие ID похожи на
 // "момент/атаку", прежде чем строить по ним точную по минутам диаграмму.
-// Разбивка по EventTypeID ДОПОЛНИТЕЛЬНО делится на "дома"/"гости" по
-// SubjectTeamID (см. комментарий выше — "for goals and chances" намекает,
-// что SubjectTeamID у чанс-событий — атакующая команда) и даёт до 2 разных
-// примеров текста на тип — чтобы по количеству и стороне можно было
-// сопоставить конкретный ID с конкретной колонкой таблицы (Л/Ц/П/Спец/
-// Другое), а не гадать по одному значению.
-function debugEventTypeBreakdown(match: Record<string, unknown>, homeTeamId: string): string {
+// Разбивка по EventTypeID делится на "дома"/"гости" по SubjectTeamID (см.
+// комментарий выше — "for goals and chances" намекает, что SubjectTeamID у
+// чанс-событий — атакующая команда) и даёт до 2 разных примеров текста на
+// тип. ДОПОЛНИТЕЛЬНО: сравнивает счётчик каждого EventTypeID по каждой
+// стороне с уже ПОДТВЕРЖДЁННЫМИ реальными числами этой же команды (Голы —
+// Scorers, Всего/Нереализовано/Л/Ц/П/Спецсобытия/Другое — NrOfChances* из
+// matchdetails) — точное числовое совпадение не доказывает соответствие
+// (могло совпасть случайно), но даёт конкретную, проверяемую по тексту
+// событий гипотезу вместо слепого перебора 30+ типов событий.
+function debugEventTypeBreakdown(
+  match: Record<string, unknown>,
+  homeTeamId: string,
+  homeStats: MatchAttackStats | null,
+  awayStats: MatchAttackStats | null,
+): string {
   const eventList = match.EventList as Record<string, unknown> | undefined;
   const events = asArray(eventList?.Event);
   if (events.length === 0) return "EventList пуст или отсутствует (matchEvents=true не вернул событий).";
@@ -498,12 +506,29 @@ function debugEventTypeBreakdown(match: Record<string, unknown>, homeTeamId: str
     if (entry.samples.length < 2 && !entry.samples.includes(text)) entry.samples.push(text);
     byType.set(typeId, entry);
   }
+
+  const matchHints = (side: string, count: number, stats: MatchAttackStats | null): string[] => {
+    if (!stats || count === 0) return [];
+    const checks: [string, number | null][] = [
+      ["Всего моментов", stats.chancesTotal],
+      ["Нереализовано", stats.missed],
+      ["Голы", stats.goals],
+      ["Л (лево)", stats.chancesLeft],
+      ["Ц (центр)", stats.chancesCenter],
+      ["П (право)", stats.chancesRight],
+      ["Спецсобытия", stats.chancesSpecialEvents],
+      ["Другое", stats.chancesOther],
+    ];
+    return checks.filter(([, real]) => real !== null && real === count).map(([label]) => `${side}=${label}`);
+  };
+
   return [...byType.entries()]
     .sort((a, b) => b[1].count - a[1].count)
-    .map(
-      ([id, { count, home, away, samples }]) =>
-        `#${id}×${count} (дома:${home}/гости:${away}) [${samples.map((s) => `"${s}"`).join(", ")}]`,
-    )
+    .map(([id, { count, home, away, samples }]) => {
+      const hints = [...matchHints("хозяева", home, homeStats), ...matchHints("гости", away, awayStats)];
+      const hintStr = hints.length > 0 ? ` ⚡совпадение с: ${hints.join(", ")}` : "";
+      return `#${id}×${count} (дома:${home}/гости:${away})${hintStr} [${samples.map((s) => `"${s}"`).join(", ")}]`;
+    })
     .join(" | ");
 }
 
@@ -789,7 +814,9 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
       `Голов=${fmtDebugNum(stats?.goals)}, Нереализовано=${fmtDebugNum(stats?.missed)}`;
     debug.push(attackStatsLine("attackStats (хозяева)", homeAttackStats));
     debug.push(attackStatsLine("attackStats (гости)", awayAttackStats));
-    debug.push(`EventList — разбивка по EventTypeID: ${debugEventTypeBreakdown(match, homeTeamId)}`);
+    debug.push(
+      `EventList — разбивка по EventTypeID: ${debugEventTypeBreakdown(match, homeTeamId, homeAttackStats, awayAttackStats)}`,
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     debug.push(`attackStats: исключение при разборе — ${message}`);

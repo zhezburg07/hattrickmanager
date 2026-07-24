@@ -326,10 +326,11 @@
    атака (или наоборот) — оба значения показаны рядом, а не разнесены по
    разным концам поля, как в предыдущей версии с горизонтальными "полосами
    одна под другой". */
-/* Квадратики зон увеличены в 4 раза от исходного размера (по прямому
-   запросу) — контейнер .zonePitchWrap скроллится по горизонтали, если на
-   узких экранах секции перестают помещаться, вместо того чтобы сжимать
-   боксы обратно (см. .zonePitchWrap ниже). */
+/* Квадратики зон — баланс между исходным размером и первой попыткой "в 4
+   раза" (та не помещалась без горизонтальной прокрутки на обычном экране) —
+   сейчас примерно в 2.3 раза больше исходного, заметно крупнее, но не
+   требует скролла. Контейнер .zonePitchWrap на всякий случай оставлен
+   скроллящимся по горизонтали для узких экранов. */
 .zonePitchWrap {
   overflow-x: auto;
   padding-bottom: 4px;
@@ -341,11 +342,11 @@
   flex-direction: row;
   justify-content: center;
   align-items: stretch;
-  gap: 16px;
+  gap: 10px;
   background: linear-gradient(90deg, #1e4436 0%, #17362a 50%, #1e4436 100%);
   border: 2px solid rgba(242, 237, 225, 0.35);
   border-radius: var(--radius);
-  padding: 28px 24px;
+  padding: 20px 16px;
   margin-top: 4px;
   width: fit-content;
   min-width: 100%;
@@ -357,8 +358,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: space-around;
-  gap: 40px;
-  padding: 0 16px;
+  gap: 24px;
+  padding: 0 10px;
 }
 
 .zonePitchSection + .zonePitchSection {
@@ -376,18 +377,18 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
 }
 
 .zoneBox {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  min-width: 176px;
-  padding: 20px 28px;
-  border-radius: 20px;
-  border: 3px solid;
+  gap: 5px;
+  min-width: 100px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 2px solid;
   background: var(--color-bg-card);
 }
 
@@ -404,21 +405,21 @@
 .zoneBoxTop {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
 }
 
 .zoneBoxRating {
-  font-size: 44px;
+  font-size: 26px;
   font-weight: 800;
   color: var(--color-text);
 }
 
 .zoneBoxIcon {
-  font-size: 34px;
+  font-size: 20px;
 }
 
 .zoneBoxShare {
-  font-size: 22px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--color-text-muted);
 }
