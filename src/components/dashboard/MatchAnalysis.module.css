@@ -13,16 +13,29 @@
   padding: 20px 22px;
 }
 
-/* Полупрозрачная тёмная подложка под весь контент вкладок (шапка матча +
-   активная вкладка) — газон остаётся виден по краям карточки (сверху, у
-   переключателя вкладок), но сам текст/таблицы/таймлайн читаются на тёмном
-   фоне, а не прямо на полосатом газоне. */
+/* ИСПРАВЛЕНО: раньше здесь была одна большая полупрозрачная подложка на
+   ВЕСЬ контент вкладки — из-за этого данные лежали "на тёмном ящике поверх
+   газона", а не физически на самом поле. Теперь .matchContentBackdrop —
+   это просто отступ (газон .card виден насквозь), а тёмная подложка
+   (.dataPanel ниже) применяется ТОЧЕЧНО — только к текстовым/табличным
+   блокам без пространственного смысла (посещаемость, статистика, шапка
+   матча). Всё, что имеет физическое место на поле (маркеры игроков на
+   .splitPitch, боксы зон на .zonePitch, метки на временной шкале) —
+   остаётся НЕПОСРЕДСТВЕННО на газоне, без подложки под собой, как и
+   попросили: "данные лежат прямо на поле", а не на ящике над ним. */
 .matchContentBackdrop {
   margin-top: 18px;
-  background: rgba(13, 30, 25, 0.8);
+}
+
+.dataPanel {
+  background: rgba(13, 30, 25, 0.82);
   border: 1px solid rgba(242, 237, 225, 0.12);
   border-radius: var(--radius);
-  padding: 18px 20px;
+  padding: 14px 16px;
+}
+
+.dataPanel + .dataPanel {
+  margin-top: 16px;
 }
 
 .cardTitle {
@@ -133,11 +146,16 @@
 }
 
 /* Разделённое пополам поле рейтингов */
+/* Тот же полосатый газон, что и .card/.pitch (Lineup.module.css) — единый
+   вид газона везде на сайте, если меняете один — меняйте и остальные два. */
 .splitPitch {
   position: relative;
   width: 100%;
   aspect-ratio: 1.9 / 1;
-  background: linear-gradient(90deg, #1e4436 0%, #17362a 50%, #1e4436 100%);
+  background:
+    radial-gradient(120% 90% at 50% 8%, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 50%),
+    radial-gradient(140% 110% at 50% 100%, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0) 55%),
+    repeating-linear-gradient(180deg, #1e4a34 0px, #1a4030 16px, #163527 32px, #1a4030 48px, #1e4a34 64px);
   border: 2px solid rgba(242, 237, 225, 0.35);
   border-radius: var(--radius);
   overflow: hidden;
@@ -205,6 +223,7 @@
   margin-top: 14px;
   font-size: 12px;
   color: var(--color-text-muted);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
 
 .legendDot {
@@ -356,6 +375,8 @@
   padding-bottom: 4px;
 }
 
+/* Тот же полосатый газон, что и .card/.pitch (Lineup.module.css)/.splitPitch
+   выше — единый вид газона везде, если меняете один — меняйте и остальные. */
 .zonePitch {
   position: relative;
   display: flex;
@@ -363,7 +384,10 @@
   justify-content: center;
   align-items: stretch;
   gap: 10px;
-  background: linear-gradient(90deg, #1e4436 0%, #17362a 50%, #1e4436 100%);
+  background:
+    radial-gradient(120% 90% at 50% 8%, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 50%),
+    radial-gradient(140% 110% at 50% 100%, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0) 55%),
+    repeating-linear-gradient(180deg, #1e4a34 0px, #1a4030 16px, #163527 32px, #1a4030 48px, #1e4a34 64px);
   border: 2px solid rgba(242, 237, 225, 0.35);
   border-radius: var(--radius);
   padding: 20px 16px;
@@ -455,29 +479,46 @@
    так что горизонтальное пропорциональное расположение снова уместно.
    Контейнер скроллится по горизонтали на узких экранах — сама лента не
    сжимается меньше .timelineHorizontalTrack min-width. */
+/* Сама временная шкала теперь физически "на поле" — горизонтальный газон от
+   0' (у наших ворот) до 90' (у ворот соперника), тот же принцип, что и на
+   "Зонах поля" (лево-направо = глубина поля). Полосы газона здесь идут
+   слева направо (90deg), а не сверху вниз, как на .card/.splitPitch/
+   .zonePitch, чтобы визуально подчёркивать именно горизонтальное движение
+   времени по полю. */
 .timelineHorizontalWrap {
   overflow-x: auto;
-  padding-bottom: 4px;
+  overflow-y: visible;
+  padding: 4px 0 4px;
+  background:
+    radial-gradient(90% 140% at 8% 50%, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 50%),
+    radial-gradient(110% 160% at 100% 50%, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0) 55%),
+    repeating-linear-gradient(90deg, #1e4a34 0px, #1a4030 16px, #163527 32px, #1a4030 48px, #1e4a34 64px);
+  border: 2px solid rgba(242, 237, 225, 0.35);
+  border-radius: var(--radius);
 }
 
 .timelineHorizontalTrack {
   position: relative;
   min-width: 640px;
   height: 4px;
-  background: var(--color-border);
+  background: rgba(242, 237, 225, 0.4);
   border-radius: 999px;
   margin: 60px 16px 60px;
 }
 
 /* Линейка минут (0/15/30/45/60/75/90) — метки над линией, отдельно от
    маркеров "наша команда" (тоже сверху, но ниже линейки — см.
-   .timelineMarkerAbove) чтобы не накладывались. */
+   .timelineMarkerAbove) чтобы не накладывались. Тень у текста — контраст
+   против полосатого газона позади (метка сама по себе без подложки, как
+   разметка прямо на поле). */
 .timelineRulerTick {
   position: absolute;
   top: -44px;
   transform: translateX(-50%);
   font-size: 10.5px;
-  color: var(--color-text-muted);
+  font-weight: 700;
+  color: var(--color-text);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
   white-space: nowrap;
 }
 

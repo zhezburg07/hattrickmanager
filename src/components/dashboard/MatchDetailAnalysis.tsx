@@ -395,7 +395,7 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
       </div>
 
       <div className={styles.matchContentBackdrop}>
-        <div className={styles.matchHead}>
+        <div className={`${styles.matchHead} ${styles.dataPanel}`}>
           <span className={styles.matchHeadTeam}>{homeName}</span>
           <span className={styles.matchHeadScore}>
             {match.home ? `${match.ourScore}:${match.oppScore}` : `${match.oppScore}:${match.ourScore}`}
@@ -405,13 +405,13 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
         </div>
 
         {loading && (
-          <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none" }}>
+          <p className={`${styles.cardTitle} ${styles.dataPanel}`} style={{ fontWeight: 400, textTransform: "none" }}>
             Загрузка…
           </p>
         )}
 
         {!loading && data?.error && (
-          <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none" }}>
+          <p className={`${styles.cardTitle} ${styles.dataPanel}`} style={{ fontWeight: 400, textTransform: "none" }}>
             Не удалось загрузить разбор матча: {data.error}
           </p>
         )}
@@ -419,7 +419,10 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
         {!loading && data && !data.error && tab === "ratings" && (
           <>
             {data.ratingsError && (
-              <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none", marginBottom: 12 }}>
+              <p
+                className={`${styles.cardTitle} ${styles.dataPanel}`}
+                style={{ fontWeight: 400, textTransform: "none", marginBottom: 12 }}
+              >
                 {data.ratingsError}
               </p>
             )}
@@ -466,7 +469,7 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
               </>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginTop: 24 }}>
+            <div className={styles.dataPanel} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginTop: 24 }}>
               <div>
                 <div className={styles.matchHeadTeam} style={{ marginBottom: 8 }}>
                   {data.homeTeamName || homeName}
@@ -512,48 +515,50 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
         {!loading && data && !data.error && tab === "zones" && (
           <>
             {data.zonesError ? (
-              <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none" }}>
+              <p className={`${styles.cardTitle} ${styles.dataPanel}`} style={{ fontWeight: 400, textTransform: "none" }}>
                 {data.zonesError}
               </p>
             ) : (
               <div>
-                <div className={styles.zoneInfoPanel}>
-                  <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColHome}`}>
-                    <div className={styles.zoneInfoTeamName}>{data.homeTeamName || homeName}</div>
-                    <div className={styles.zoneInfoRow}>
-                      {data.homeTactic ?? "—"}
-                      {data.homeTeamAttitude ? ` / ${data.homeTeamAttitude}` : ""}
+                <div className={styles.dataPanel}>
+                  <div className={styles.zoneInfoPanel}>
+                    <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColHome}`}>
+                      <div className={styles.zoneInfoTeamName}>{data.homeTeamName || homeName}</div>
+                      <div className={styles.zoneInfoRow}>
+                        {data.homeTactic ?? "—"}
+                        {data.homeTeamAttitude ? ` / ${data.homeTeamAttitude}` : ""}
+                      </div>
+                      <div
+                        className={styles.zoneInfoPowerIndex}
+                        title="Наш собственный расчётный показатель силы команды в этом матче, на основе зональных рейтингов — не официальный показатель Hattrick"
+                      >
+                        Индекс силы: <b>{data.homePowerIndex ?? "—"}</b>
+                      </div>
                     </div>
-                    <div
-                      className={styles.zoneInfoPowerIndex}
-                      title="Наш собственный расчётный показатель силы команды в этом матче, на основе зональных рейтингов — не официальный показатель Hattrick"
-                    >
-                      Индекс силы: <b>{data.homePowerIndex ?? "—"}</b>
+                    <div className={styles.zoneInfoDivider} />
+                    <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColAway}`}>
+                      <div className={styles.zoneInfoTeamName}>{data.awayTeamName || awayName}</div>
+                      <div className={styles.zoneInfoRow}>
+                        {data.awayTactic ?? "—"}
+                        {data.awayTeamAttitude ? ` / ${data.awayTeamAttitude}` : ""}
+                      </div>
+                      <div
+                        className={styles.zoneInfoPowerIndex}
+                        title="Наш собственный расчётный показатель силы команды в этом матче, на основе зональных рейтингов — не официальный показатель Hattrick"
+                      >
+                        Индекс силы: <b>{data.awayPowerIndex ?? "—"}</b>
+                      </div>
                     </div>
                   </div>
-                  <div className={styles.zoneInfoDivider} />
-                  <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColAway}`}>
-                    <div className={styles.zoneInfoTeamName}>{data.awayTeamName || awayName}</div>
-                    <div className={styles.zoneInfoRow}>
-                      {data.awayTactic ?? "—"}
-                      {data.awayTeamAttitude ? ` / ${data.awayTeamAttitude}` : ""}
-                    </div>
-                    <div
-                      className={styles.zoneInfoPowerIndex}
-                      title="Наш собственный расчётный показатель силы команды в этом матче, на основе зональных рейтингов — не официальный показатель Hattrick"
-                    >
-                      Индекс силы: <b>{data.awayPowerIndex ?? "—"}</b>
-                    </div>
-                  </div>
+                  <p style={{ fontSize: 11.5, color: "var(--color-text-muted)", marginTop: 6, marginBottom: 0 }}>
+                    "Отношение к матчу" CHPP отдаёт только владельцу команды — для соперника поле честно отсутствует
+                    (не "—" по ошибке). "Индекс силы" — наш собственный расчётный показатель (защита + атака,
+                    взвешенные по силе полузащиты, 0-100), а не официальный показатель Hattrick и не формула
+                    HatStats/LoddarStats.
+                  </p>
                 </div>
-                <p style={{ fontSize: 11.5, color: "var(--color-text-muted)", marginTop: 6, marginBottom: 16 }}>
-                  "Отношение к матчу" CHPP отдаёт только владельцу команды — для соперника поле честно отсутствует
-                  (не "—" по ошибке). "Индекс силы" — наш собственный расчётный показатель (защита + атака,
-                  взвешенные по силе полузащиты, 0-100), а не официальный показатель Hattrick и не формула
-                  HatStats/LoddarStats.
-                </p>
 
-                <div className={styles.zonePitchWrap}>
+                <div className={styles.zonePitchWrap} style={{ marginTop: 16 }}>
                 <div className={styles.zonePitch}>
                   {ZONE_PITCH_SECTIONS.map(({ section, pairs }) => (
                     <div
@@ -589,7 +594,7 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                 </div>
                 </div>
 
-                <div style={{ marginTop: 20 }}>
+                <div className={styles.dataPanel} style={{ marginTop: 16 }}>
                   <div className={styles.cardTitle} style={{ marginBottom: 8 }}>
                     Стандарты
                   </div>
@@ -627,7 +632,7 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
         )}
 
         {!loading && data && !data.error && tab === "attendance" && (
-          <>
+          <div className={styles.dataPanel}>
             {data.attendanceError ? (
               <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none" }}>
                 {data.attendanceError}
@@ -699,20 +704,20 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                 </>
               )
             )}
-          </>
+          </div>
         )}
 
         {!loading && data && !data.error && tab === "timeline" && (
           <>
             {!data.timelineError && data.timeline && (
-              <>
+              <div className={styles.dataPanel}>
                 <AttackMomentsHeading />
                 <AttackMomentsTable teamLabel={data.homeTeamName || homeName} teamId={data.homeTeamId} stats={data.homeAttackStats} />
-              </>
+              </div>
             )}
 
             {data.timelineError ? (
-              <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none" }}>
+              <p className={`${styles.cardTitle} ${styles.dataPanel}`} style={{ fontWeight: 400, textTransform: "none" }}>
                 {data.timelineError}
               </p>
             ) : (
@@ -724,15 +729,17 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                   const RULER_MINUTES = [0, 15, 30, 45, 60, 75, 90].filter((m) => m <= maxMinute);
                   return (
                     <>
-                      {data.timelineSource === "without-subs" && (
-                        <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 12 }}>
-                          Полный список событий для этого матча не вернулся — показаны голы, карточки и травмы (всегда
-                          доступны), но не замены (их можно распознать только из полного отчёта).
+                      <div className={styles.dataPanel} style={{ marginTop: 16, marginBottom: 12 }}>
+                        {data.timelineSource === "without-subs" && (
+                          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 8 }}>
+                            Полный список событий для этого матча не вернулся — показаны голы, карточки и травмы
+                            (всегда доступны), но не замены (их можно распознать только из полного отчёта).
+                          </p>
+                        )}
+                        <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: 0 }}>
+                          {data.homeTeamName || homeName} — сверху от линии, {data.awayTeamName || awayName} — снизу.
                         </p>
-                      )}
-                      <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 8 }}>
-                        {data.homeTeamName || homeName} — сверху от линии, {data.awayTeamName || awayName} — снизу.
-                      </p>
+                      </div>
                       <div className={styles.timelineHorizontalWrap}>
                         <div className={styles.timelineHorizontalTrack}>
                           {RULER_MINUTES.map((m) => (
@@ -795,7 +802,7 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
             )}
 
             {!data.timelineError && data.timeline && (
-              <div style={{ marginTop: 20 }}>
+              <div className={styles.dataPanel} style={{ marginTop: 16 }}>
                 <AttackMomentsTable teamLabel={data.awayTeamName || awayName} teamId={data.awayTeamId} stats={data.awayAttackStats} />
               </div>
             )}
@@ -803,7 +810,7 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
         )}
 
         {!loading && data && SHOW_MATCH_ANALYSIS_DEBUG && data.debug.length > 0 && (
-          <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--color-border)" }}>
+          <div className={styles.dataPanel} style={{ marginTop: 16 }}>
             <div className={styles.cardTitle}>Диагностика (временная)</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 12.5, color: "var(--color-text-muted)" }}>
               {data.debug.map((line, i) => (
