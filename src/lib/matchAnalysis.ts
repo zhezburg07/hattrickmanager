@@ -476,22 +476,34 @@ const SUBSTITUTION_PATTERN = /(substitut|comes on for|replaces .*(for|as)|зам
 // встретился каждый EventTypeID в реальном ответе, и даёт пример текста —
 // чтобы можно было визуально сопоставить (а не гадать), какие ID похожи на
 // "момент/атаку", прежде чем строить по ним точную по минутам диаграмму.
-function debugEventTypeBreakdown(match: Record<string, unknown>): string {
+// Разбивка по EventTypeID ДОПОЛНИТЕЛЬНО делится на "дома"/"гости" по
+// SubjectTeamID (см. комментарий выше — "for goals and chances" намекает,
+// что SubjectTeamID у чанс-событий — атакующая команда) и даёт до 2 разных
+// примеров текста на тип — чтобы по количеству и стороне можно было
+// сопоставить конкретный ID с конкретной колонкой таблицы (Л/Ц/П/Спец/
+// Другое), а не гадать по одному значению.
+function debugEventTypeBreakdown(match: Record<string, unknown>, homeTeamId: string): string {
   const eventList = match.EventList as Record<string, unknown> | undefined;
   const events = asArray(eventList?.Event);
   if (events.length === 0) return "EventList пуст или отсутствует (matchEvents=true не вернул событий).";
-  const byType = new Map<string, { count: number; sample: string }>();
+  const byType = new Map<string, { count: number; home: number; away: number; samples: string[] }>();
   for (const e of events) {
     const typeId = String(e.EventTypeID ?? "?");
-    if (!byType.has(typeId)) {
-      byType.set(typeId, { count: 1, sample: stripHtml(String(e.EventText ?? "")).slice(0, 70) });
-    } else {
-      byType.get(typeId)!.count += 1;
-    }
+    const teamId = String(e.SubjectTeamID ?? "");
+    const text = stripHtml(String(e.EventText ?? "")).slice(0, 70);
+    const entry = byType.get(typeId) ?? { count: 0, home: 0, away: 0, samples: [] };
+    entry.count += 1;
+    if (teamId && teamId === homeTeamId) entry.home += 1;
+    else if (teamId) entry.away += 1;
+    if (entry.samples.length < 2 && !entry.samples.includes(text)) entry.samples.push(text);
+    byType.set(typeId, entry);
   }
   return [...byType.entries()]
     .sort((a, b) => b[1].count - a[1].count)
-    .map(([id, { count, sample }]) => `#${id}×${count} ("${sample}")`)
+    .map(
+      ([id, { count, home, away, samples }]) =>
+        `#${id}×${count} (дома:${home}/гости:${away}) [${samples.map((s) => `"${s}"`).join(", ")}]`,
+    )
     .join(" | ");
 }
 
@@ -764,12 +776,20 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
   try {
     homeAttackStats = parseAttackStats(homeTeam, homeTeam?.HomeGoals);
     awayAttackStats = parseAttackStats(awayTeam, awayTeam?.AwayGoals);
-    debug.push(
-      `attackStats — хозяева: моментов всего=${homeAttackStats?.chancesTotal ?? "—"}, голов=${homeAttackStats?.goals ?? "—"}, ` +
-        `нереализовано=${homeAttackStats?.missed ?? "—"}; гости: моментов всего=${awayAttackStats?.chancesTotal ?? "—"}, ` +
-        `голов=${awayAttackStats?.goals ?? "—"}, нереализовано=${awayAttackStats?.missed ?? "—"} (итоги за весь матч, без разбивки по минутам)`,
-    );
-    debug.push(`EventList — разбивка по EventTypeID: ${debugEventTypeBreakdown(match)}`);
+    // "нет поля" — CHPP вообще не прислал это поле для этого матча (честно
+    // неизвестно); реальный 0 (например, 0 специальных событий) отличается от
+    // этого и печатается как обычное число — чтобы при жалобе "в таблице
+    // пусто/ноль" сразу было видно, какой из двух случаев произошёл на самом
+    // деле, а не гадать.
+    const fmtDebugNum = (v: number | null | undefined) => (v === null || v === undefined ? "нет поля" : String(v));
+    const attackStatsLine = (label: string, stats: MatchAttackStats | null) =>
+      `${label} — сырые поля matchdetails: Л=${fmtDebugNum(stats?.chancesLeft)}, Ц=${fmtDebugNum(stats?.chancesCenter)}, ` +
+      `П=${fmtDebugNum(stats?.chancesRight)}, Спецсобытия=${fmtDebugNum(stats?.chancesSpecialEvents)}, ` +
+      `Другое=${fmtDebugNum(stats?.chancesOther)}, Всего=${fmtDebugNum(stats?.chancesTotal)}, ` +
+      `Голов=${fmtDebugNum(stats?.goals)}, Нереализовано=${fmtDebugNum(stats?.missed)}`;
+    debug.push(attackStatsLine("attackStats (хозяева)", homeAttackStats));
+    debug.push(attackStatsLine("attackStats (гости)", awayAttackStats));
+    debug.push(`EventList — разбивка по EventTypeID: ${debugEventTypeBreakdown(match, homeTeamId)}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     debug.push(`attackStats: исключение при разборе — ${message}`);

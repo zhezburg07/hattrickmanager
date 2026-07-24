@@ -274,7 +274,11 @@ function AttackMomentsTable({ teamLabel, teamId, stats }: { teamLabel: string; t
   );
 }
 
-function AttackMomentsTables({ data, homeName, awayName }: { data: MatchAnalysisResponse; homeName: string; awayName: string }) {
+// Заголовок + пояснение показываются один раз, над таблицей домашней
+// команды (см. AttackMomentsHomeBlock/AttackMomentsAwayBlock ниже — сама
+// временная шкала располагается МЕЖДУ этими двумя блоками, по запросу:
+// таблица хозяев — над лентой, таблица гостей — под ней).
+function AttackMomentsHeading() {
   return (
     <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--color-border)" }}>
       <div className={styles.cardTitle} style={{ marginBottom: 8 }}>
@@ -283,11 +287,10 @@ function AttackMomentsTables({ data, homeName, awayName }: { data: MatchAnalysis
       <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 12 }}>
         Разбивка по зонам (Л/Ц/П, спецсобытия, другое) — реальные поля matchdetails, но это ОБЩЕЕ число моментов за
         матч без отдельного счётчика именно голов или именно нереализованных попыток в каждой зоне — поэтому в этих
-        двух строках по зонам честно "нет данных", а не предположение. Полная разбивка событий по EventTypeID — в
-        "Диагностика" внизу страницы.
+        двух строках по зонам честно "нет данных" (а не 0 — 0 означает реальное известное значение, "нет данных" —
+        что CHPP это поле не прислал). Полная разбивка сырых полей и событий EventList — в "Диагностика" внизу
+        страницы.
       </p>
-      <AttackMomentsTable teamLabel={data.homeTeamName || homeName} teamId={data.homeTeamId} stats={data.homeAttackStats} />
-      <AttackMomentsTable teamLabel={data.awayTeamName || awayName} teamId={data.awayTeamId} stats={data.awayAttackStats} />
     </div>
   );
 }
@@ -698,6 +701,13 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
 
         {!loading && data && !data.error && tab === "timeline" && (
           <>
+            {!data.timelineError && data.timeline && (
+              <>
+                <AttackMomentsHeading />
+                <AttackMomentsTable teamLabel={data.homeTeamName || homeName} teamId={data.homeTeamId} stats={data.homeAttackStats} />
+              </>
+            )}
+
             {data.timelineError ? (
               <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none" }}>
                 {data.timelineError}
@@ -781,7 +791,11 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                 })()
             )}
 
-            {!data.timelineError && data.timeline && <AttackMomentsTables data={data} homeName={homeName} awayName={awayName} />}
+            {!data.timelineError && data.timeline && (
+              <div style={{ marginTop: 20 }}>
+                <AttackMomentsTable teamLabel={data.awayTeamName || awayName} teamId={data.awayTeamId} stats={data.awayAttackStats} />
+              </div>
+            )}
           </>
         )}
 
