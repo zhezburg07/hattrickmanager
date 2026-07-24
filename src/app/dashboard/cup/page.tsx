@@ -7,16 +7,12 @@ import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
 import { parseClubXml } from "@/lib/clubStaff";
 import { parseMatchesXml, debugRawMatchFields } from "@/lib/matches";
-import { parseCupMatchesXml, type RealCupMatch } from "@/lib/cupMatches";
+import { resolveOurCupPath, type OurCupPathResult } from "@/lib/cupMatches";
 
 // ВРЕМЕННАЯ диагностика — показывает, откуда (если откуда-то) реально
-// нашёлся CupID (teamdetails/club/matches) и что произошло при попытке
-// запросить cupmatches с этим ID: HTTP-статус, сколько матчей разобралось,
-// сырой XML начала ответа. Нужна, чтобы точно увидеть, на каком шаге
-// застревает "Кубки" — то ли CupID нигде не находится (тогда это ожидаемо,
-// раз CHPP ещё не показывает участие в кубке), то ли ID находится, но
-// cupmatches всё равно не отдаёт матчи (тогда проблема в самом запросе/
-// разборе). Уберите, когда причина будет понятна.
+// нашёлся CupID (teamdetails/club/matches) и что вернул проход по раундам
+// cupmatches (resolveOurCupPath в src/lib/cupMatches.ts). Уберите, когда
+// поведение стабильно подтвердится на реальных данных.
 const SHOW_CUP_DEBUG_PANEL = true;
 
 interface CupDebugInfo {
@@ -28,18 +24,7 @@ interface CupDebugInfo {
   matchesCupId: string | null;
   chosenCupId: string | null;
   matchesRawSample: Record<string, unknown>[];
-  cupMatchesRequested: boolean;
-  cupMatchesHttpStatus: number | null;
-  cupMatchesRawSnippet: string;
-  // Точная длина сырого тела ответа cupmatches в символах — по запросу,
-  // чтобы однозначно отличать "ответ реально пустой" от "диагностика
-  // обрезает/не показывает то, что реально пришло". Символы (JS string
-  // length), а не байты — этого достаточно, чтобы отличить пустой ответ от
-  // непустого; XML здесь всегда ASCII/UTF-8-совместимый текст, так что
-  // расхождение символы/байты несущественно для этой проверки.
-  cupMatchesRawLength: number | null;
-  cupMatchesParsedCount: number | null;
-  cupMatchesParseError: string | null;
+  pathDebug: string[];
 }
 
 function emptyCupDebug(): CupDebugInfo {
@@ -52,12 +37,7 @@ function emptyCupDebug(): CupDebugInfo {
     matchesCupId: null,
     chosenCupId: null,
     matchesRawSample: [],
-    cupMatchesRequested: false,
-    cupMatchesHttpStatus: null,
-    cupMatchesRawSnippet: "(запрос не отправлялся)",
-    cupMatchesRawLength: null,
-    cupMatchesParsedCount: null,
-    cupMatchesParseError: null,
+    pathDebug: [],
   };
 }
 
@@ -106,42 +86,6 @@ async function findCupIdFromMatches(
   }
 }
 
-// Версия cupmatches.xml, подтверждённая исходным кодом независимого CHPP-
-// клиента github.com/lucianoq/hattrick (chpp/file_cupmatches.go,
-// CupMatchesAPIVersion = "1.4"). requestChppXmlRaw без явного параметра
-// version подставляет общий дефолт "1.5" (см. src/lib/hattrickApi.ts) —
-// для большинства файлов CHPP это не мешает (сервер, похоже, терпимо
-// относится к более новой версии), но для cupmatches именно это и могло
-// быть причиной пустого тела ответа при HTTP 200: несуществующая для этого
-// файла версия "1.5" вместо ошибки просто отдаёт пустой контейнер без
-// единого матча — без какого-либо признака ошибки в самом ответе.
-const CUP_MATCHES_VERSION = "1.4";
-
-async function resolveCupMatches(
-  tokens: StoredHattrickTokens,
-  teamId: string,
-  cupId: string,
-  debug: CupDebugInfo,
-): Promise<{ matches: RealCupMatch[] | null; error: string | null }> {
-  debug.cupMatchesRequested = true;
-  try {
-    const raw = await requestChppXmlRaw("cupmatches", { CupID: cupId, version: CUP_MATCHES_VERSION }, tokens);
-    debug.cupMatchesHttpStatus = raw.httpStatus;
-    debug.cupMatchesRawLength = raw.rawXml.length;
-    debug.cupMatchesRawSnippet = raw.rawXml.slice(0, 4000);
-    if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
-      throw new Error(`HTTP ${raw.httpStatus}: ${raw.rawXml.slice(0, 200)}`);
-    }
-    const matches = parseCupMatchesXml(raw.rawXml, teamId);
-    debug.cupMatchesParsedCount = matches.length;
-    return { matches, error: null };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "неизвестная ошибка";
-    debug.cupMatchesParseError = message;
-    return { matches: null, error: `Матчи кубка (cupmatches): ${message}` };
-  }
-}
-
 export default async function CupPage() {
   const tokens = await getRequiredHattrickTokens();
   const debug = emptyCupDebug();
@@ -171,9 +115,14 @@ export default async function CupPage() {
   }
   debug.chosenCupId = cupId;
 
-  const { matches, error: matchesError } =
-    cupId && teamId ? await resolveCupMatches(tokens, teamId, cupId, debug) : { matches: null, error: null };
-  const errors = [teamError, matchesError].filter((e): e is string => e !== null);
+  let cupPath: OurCupPathResult | null = null;
+  let pathError: string | null = null;
+  if (cupId && teamId) {
+    cupPath = await resolveOurCupPath(tokens, cupId, teamId);
+    debug.pathDebug = cupPath.debug;
+    pathError = cupPath.error;
+  }
+  const errors = [teamError, pathError].filter((e): e is string => e !== null);
 
   return (
     <>
@@ -186,7 +135,7 @@ export default async function CupPage() {
 
           {SHOW_CUP_DEBUG_PANEL && (
             <div className={styles.card}>
-              <div className={styles.balanceLabel}>Диагностика: поиск CupID и запрос cupmatches</div>
+              <div className={styles.balanceLabel}>Диагностика: поиск CupID и проход по раундам cupmatches</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 8, fontSize: 12.5 }}>
                 <div>TeamID: {debug.teamId ?? "—"}</div>
                 <div>StillInCup (teamdetails): {debug.stillInCup === null ? "поле недоступно" : debug.stillInCup ? "да" : "нет"}</div>
@@ -198,7 +147,7 @@ export default async function CupPage() {
                 <div>
                   CupID из matches.xml (MatchContextId у матча с MatchType=3): {debug.matchesCupId ?? "не найден / не запрашивался"}
                 </div>
-                <div style={{ fontWeight: 700, marginTop: 4 }}>Итоговый CupID, использованный для cupmatches: {debug.chosenCupId ?? "не найден — cupmatches не запрашивался"}</div>
+                <div style={{ fontWeight: 700, marginTop: 4 }}>Итоговый CupID: {debug.chosenCupId ?? "не найден — cupmatches не запрашивался"}</div>
               </div>
 
               {debug.matchesRawSample.length > 0 && (
@@ -215,37 +164,19 @@ export default async function CupPage() {
               )}
 
               <div className={styles.balanceLabel} style={{ marginTop: 16 }}>
-                Диагностика: результат запроса cupmatches
+                Диагностика: проход по раундам (resolveOurCupPath)
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 8, fontSize: 12.5 }}>
-                <div>Запрос отправлялся: {debug.cupMatchesRequested ? `да (version=${CUP_MATCHES_VERSION})` : "нет (CupID не найден ни в одном источнике)"}</div>
-                <div>HTTP статус: {debug.cupMatchesHttpStatus ?? "—"}</div>
-                <div style={{ fontWeight: 700 }}>
-                  Длина тела ответа: {debug.cupMatchesRawLength === null ? "—" : `${debug.cupMatchesRawLength} символов`}
-                  {debug.cupMatchesRawLength === 0 && " — ответ реально пустой (0 символов), это не ошибка отображения"}
-                </div>
-                <div>Матчей разобрано: {debug.cupMatchesParsedCount ?? "—"}</div>
-                {debug.cupMatchesParseError && (
-                  <div style={{ color: "#c0503f" }}>Ошибка: {debug.cupMatchesParseError}</div>
-                )}
+                {debug.pathDebug.length === 0 && <div>Проход по раундам не выполнялся (CupID/TeamID не найдены).</div>}
+                {debug.pathDebug.map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
+                {pathError && <div style={{ color: "#c0503f" }}>Ошибка: {pathError}</div>}
               </div>
-              {debug.cupMatchesRequested && (
-                <details style={{ marginTop: 6 }} open>
-                  <summary style={{ cursor: "pointer", fontSize: 12.5 }}>
-                    Сырой XML cupmatches
-                    {debug.cupMatchesRawLength !== null &&
-                      debug.cupMatchesRawLength > debug.cupMatchesRawSnippet.length &&
-                      ` (показаны первые ${debug.cupMatchesRawSnippet.length} из ${debug.cupMatchesRawLength} символов)`}
-                  </summary>
-                  <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", fontSize: 10.5, maxHeight: 400, overflow: "auto" }}>
-                    {debug.cupMatchesRawLength === 0 ? "(пустая строка — 0 символов)" : debug.cupMatchesRawSnippet}
-                  </pre>
-                </details>
-              )}
             </div>
           )}
 
-          <CupSection stillInCup={stillInCup ?? undefined} realCupMatches={matches ?? undefined} />
+          <CupSection cupPath={cupPath ?? undefined} />
         </div>
       </main>
       <Footer />
