@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { skillWord } from "@/data/squad";
 import styles from "./MatchAnalysis.module.css";
+import { GoalBallIcon, SubstitutionIcon } from "./TimelineIcons";
 
 export interface AnalyzableMatch {
   id: number;
@@ -79,6 +80,8 @@ interface MatchTimelineEntry {
 interface MatchAnalysisResponse {
   homeTeamName: string;
   awayTeamName: string;
+  homeTeamId: string;
+  awayTeamId: string;
   homeRatings: MatchPlayerRating[];
   awayRatings: MatchPlayerRating[];
   ratingsError: string | null;
@@ -203,6 +206,92 @@ function zoneSharePercent(own: number | null, opponentContest: number | null): n
   return Math.round((o / total) * 100);
 }
 
+const NO_DATA = "нет данных";
+
+function fmtStat(v: number | null | undefined): string {
+  return v !== null && v !== undefined ? String(v) : NO_DATA;
+}
+
+// Отдельная таблица статистики атакующих моментов (не на самой временной
+// шкале) — см. комментарий у MatchAttackStats/computePowerIndex в
+// src/lib/matchAnalysis.ts. Hattrick подтверждённо отдаёт разбивку по зонам
+// (Л/Ц/П + спецсобытия + другое) только как сумму ВСЕХ моментов за матч —
+// нет отдельного счётчика именно голов и именно нереализованных попыток по
+// каждой зоне (только их итоговая сумма с голами). Поэтому строки "Голы" и
+// "Нереализованные моменты" по зонам честно "нет данных", а не предположение
+// (только столбец "Всего" в этих строках — реальное число).
+function AttackMomentsTable({ teamLabel, teamId, stats }: { teamLabel: string; teamId: string; stats: MatchAttackStats | null }) {
+  const lcr =
+    stats?.chancesLeft !== null &&
+    stats?.chancesLeft !== undefined &&
+    stats?.chancesCenter !== null &&
+    stats?.chancesCenter !== undefined &&
+    stats?.chancesRight !== null &&
+    stats?.chancesRight !== undefined
+      ? `${stats.chancesLeft}/${stats.chancesCenter}/${stats.chancesRight}`
+      : NO_DATA;
+
+  return (
+    <div className={styles.tableWrap} style={{ marginBottom: 20 }}>
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th>
+              {teamLabel}
+              {teamId ? ` (ID ${teamId})` : ""}
+            </th>
+            <th style={{ textAlign: "right" }}>Л/Ц/П</th>
+            <th style={{ textAlign: "right" }}>Спецсобытия</th>
+            <th style={{ textAlign: "right" }}>Другое</th>
+            <th style={{ textAlign: "right" }}>Всего</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className={styles.attackMomentsRowGoals}>
+            <td>Голы</td>
+            <td className={styles.numCell}>{NO_DATA}</td>
+            <td className={styles.numCell}>{NO_DATA}</td>
+            <td className={styles.numCell}>{NO_DATA}</td>
+            <td className={styles.numCell}>{fmtStat(stats?.goals)}</td>
+          </tr>
+          <tr className={styles.attackMomentsRowMissed}>
+            <td>Нереализованные моменты</td>
+            <td className={styles.numCell}>{NO_DATA}</td>
+            <td className={styles.numCell}>{NO_DATA}</td>
+            <td className={styles.numCell}>{NO_DATA}</td>
+            <td className={styles.numCell}>{fmtStat(stats?.missed)}</td>
+          </tr>
+          <tr className={styles.attackMomentsRowTotal}>
+            <td>Всего</td>
+            <td className={styles.numCell}>{lcr}</td>
+            <td className={styles.numCell}>{fmtStat(stats?.chancesSpecialEvents)}</td>
+            <td className={styles.numCell}>{fmtStat(stats?.chancesOther)}</td>
+            <td className={styles.numCell}>{fmtStat(stats?.chancesTotal)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AttackMomentsTables({ data, homeName, awayName }: { data: MatchAnalysisResponse; homeName: string; awayName: string }) {
+  return (
+    <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--color-border)" }}>
+      <div className={styles.cardTitle} style={{ marginBottom: 8 }}>
+        Статистика атакующих моментов
+      </div>
+      <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 12 }}>
+        Разбивка по зонам (Л/Ц/П, спецсобытия, другое) — реальные поля matchdetails, но это ОБЩЕЕ число моментов за
+        матч без отдельного счётчика именно голов или именно нереализованных попыток в каждой зоне — поэтому в этих
+        двух строках по зонам честно "нет данных", а не предположение. Полная разбивка событий по EventTypeID — в
+        "Диагностика" внизу страницы.
+      </p>
+      <AttackMomentsTable teamLabel={data.homeTeamName || homeName} teamId={data.homeTeamId} stats={data.homeAttackStats} />
+      <AttackMomentsTable teamLabel={data.awayTeamName || awayName} teamId={data.awayTeamId} stats={data.awayAttackStats} />
+    </div>
+  );
+}
+
 // Реальные данные конкретного матча (см. src/lib/matchAnalysis.ts,
 // /api/dashboard/match-analysis). Раньше рейтинги игроков всегда приходили
 // пустыми — читались из несуществующего в matchdetails.xml поля Lineup;
@@ -226,6 +315,8 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
           setData({
             homeTeamName: "",
             awayTeamName: "",
+            homeTeamId: "",
+            awayTeamId: "",
             homeRatings: [],
             awayRatings: [],
             ratingsError: "Не удалось загрузить",
@@ -617,6 +708,7 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                   const timeline = data.timeline as MatchTimelineEntry[];
                   const ourSide = match.home ? "home" : "away";
                   const maxMinute = Math.max(90, ...timeline.map((ev) => ev.minute));
+                  const RULER_MINUTES = [0, 15, 30, 45, 60, 75, 90].filter((m) => m <= maxMinute);
                   return (
                     <>
                       {data.timelineSource === "without-subs" && (
@@ -625,66 +717,29 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                           доступны), но не замены (их можно распознать только из полного отчёта).
                         </p>
                       )}
-                      <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 4 }}>
-                        Статистика атакующих моментов: строка «Голы» — реальные отметки по минутам (те же данные, что и
-                        на самой ленте ниже). Hattrick отдаёт «нереализовано»/«всего моментов» только итоговым числом за
-                        весь матч, без разбивки по минутам — расставить их точками по шкале означало бы придумать
-                        позиции, поэтому вместо этого показаны настоящие итоговые числа. Полная разбивка событий по
-                        EventTypeID — в «Диагностика» внизу страницы.
+                      <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 8 }}>
+                        {data.homeTeamName || homeName} — сверху от линии, {data.awayTeamName || awayName} — снизу.
                       </p>
-                      {(
-                        [
-                          ["home", data.homeTeamName || homeName, data.homeAttackStats] as const,
-                        ]
-                      ).map(([side, label, stats]) => (
-                        <div className={styles.attackStatsSide} key={side}>
-                          <div className={styles.attackStatsSideLabel}>{label}</div>
-                          <div className={`${styles.attackStatsRow} ${styles.attackStatsRowGoals}`}>
-                            <span className={styles.attackStatsRowLabel}>Голы</span>
-                            <div className={styles.attackStatsDotTrack}>
-                              {timeline
-                                .filter((ev) => ev.kind === "goal" && ev.teamSide === side)
-                                .map((ev, i) => (
-                                  <span
-                                    key={i}
-                                    className={`${styles.attackStatsDot} ${styles.attackStatsDotGoals}`}
-                                    style={{ left: `${(ev.minute / maxMinute) * 100}%` }}
-                                    title={`${ev.minute}'`}
-                                  />
-                                ))}
-                            </div>
-                          </div>
-                          <div className={`${styles.attackStatsRow} ${styles.attackStatsRowMissed}`}>
-                            <span className={styles.attackStatsRowLabel}>Нереализовано</span>
-                            <span className={styles.attackStatsStatic}>
-                              {stats?.missed !== null && stats?.missed !== undefined
-                                ? `${stats.missed} за весь матч (без разбивки по минутам)`
-                                : "нет данных"}
-                            </span>
-                          </div>
-                          <div className={`${styles.attackStatsRow} ${styles.attackStatsRowTotal}`}>
-                            <span className={styles.attackStatsRowLabel}>Всего моментов</span>
-                            <span className={styles.attackStatsStatic}>
-                              {stats?.chancesTotal !== null && stats?.chancesTotal !== undefined
-                                ? `${stats.chancesTotal} за весь матч (без разбивки по минутам)`
-                                : "нет данных"}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
                       <div className={styles.timelineHorizontalWrap}>
                         <div className={styles.timelineHorizontalTrack}>
-                          <span className={`${styles.timelineEndLabel} ${styles.timelineEndLabelStart}`}>0&apos;</span>
-                          <span className={`${styles.timelineEndLabel} ${styles.timelineEndLabelEnd}`}>{maxMinute}&apos;</span>
+                          {RULER_MINUTES.map((m) => (
+                            <span key={m} className={styles.timelineRulerTick} style={{ left: `${(m / maxMinute) * 100}%` }}>
+                              {m}&apos;
+                            </span>
+                          ))}
+                          {maxMinute > 90 && (
+                            <span className={styles.timelineRulerTick} style={{ left: "100%" }}>
+                              {maxMinute}&apos;
+                            </span>
+                          )}
                           {timeline.map((ev, i) => {
                             const isOurs = ev.teamSide === ourSide;
                             const isRedCard = ev.kind === "card" && /красн/i.test(ev.text);
                             const isLightInjury = ev.kind === "injury" && /лёгк|ушиб/i.test(ev.text);
+                            const sideClass = isOurs ? styles.timelineMarkerAbove : styles.timelineMarkerBelow;
                             const markerClass =
                               ev.kind === "goal"
-                                ? isOurs
-                                  ? styles.timelineMarkerGoal
-                                  : styles.timelineMarkerGoalOpp
+                                ? styles.timelineMarkerGoal
                                 : ev.kind === "card"
                                   ? isRedCard
                                     ? styles.timelineMarkerCardRed
@@ -693,21 +748,25 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                                     ? styles.timelineMarkerSub
                                     : styles.timelineMarkerInjury;
                             const icon =
-                              ev.kind === "goal"
-                                ? "⚽"
-                                : ev.kind === "card"
-                                  ? isRedCard
-                                    ? "🟥"
-                                    : "🟨"
-                                  : ev.kind === "sub"
-                                    ? "⇆"
-                                    : isLightInjury
-                                      ? "🩹"
-                                      : "➕";
+                              ev.kind === "goal" ? (
+                                <GoalBallIcon size={14} />
+                              ) : ev.kind === "card" ? (
+                                isRedCard ? (
+                                  "🟥"
+                                ) : (
+                                  "🟨"
+                                )
+                              ) : ev.kind === "sub" ? (
+                                <SubstitutionIcon size={14} />
+                              ) : isLightInjury ? (
+                                "🩹"
+                              ) : (
+                                "➕"
+                              );
                             return (
                               <span
                                 key={i}
-                                className={`${styles.timelineMarker} ${markerClass}`}
+                                className={`${styles.timelineMarker} ${sideClass} ${markerClass}`}
                                 style={{ left: `${(ev.minute / maxMinute) * 100}%` }}
                                 title={`${ev.minute}' — ${ev.text}`}
                               >
@@ -717,50 +776,12 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                           })}
                         </div>
                       </div>
-                      {(
-                        [
-                          ["away", data.awayTeamName || awayName, data.awayAttackStats] as const,
-                        ]
-                      ).map(([side, label, stats]) => (
-                        <div className={styles.attackStatsSide} key={side}>
-                          <div className={`${styles.attackStatsRow} ${styles.attackStatsRowTotal}`}>
-                            <span className={styles.attackStatsRowLabel}>Всего моментов</span>
-                            <span className={styles.attackStatsStatic}>
-                              {stats?.chancesTotal !== null && stats?.chancesTotal !== undefined
-                                ? `${stats.chancesTotal} за весь матч (без разбивки по минутам)`
-                                : "нет данных"}
-                            </span>
-                          </div>
-                          <div className={`${styles.attackStatsRow} ${styles.attackStatsRowMissed}`}>
-                            <span className={styles.attackStatsRowLabel}>Нереализовано</span>
-                            <span className={styles.attackStatsStatic}>
-                              {stats?.missed !== null && stats?.missed !== undefined
-                                ? `${stats.missed} за весь матч (без разбивки по минутам)`
-                                : "нет данных"}
-                            </span>
-                          </div>
-                          <div className={`${styles.attackStatsRow} ${styles.attackStatsRowGoals}`}>
-                            <span className={styles.attackStatsRowLabel}>Голы</span>
-                            <div className={styles.attackStatsDotTrack}>
-                              {timeline
-                                .filter((ev) => ev.kind === "goal" && ev.teamSide === side)
-                                .map((ev, i) => (
-                                  <span
-                                    key={i}
-                                    className={`${styles.attackStatsDot} ${styles.attackStatsDotGoals}`}
-                                    style={{ left: `${(ev.minute / maxMinute) * 100}%` }}
-                                    title={`${ev.minute}'`}
-                                  />
-                                ))}
-                            </div>
-                          </div>
-                          <div className={styles.attackStatsSideLabel}>{label}</div>
-                        </div>
-                      ))}
                     </>
                   );
                 })()
             )}
+
+            {!data.timelineError && data.timeline && <AttackMomentsTables data={data} homeName={homeName} awayName={awayName} />}
           </>
         )}
 

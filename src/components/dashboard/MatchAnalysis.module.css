@@ -445,29 +445,24 @@
   height: 4px;
   background: var(--color-border);
   border-radius: 999px;
-  margin: 34px 16px 26px;
+  margin: 60px 16px 60px;
 }
 
-.timelineEndLabel {
+/* Линейка минут (0/15/30/45/60/75/90) — метки над линией, отдельно от
+   маркеров "наша команда" (тоже сверху, но ниже линейки — см.
+   .timelineMarkerAbove) чтобы не накладывались. */
+.timelineRulerTick {
   position: absolute;
-  top: -22px;
-  font-size: 11px;
+  top: -44px;
+  transform: translateX(-50%);
+  font-size: 10.5px;
   color: var(--color-text-muted);
   white-space: nowrap;
 }
 
-.timelineEndLabelStart {
-  left: 0;
-}
-
-.timelineEndLabelEnd {
-  right: 0;
-}
-
 .timelineMarker {
   position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -481,17 +476,22 @@
   z-index: 1;
 }
 
-.timelineMarkerGoal {
-  border-color: var(--color-good);
-  background: rgba(76, 175, 111, 0.18);
+/* Наша команда — маркеры НАД линией, соперник — ПОД линией (по запросу),
+   вместо единой строки посередине. */
+.timelineMarkerAbove {
+  bottom: 100%;
+  margin-bottom: 6px;
 }
 
-/* Гол соперника — приглушённо/нейтрально, не зелёным (см. .timelineMarkerGoal
-   выше — тот акцент оставлен только для голов НАШЕЙ команды, см. isOurs в
-   MatchDetailAnalysis.tsx). */
-.timelineMarkerGoalOpp {
-  border-color: var(--color-text-muted);
-  background: rgba(242, 237, 225, 0.1);
+.timelineMarkerBelow {
+  top: 100%;
+  margin-top: 6px;
+}
+
+.timelineMarkerGoal {
+  --goal-icon-color: var(--color-good);
+  border-color: var(--color-good);
+  background: rgba(76, 175, 111, 0.18);
 }
 
 .timelineMarkerCardYellow {
@@ -505,6 +505,8 @@
 }
 
 .timelineMarkerSub {
+  --sub-in-color: var(--color-good);
+  --sub-out-color: var(--color-bad);
   border-color: var(--color-accent);
   background: rgba(201, 162, 39, 0.18);
 }
@@ -514,82 +516,20 @@
   background: rgba(224, 145, 63, 0.2);
 }
 
-/* Статистика атакующих моментов — 3 строки над/под временной шкалой (см.
-   комментарий у MatchAttackStats в src/lib/matchAnalysis.ts): "Голы" —
-   реальные точки по минутам (те же данные, что и на самой ленте), а
-   "Нереализовано"/"Всего моментов" Hattrick отдаёт только итоговым числом
-   за весь матч — показаны как текст, а не выдуманные точки на шкале. */
-.attackStatsSide {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 640px;
-  margin: 2px 0;
+/* Таблица статистики атакующих моментов — заливка всей строки цветом (см.
+   AttackMomentsTable в MatchDetailAnalysis.tsx): голы зелёным, нереализовано
+   красным, итог серым. Текст остаётся читаемым на тёмном фоне карточек. */
+.attackMomentsRowGoals td {
+  background: rgba(76, 175, 111, 0.16);
 }
 
-.attackStatsSideLabel {
-  font-size: 11.5px;
+.attackMomentsRowMissed td {
+  background: rgba(192, 80, 63, 0.16);
+}
+
+.attackMomentsRowTotal td {
+  background: rgba(169, 189, 181, 0.1);
   font-weight: 700;
-  color: var(--color-text-muted);
-}
-
-.attackStatsRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.attackStatsRowLabel {
-  flex: none;
-  width: 108px;
-  font-size: 11px;
-  color: var(--color-text-muted);
-}
-
-.attackStatsRowGoals .attackStatsRowLabel {
-  color: var(--color-good);
-}
-
-.attackStatsRowMissed .attackStatsRowLabel {
-  color: var(--color-bad);
-}
-
-.attackStatsRowTotal .attackStatsRowLabel {
-  color: var(--color-text-muted);
-}
-
-.attackStatsDotTrack {
-  position: relative;
-  flex: 1;
-  height: 3px;
-  background: rgba(242, 237, 225, 0.12);
-  border-radius: 999px;
-}
-
-.attackStatsDot {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-}
-
-.attackStatsDotGoals {
-  background: var(--color-good);
-}
-
-.attackStatsStatic {
-  font-size: 11.5px;
-  color: var(--color-text);
-}
-
-.attackStatsRowMissed .attackStatsStatic {
-  color: var(--color-bad);
-}
-
-.attackStatsRowTotal .attackStatsStatic {
-  color: var(--color-text-muted);
 }
 
 /* Посещаемость */
