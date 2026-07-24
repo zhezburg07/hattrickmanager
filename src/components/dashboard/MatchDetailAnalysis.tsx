@@ -394,7 +394,7 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
         ))}
       </div>
 
-      <div style={{ marginTop: 18 }}>
+      <div className={styles.matchContentBackdrop}>
         <div className={styles.matchHead}>
           <span className={styles.matchHeadTeam}>{homeName}</span>
           <span className={styles.matchHeadScore}>
