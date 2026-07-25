@@ -83,47 +83,57 @@ export default function Header() {
             </Link>
           )}
 
-          <div className={styles.menuWrap} ref={wrapRef}>
-            <button
-              type="button"
-              className={styles.overviewBall}
-              title="Меню личного кабинета"
-              aria-label="Меню личного кабинета"
-              aria-haspopup="true"
-              aria-expanded={open}
-              onClick={() => setOpen((v) => !v)}
-            >
-              <svg viewBox="0 0 32 32" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <line x1="6" y1="10" x2="26" y2="10" />
-                <line x1="6" y1="16" x2="26" y2="16" />
-                <line x1="6" y1="22" x2="26" y2="22" />
-              </svg>
-            </button>
+          {/* ИСПРАВЛЕНО: это меню со списком вкладок личного кабинета
+              (Обзор/Состав/Расстановка и т.д.) раньше рендерилось БЕЗ
+              условия isCabinet — то есть показывалось даже на публичных
+              страницах (главная, /faq, /contact и т.д.) до того, как
+              пользователь вообще подключил команду или вошёл. Теперь оно
+              появляется только внутри личного кабинета (isCabinet
+              гарантированно означает "уже авторизован" — неавторизованных
+              туда перенаправляет src/app/dashboard/layout.tsx). */}
+          {isCabinet && (
+            <div className={styles.menuWrap} ref={wrapRef}>
+              <button
+                type="button"
+                className={styles.overviewBall}
+                title="Меню личного кабинета"
+                aria-label="Меню личного кабинета"
+                aria-haspopup="true"
+                aria-expanded={open}
+                onClick={() => setOpen((v) => !v)}
+              >
+                <svg viewBox="0 0 32 32" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="6" y1="10" x2="26" y2="10" />
+                  <line x1="6" y1="16" x2="26" y2="16" />
+                  <line x1="6" y1="22" x2="26" y2="22" />
+                </svg>
+              </button>
 
-            {open && (
-              <div className={styles.dropdown} role="menu">
-                {visibleCabinetTabs.map((tab) => {
-                  const isActive = tab.href === pathname;
-                  return (
-                    <Link
-                      key={tab.href}
-                      href={tab.href}
-                      role="menuitem"
-                      className={`${styles.dropdownItem} ${isActive ? styles.dropdownItemActive : ""}`}
-                      onClick={() => setOpen(false)}
-                    >
-                      <span className={styles.dropdownDot} style={{ opacity: isActive ? 1 : 0 }} />
-                      {tab.label}
-                    </Link>
-                  );
-                })}
-                <a href="/api/auth/logout" role="menuitem" className={styles.dropdownItem}>
-                  <span className={styles.dropdownDot} style={{ opacity: 0 }} />
-                  Выйти
-                </a>
-              </div>
-            )}
-          </div>
+              {open && (
+                <div className={styles.dropdown} role="menu">
+                  {visibleCabinetTabs.map((tab) => {
+                    const isActive = tab.href === pathname;
+                    return (
+                      <Link
+                        key={tab.href}
+                        href={tab.href}
+                        role="menuitem"
+                        className={`${styles.dropdownItem} ${isActive ? styles.dropdownItemActive : ""}`}
+                        onClick={() => setOpen(false)}
+                      >
+                        <span className={styles.dropdownDot} style={{ opacity: isActive ? 1 : 0 }} />
+                        {tab.label}
+                      </Link>
+                    );
+                  })}
+                  <a href="/api/auth/logout" role="menuitem" className={styles.dropdownItem}>
+                    <span className={styles.dropdownDot} style={{ opacity: 0 }} />
+                    Выйти
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </header>

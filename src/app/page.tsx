@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import TopInfoBar from "@/components/TopInfoBar";
 import HeroBanner from "@/components/HeroBanner";
 import WelcomeSection from "@/components/WelcomeSection";
@@ -26,14 +25,19 @@ export const revalidate = 60;
 export default function Home() {
   return (
     <>
+      <TopInfoBar />
+      {/* По запросу верхняя строка шапки (логотип+"Как это работает"+
+          "Войти"+"Подключить команду") на главной убрана полностью — вместо
+          неё липким (sticky) элементом стал сам баннер (фото стадиона с
+          логотипом/описанием, см. HeroBanner.tsx). Боковая навигация слева
+          (HomeSidebar) уже содержит "На главную"/"Зарегистрироваться" и
+          саму форму входа, так что нужные ссылки никуда не делись. */}
       <div className={styles.stickyTop}>
-        <TopInfoBar />
-        <Header />
+        <HeroBanner />
       </div>
       <div className={styles.layout}>
         <HomeSidebar />
         <main className={styles.mainContent}>
-          <HeroBanner />
           <WelcomeSection />
           <FeaturesSection />
           <ProductShowcase />
