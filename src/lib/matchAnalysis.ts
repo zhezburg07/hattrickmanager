@@ -366,7 +366,7 @@ function computeAttackZoneBreakdown(
   };
 }
 
-export type MatchTimelineKind = "goal" | "card" | "sub" | "injury";
+export type MatchTimelineKind = "goal" | "card" | "sub" | "injury" | "miss";
 // Есть ли в ответе полный EventList (matchEvents=true сработал) — от этого
 // зависит только наличие замен (см. parseSubstitutionsFromEventList выше):
 // голы/карточки/травмы всегда из своих отдельных подтверждённых контейнеров,
@@ -725,6 +725,62 @@ function debugEventTypeBreakdown(
     .join(" | ");
 }
 
+// Подпись зоны для маркера нереализованного момента на шкале — переиспользует
+// те же списки EventTypeID, что и computeAttackZoneBreakdown выше. Не
+// требует, чтобы разбивка по зонам для ВСЕЙ таблицы была "верифицирована"
+// (сошлась с официальными итогами) — здесь это просто человекочитаемая
+// подпись у конкретного события, а сам факт "это нереализованный момент"
+// уже гарантирован диапазоном ID (см. parseMissedChancesFromEventList).
+function missedChanceZoneLabel(typeId: number): string {
+  if (MISSED_ZONE_LEFT.has(typeId)) return "слева";
+  if (MISSED_ZONE_CENTER.has(typeId)) return "по центру";
+  if (MISSED_ZONE_RIGHT.has(typeId)) return "справа";
+  if (MISSED_SPECIAL_EVENT.has(typeId)) return "спецсобытие";
+  return "другой способ";
+}
+
+// Нереализованные моменты — реальные события EventList: диапазон
+// EventTypeID 200-299 у Hattrick — это ровно "непопадание" (isNonGoalEvent
+// в HattrickOrganizer, тот же источник, что и у computeAttackZoneBreakdown
+// выше), симметрично голам (100-199). У этих событий, как и у замен, нет
+// отдельного подтверждённого XML-контейнера — единственный источник это
+// EventList (matchEvents=true), с точной минутой (поле Minute у каждого
+// события, та же структура, что и у parseSubstitutionsFromEventList). Раньше
+// эти события на шкале не показывались вовсе — ошибочно считалось, что у
+// Hattrick есть только ИТОГ за матч (NrOfChances*), без минуты; на деле
+// каждое отдельное событие в EventList минуту всё же несёт.
+function parseMissedChancesFromEventList(
+  match: Record<string, unknown>,
+  homeTeamId: string,
+  homeTeamName: string,
+  awayTeamName: string,
+): { entries: MatchTimelineEntry[]; rawCount: number } {
+  const eventList = match.EventList as Record<string, unknown> | undefined;
+  const rawEvents = asArray(eventList?.Event);
+  const teamName = (teamId: string) => (teamId === homeTeamId ? homeTeamName : awayTeamName);
+  const entries: MatchTimelineEntry[] = [];
+  let rawCount = 0;
+  for (const e of rawEvents) {
+    try {
+      const typeId = Number(e.EventTypeID ?? NaN);
+      if (Number.isNaN(typeId) || typeId < 200 || typeId >= 300) continue;
+      rawCount++;
+      const teamId = String(e.SubjectTeamID ?? "");
+      const minute = Number(e.Minute ?? NaN);
+      entries.push({
+        minute: Number.isNaN(minute) ? 0 : minute,
+        matchPart: Number(e.MatchPart ?? 0) || 0,
+        text: `Нереализованный момент — ${missedChanceZoneLabel(typeId)} (${teamName(teamId)})`,
+        kind: "miss",
+        teamSide: teamSideOf(teamId, homeTeamId),
+      });
+    } catch {
+      // Пропускаем один нестандартный элемент, не теряя остальные.
+    }
+  }
+  return { entries, rawCount };
+}
+
 function parseSubstitutionsFromEventList(
   match: Record<string, unknown>,
   homeTeamId: string,
@@ -1041,12 +1097,19 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
       awayTeamName,
     );
     const { entries: subEntries, rawCount: eventRawCount } = parseSubstitutionsFromEventList(match, homeTeamId);
+    const { entries: missEntries, rawCount: missRawCount } = parseMissedChancesFromEventList(
+      match,
+      homeTeamId,
+      homeTeamName,
+      awayTeamName,
+    );
     debug.push(
       `хронология — сырые элементы: Scorers/Goal=${goalsRawCount}, Bookings/Booking=${bookingsRawCount}, ` +
-        `Injuries/Injury=${injuriesRawCount}, EventList=${eventRawCount} (из них похоже на замену: ${subEntries.length})`,
+        `Injuries/Injury=${injuriesRawCount}, EventList=${eventRawCount} (из них похоже на замену: ${subEntries.length}, ` +
+        `нереализованных моментов по коду события (200-299): ${missRawCount})`,
     );
 
-    const merged = [...goalsCardsEntries, ...injuryEntries, ...subEntries].sort((a, b) => a.minute - b.minute);
+    const merged = [...goalsCardsEntries, ...injuryEntries, ...subEntries, ...missEntries].sort((a, b) => a.minute - b.minute);
     if (merged.length > 0) {
       timeline = merged;
       // EventList (matchEvents=true) нужен ТОЛЬКО для попытки распознать

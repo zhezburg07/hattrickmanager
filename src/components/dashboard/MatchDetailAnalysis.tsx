@@ -77,7 +77,7 @@ interface MatchAttackStats {
   missedOther: number | null;
 }
 
-type MatchTimelineKind = "goal" | "card" | "sub" | "injury";
+type MatchTimelineKind = "goal" | "card" | "sub" | "injury" | "miss";
 
 interface MatchTimelineEntry {
   minute: number;
@@ -246,7 +246,7 @@ const NO_ZONE_BREAKDOWN_HINT =
 
 function fmtZoneLcr(l: number | null | undefined, c: number | null | undefined, r: number | null | undefined): string | null {
   if (l === null || l === undefined || c === null || c === undefined || r === null || r === undefined) return null;
-  return `${l}/${c}/${r}`;
+  return `${l} / ${c} / ${r}`;
 }
 
 function ZoneCell({ value }: { value: string | number | null }) {
@@ -274,7 +274,7 @@ function AttackMomentsTable({ teamLabel, teamId, stats }: { teamLabel: string; t
               {teamLabel}
               {teamId ? ` (ID ${teamId})` : ""}
             </th>
-            <th style={{ textAlign: "right" }}>Л/Ц/П</th>
+            <th style={{ textAlign: "right" }}>Л / Ц / П</th>
             <th style={{ textAlign: "right" }}>Спецсобытия</th>
             <th style={{ textAlign: "right" }}>Другое</th>
             <th style={{ textAlign: "right" }}>Всего</th>
@@ -347,15 +347,15 @@ const TIMELINE_EVENT_STATUS: { label: string; status: TimelineEventStatus; detai
   },
   {
     label: "Нереализованные моменты",
-    status: "unavailable",
+    status: "heuristic",
     detail:
-      "Hattrick отдаёт только ИТОГ за весь матч (см. таблицу статистики ниже) — нет поля с минутой конкретного момента, физически нечего поставить на шкалу, не придумывая позицию.",
+      "теперь показываются на шкале (красноватый мяч) — извлекаются из отдельных событий EventList по коду события (EventTypeID 200-299 — диапазон \"непопадание\", та же неофициальная, но проверяемая расшифровка кодов, что и в таблице статистики), с реальной минутой каждого конкретного события. Наведите на маркер — в тексте указана зона (лево/центр/право/спецсобытие/другое).",
   },
   {
     label: "Специальные события",
-    status: "unavailable",
+    status: "heuristic",
     detail:
-      "то же самое — только итог за матч (NrOfChancesSpecialEvents), без минуты. Разбивка EventList по EventTypeID в \"Диагностика\" внизу страницы — единственный способ проверить, нет ли там скрытого признака; там же подсказки ⚡ при точном числовом совпадении.",
+      "нереализованные спецсобытия — часть категории \"Нереализованные моменты\" выше (в тексте маркера будет «спецсобытие»); голы через спецсобытие уже были на шкале как обычные голы — Scorers не различает способ гола.",
   },
 ];
 const TIMELINE_EVENT_ICON: Record<TimelineEventStatus, string> = { ok: "✅", heuristic: "⚠️", unavailable: "❌" };
@@ -627,7 +627,9 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                             : styles.timelineMarkerCardYellow
                           : ev.kind === "sub"
                             ? styles.timelineMarkerSub
-                            : styles.timelineMarkerInjury;
+                            : ev.kind === "miss"
+                              ? styles.timelineMarkerMiss
+                              : styles.timelineMarkerInjury;
                     const icon =
                       ev.kind === "goal" ? (
                         <GoalBallIcon size={14} />
@@ -639,6 +641,8 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                         )
                       ) : ev.kind === "sub" ? (
                         <SubstitutionIcon size={14} />
+                      ) : ev.kind === "miss" ? (
+                        <GoalBallIcon size={14} />
                       ) : isLightInjury ? (
                         "🩹"
                       ) : (
