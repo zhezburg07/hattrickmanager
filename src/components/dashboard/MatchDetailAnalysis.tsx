@@ -65,6 +65,16 @@ interface MatchAttackStats {
   chancesRight: number | null;
   chancesSpecialEvents: number | null;
   chancesOther: number | null;
+  goalsLeft: number | null;
+  goalsCenter: number | null;
+  goalsRight: number | null;
+  goalsSpecialEvents: number | null;
+  goalsOther: number | null;
+  missedLeft: number | null;
+  missedCenter: number | null;
+  missedRight: number | null;
+  missedSpecialEvents: number | null;
+  missedOther: number | null;
 }
 
 type MatchTimelineKind = "goal" | "card" | "sub" | "injury";
@@ -221,28 +231,39 @@ function fmtStat(v: number | null | undefined): string {
 }
 
 // Отдельная таблица статистики атакующих моментов (не на самой временной
-// шкале) — см. комментарий у MatchAttackStats/computePowerIndex в
-// src/lib/matchAnalysis.ts. Hattrick подтверждённо отдаёт разбивку по зонам
-// (Л/Ц/П + спецсобытия + другое) только как сумму ВСЕХ моментов за матч
-// (голы и нереализованные вместе) — нет отдельного счётчика именно голов и
-// именно нереализованных попыток по каждой зоне. Поэтому строка "Всего
-// моментов" показывает реальную разбивку по зонам (сходится с суммой всех
-// зон), а строки "Голы"/"Нереализованные моменты" показывают только
-// реальный итог за матч в столбце "Всего" — ячейки по зонам для них
-// намеренно пустые (тире с пояснением по наведению), а не "нет данных":
-// это не отсутствующее поле, а структурная граница схемы CHPP.
-const NO_ZONE_BREAKDOWN_HINT = "Hattrick не разбивает голы/нереализованные моменты по зонам отдельно — только их сумма (см. строку «Всего моментов»).";
+// шкале) — см. комментарий у MatchAttackStats/computeAttackZoneBreakdown в
+// src/lib/matchAnalysis.ts. "Всего моментов" — разбивка по зонам атаки из
+// готового поля matchdetails (голы и нереализованные вместе, Hattrick сам
+// зоны не разделяет по типу). "Голы"/"Нереализованные моменты" по зонам —
+// это УЖЕ реальный расчёт из отдельных событий EventList по EventTypeID
+// (неофициальная, но проверяемая расшифровка кодов, см. комментарий у
+// computeAttackZoneBreakdown), а не готовое поле — поэтому показываем эти
+// числа ТОЛЬКО если расчёт сошёлся с официальными итогами для этого
+// конкретного матча (goalsLeft и т.п. не null); если не сошёлся или
+// EventList не пришёл — честное тире с пояснением, а не выдуманное число.
+const NO_ZONE_BREAKDOWN_HINT =
+  "Не удалось надёжно разобрать по зонам для этого матча (расчёт из отдельных событий EventList не сошёлся с официальным итогом, либо EventList не пришёл) — показан только общий итог за матч в столбце «Всего».";
+
+function fmtZoneLcr(l: number | null | undefined, c: number | null | undefined, r: number | null | undefined): string | null {
+  if (l === null || l === undefined || c === null || c === undefined || r === null || r === undefined) return null;
+  return `${l}/${c}/${r}`;
+}
+
+function ZoneCell({ value }: { value: string | number | null }) {
+  if (value === null) {
+    return (
+      <td className={styles.numCell} title={NO_ZONE_BREAKDOWN_HINT}>
+        —
+      </td>
+    );
+  }
+  return <td className={styles.numCell}>{value}</td>;
+}
 
 function AttackMomentsTable({ teamLabel, teamId, stats }: { teamLabel: string; teamId: string; stats: MatchAttackStats | null }) {
-  const lcr =
-    stats?.chancesLeft !== null &&
-    stats?.chancesLeft !== undefined &&
-    stats?.chancesCenter !== null &&
-    stats?.chancesCenter !== undefined &&
-    stats?.chancesRight !== null &&
-    stats?.chancesRight !== undefined
-      ? `${stats.chancesLeft}/${stats.chancesCenter}/${stats.chancesRight}`
-      : NO_DATA;
+  const lcr = fmtZoneLcr(stats?.chancesLeft, stats?.chancesCenter, stats?.chancesRight) ?? NO_DATA;
+  const goalsLcr = fmtZoneLcr(stats?.goalsLeft, stats?.goalsCenter, stats?.goalsRight);
+  const missedLcr = fmtZoneLcr(stats?.missedLeft, stats?.missedCenter, stats?.missedRight);
 
   return (
     <div className={styles.tableWrap} style={{ marginBottom: 20 }}>
@@ -269,16 +290,16 @@ function AttackMomentsTable({ teamLabel, teamId, stats }: { teamLabel: string; t
           </tr>
           <tr className={styles.attackMomentsRowGoals}>
             <td>Голы</td>
-            <td className={styles.numCell} title={NO_ZONE_BREAKDOWN_HINT}>—</td>
-            <td className={styles.numCell} title={NO_ZONE_BREAKDOWN_HINT}>—</td>
-            <td className={styles.numCell} title={NO_ZONE_BREAKDOWN_HINT}>—</td>
+            <ZoneCell value={goalsLcr} />
+            <ZoneCell value={stats?.goalsSpecialEvents ?? null} />
+            <ZoneCell value={stats?.goalsOther ?? null} />
             <td className={styles.numCell}>{fmtStat(stats?.goals)}</td>
           </tr>
           <tr className={styles.attackMomentsRowMissed}>
             <td>Нереализованные моменты</td>
-            <td className={styles.numCell} title={NO_ZONE_BREAKDOWN_HINT}>—</td>
-            <td className={styles.numCell} title={NO_ZONE_BREAKDOWN_HINT}>—</td>
-            <td className={styles.numCell} title={NO_ZONE_BREAKDOWN_HINT}>—</td>
+            <ZoneCell value={missedLcr} />
+            <ZoneCell value={stats?.missedSpecialEvents ?? null} />
+            <ZoneCell value={stats?.missedOther ?? null} />
             <td className={styles.numCell}>{fmtStat(stats?.missed)}</td>
           </tr>
         </tbody>
@@ -298,11 +319,13 @@ function AttackMomentsHeading() {
         Статистика атакующих моментов
       </div>
       <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 12 }}>
-        Строка "Всего моментов" — реальная разбивка по зонам атаки (Л/Ц/П, спецсобытия, другое), сумма голов и
-        нереализованных вместе — Hattrick не считает их по зонам раздельно. Поэтому в строках "Голы" и "Нереализованные
-        моменты" по зонам стоит тире (наведите — там пояснение), а в столбце "Всего" — точный итог за весь матч. Что
-        именно доступно по каждому типу событий на самой временной шкале ниже — см. чеклист над лентой; сырые счётчики
-        по каждой зоне и разбивку EventList по типам событий — в панели "Диагностика" в самом низу страницы.
+        Строка "Всего моментов" — разбивка по зонам атаки (Л/Ц/П, спецсобытия, другое) из готового поля matchdetails
+        (голы и нереализованные вместе). Строки "Голы" и "Нереализованные моменты" по зонам — это уже отдельный расчёт
+        из конкретных событий EventList по коду события (неофициальная, но проверяемая расшифровка кодов): числа
+        показаны только если этот расчёт сошёлся с официальными итогами выше для этого конкретного матча — иначе
+        честное тире с пояснением по наведению, а не выдуманное число. Что именно доступно по каждому типу событий на
+        самой временной шкале ниже — см. чеклист над лентой; сырые счётчики по каждой зоне и разбор EventList по кодам
+        — в панели "Диагностика" в самом низу страницы.
       </p>
     </div>
   );

@@ -108,6 +108,23 @@ export interface MatchAttackStats {
   chancesRight: number | null;
   chancesSpecialEvents: number | null;
   chancesOther: number | null;
+  // Та же разбивка, но ОТДЕЛЬНО голы и отдельно нереализованные моменты —
+  // вычисляется из отдельных событий EventList по EventTypeID (см.
+  // classifyEventTypeId/computeAttackZoneBreakdown ниже), а не из готового
+  // поля matchdetails (такого поля у Hattrick нет). Каждое поле null, если
+  // разбивку не удалось сверить с официальными итогами выше для этого
+  // конкретного матча (EventList не пришёл, расхождение с известными
+  // суммами и т.п.) — тогда честно не показываем эти числа.
+  goalsLeft: number | null;
+  goalsCenter: number | null;
+  goalsRight: number | null;
+  goalsSpecialEvents: number | null;
+  goalsOther: number | null;
+  missedLeft: number | null;
+  missedCenter: number | null;
+  missedRight: number | null;
+  missedSpecialEvents: number | null;
+  missedOther: number | null;
 }
 
 // Тактический приказ команды на матч — подтверждённое поле <TacticType>
@@ -170,7 +187,183 @@ function parseAttackStats(team: Record<string, unknown> | undefined, goalsRaw: u
   const goals = numOrNull(goalsRaw);
   const missed = chancesTotal !== null && goals !== null ? chancesTotal - goals : null;
   if (chancesTotal === null && goals === null) return null;
-  return { chancesTotal, goals, missed, chancesLeft, chancesCenter, chancesRight, chancesSpecialEvents, chancesOther };
+  return {
+    chancesTotal,
+    goals,
+    missed,
+    chancesLeft,
+    chancesCenter,
+    chancesRight,
+    chancesSpecialEvents,
+    chancesOther,
+    // Заполняется отдельно, см. computeAttackZoneBreakdown ниже — только
+    // если разбивку по EventTypeID удалось сверить с итогами выше.
+    goalsLeft: null,
+    goalsCenter: null,
+    goalsRight: null,
+    goalsSpecialEvents: null,
+    goalsOther: null,
+    missedLeft: null,
+    missedCenter: null,
+    missedRight: null,
+    missedSpecialEvents: null,
+    missedOther: null,
+  };
+}
+
+// Разбивка голов/нереализованных моментов ПО ЗОНАМ через отдельные события
+// EventList (matchEvents=true, уже запрашиваем для замен/травм выше) — а не
+// через готовое поле matchdetails (такого поля с разбивкой именно голов или
+// именно нереализованного по зоне у Hattrick нет, см. MatchAttackStats).
+// EventTypeID официально Hattrick НЕ документирует, но open-source проект
+// HattrickOrganizer (github.com/ho-dev/HattrickOrganizer,
+// core/model/match/MatchEvent.java, enum MatchEventID) — активно
+// поддерживаемый десятилетиями сообществом ассистент для Hattrick —
+// содержит полную расшифровку кодов 100-190 (голы) и 200-290
+// (соответствующие "непопадания", те же категории +100 к ID гола: реже
+// прямо совпадает по смещению, поэтому ниже перечислены явные числа, не
+// формула). Категории по коду: "чистый" гол в конкретную зону (лево/центр/
+// право), гол со спецсобытием (SE_*, тот же смысл, что и
+// NrOfChancesSpecialEvents), и гол "другим способом" — штрафной, пенальти,
+// контратака, непрямой штрафной, дальний удар (та же корзина, что и
+// NrOfChancesOther) — Hattrick, судя по всему, зоны не считает именно для
+// этих способов взятия ворот.
+const GOAL_ZONE_LEFT = new Set([102, 112, 122, 132, 152, 162, 172, 182]);
+const GOAL_ZONE_CENTER = new Set([101, 111, 121, 131, 151, 161, 171, 181]);
+const GOAL_ZONE_RIGHT = new Set([103, 113, 123, 133, 153, 163, 173, 183]);
+const GOAL_SPECIAL_EVENT = new Set([105, 106, 108, 109, 115, 116, 117, 118, 119, 125, 135, 136, 137, 138, 139, 190]);
+const GOAL_OTHER = new Set([
+  100, 110, 120, 130, 150, 160, 170, 180, // штрафной (свободный)
+  104, 114, 124, 134, 154, 164, 174, 184, // пенальти
+  140, 141, 142, 143, 186, // контратака (в т.ч. с непрямым штрафным)
+  185, // непрямой штрафной
+  107, 187, // дальний удар
+]);
+const MISSED_ZONE_LEFT = new Set([202, 212, 222, 232, 252, 262, 272, 282]);
+const MISSED_ZONE_CENTER = new Set([201, 211, 221, 231, 251, 261, 271, 281]);
+const MISSED_ZONE_RIGHT = new Set([203, 213, 223, 233, 253, 263, 273, 283]);
+const MISSED_SPECIAL_EVENT = new Set([205, 206, 208, 209, 215, 216, 217, 218, 219, 225, 235, 236, 237, 239, 289, 290]);
+const MISSED_OTHER = new Set([
+  200, 210, 220, 230, 250, 260, 270, 280,
+  204, 214, 224, 234, 254, 264, 274, 284,
+  240, 241, 242, 243, 286,
+  285,
+  207, 287, 288,
+]);
+
+interface AttackZoneBreakdown {
+  goalsLeft: number | null;
+  goalsCenter: number | null;
+  goalsRight: number | null;
+  goalsSpecialEvents: number | null;
+  goalsOther: number | null;
+  missedLeft: number | null;
+  missedCenter: number | null;
+  missedRight: number | null;
+  missedSpecialEvents: number | null;
+  missedOther: number | null;
+}
+
+const EMPTY_ZONE_BREAKDOWN: AttackZoneBreakdown = {
+  goalsLeft: null,
+  goalsCenter: null,
+  goalsRight: null,
+  goalsSpecialEvents: null,
+  goalsOther: null,
+  missedLeft: null,
+  missedCenter: null,
+  missedRight: null,
+  missedSpecialEvents: null,
+  missedOther: null,
+};
+
+// Считает разбивку по EventList и СВЕРЯЕТ её с уже подтверждёнными
+// официальными итогами (NrOfChances*/HomeGoals-AwayGoals, см. stats) —
+// сумма расшифровки по каждой категории (Л/Ц/П/Спецсобытия/Другое, отдельно
+// голы и отдельно нереализованные) должна ТОЧНО совпасть с официальным
+// числом. Расшифровка кодов неофициальная (см. комментарий выше), поэтому
+// если хоть одна сверка не сходится — не показываем разбивку вовсе (честные
+// null), а не наполовину верные числа; причина расхождения всегда попадает
+// в debug, чтобы не гадать вслепую при следующей жалобе.
+function computeAttackZoneBreakdown(
+  match: Record<string, unknown>,
+  teamId: string,
+  stats: MatchAttackStats | null,
+  sideLabel: string,
+  debug: string[],
+): AttackZoneBreakdown {
+  if (!stats || !teamId) return EMPTY_ZONE_BREAKDOWN;
+  const eventList = match.EventList as Record<string, unknown> | undefined;
+  const events = asArray(eventList?.Event);
+  if (events.length === 0) {
+    debug.push(`Разбивка по зонам (${sideLabel}) из EventList: EventList пуст — расчёт не выполнялся.`);
+    return EMPTY_ZONE_BREAKDOWN;
+  }
+
+  let goalsLeft = 0,
+    goalsCenter = 0,
+    goalsRight = 0,
+    goalsSpecial = 0,
+    goalsOther = 0;
+  let missedLeft = 0,
+    missedCenter = 0,
+    missedRight = 0,
+    missedSpecial = 0,
+    missedOther = 0;
+  let unclassified = 0;
+
+  for (const e of events) {
+    if (String(e.SubjectTeamID ?? "") !== teamId) continue;
+    const typeId = Number(e.EventTypeID ?? NaN);
+    if (Number.isNaN(typeId)) continue;
+    if (GOAL_ZONE_LEFT.has(typeId)) goalsLeft++;
+    else if (GOAL_ZONE_CENTER.has(typeId)) goalsCenter++;
+    else if (GOAL_ZONE_RIGHT.has(typeId)) goalsRight++;
+    else if (GOAL_SPECIAL_EVENT.has(typeId)) goalsSpecial++;
+    else if (GOAL_OTHER.has(typeId)) goalsOther++;
+    else if (MISSED_ZONE_LEFT.has(typeId)) missedLeft++;
+    else if (MISSED_ZONE_CENTER.has(typeId)) missedCenter++;
+    else if (MISSED_ZONE_RIGHT.has(typeId)) missedRight++;
+    else if (MISSED_SPECIAL_EVENT.has(typeId)) missedSpecial++;
+    else if (MISSED_OTHER.has(typeId)) missedOther++;
+    else if (typeId >= 100 && typeId < 300) unclassified++;
+  }
+
+  const checks: [string, number | null, number][] = [
+    ["Л", stats.chancesLeft, goalsLeft + missedLeft],
+    ["Ц", stats.chancesCenter, goalsCenter + missedCenter],
+    ["П", stats.chancesRight, goalsRight + missedRight],
+    ["Спецсобытия", stats.chancesSpecialEvents, goalsSpecial + missedSpecial],
+    ["Другое", stats.chancesOther, goalsOther + missedOther],
+    ["Голы (сумма по зонам)", stats.goals, goalsLeft + goalsCenter + goalsRight + goalsSpecial + goalsOther],
+    ["Нереализовано (сумма по зонам)", stats.missed, missedLeft + missedCenter + missedRight + missedSpecial + missedOther],
+  ];
+  const mismatches = checks
+    .filter(([, real, computed]) => real !== null && real !== computed)
+    .map(([label, real, computed]) => `${label}: официально ${real}, по EventList ${computed}`);
+
+  debug.push(
+    `Разбивка по зонам (${sideLabel}) из EventList: голы Л/Ц/П/Спец/Друг=${goalsLeft}/${goalsCenter}/${goalsRight}/${goalsSpecial}/${goalsOther}, ` +
+      `нереализовано Л/Ц/П/Спец/Друг=${missedLeft}/${missedCenter}/${missedRight}/${missedSpecial}/${missedOther}, ` +
+      `нераспознанных кодов в диапазоне гола/непопадания (100-299)=${unclassified}. ` +
+      (mismatches.length === 0
+        ? "сходится со всеми официальными итогами — показываем в таблице."
+        : `НЕ сходится (${mismatches.join("; ")}) — не показываем, оставляем честные прочерки в таблице.`),
+  );
+
+  if (mismatches.length > 0) return EMPTY_ZONE_BREAKDOWN;
+  return {
+    goalsLeft,
+    goalsCenter,
+    goalsRight,
+    goalsSpecialEvents: goalsSpecial,
+    goalsOther,
+    missedLeft,
+    missedCenter,
+    missedRight,
+    missedSpecialEvents: missedSpecial,
+    missedOther,
+  };
 }
 
 export type MatchTimelineKind = "goal" | "card" | "sub" | "injury";
@@ -817,6 +1010,15 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     debug.push(
       `EventList — разбивка по EventTypeID: ${debugEventTypeBreakdown(match, homeTeamId, homeAttackStats, awayAttackStats)}`,
     );
+
+    // Разбивка голов/нереализованного ПО ЗОНАМ через отдельные события
+    // EventList (см. computeAttackZoneBreakdown выше) — заполняет ранее
+    // всегда-null поля goalsLeft/.../missedOther, но только если сходится с
+    // уже подтверждёнными официальными итогами.
+    const homeZoneBreakdown = computeAttackZoneBreakdown(match, homeTeamId, homeAttackStats, "хозяева", debug);
+    const awayZoneBreakdown = computeAttackZoneBreakdown(match, awayTeamId, awayAttackStats, "гости", debug);
+    if (homeAttackStats) homeAttackStats = { ...homeAttackStats, ...homeZoneBreakdown };
+    if (awayAttackStats) awayAttackStats = { ...awayAttackStats, ...awayZoneBreakdown };
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     debug.push(`attackStats: исключение при разборе — ${message}`);
