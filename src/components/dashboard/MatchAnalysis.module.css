@@ -238,6 +238,19 @@
   color: var(--color-text);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
   white-space: nowrap;
+  opacity: 0.5;
+}
+
+/* Засечки прямо на линии таймлайна (в тех же точках, что и подписи минут
+   выше) — чтобы линия читалась как измерительная линейка, а не гладкая
+   полоса с цифрами рядом. */
+.pitchTimelineTickMark {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 1.5px;
+  height: 9px;
+  background: rgba(242, 237, 225, 0.55);
 }
 
 /* Таблицы статистики атакующих моментов — хозяева НАД временной шкалой,
@@ -269,7 +282,7 @@
 }
 
 .pitchTimelineTablePanel .table {
-  font-size: 10px;
+  font-size: 11.5px;
 }
 
 .pitchTimelineTablePanel .tableWrap {

@@ -603,6 +603,12 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                   </div>
                   <div className={styles.pitchTimelineTrack}>
                   {RULER_MINUTES.map((m) => (
+                    <span key={`tick-${m}`} className={styles.pitchTimelineTickMark} style={{ left: `${(m / maxMinute) * 100}%` }} />
+                  ))}
+                  {maxMinute > 90 && (
+                    <span className={styles.pitchTimelineTickMark} style={{ left: "100%" }} />
+                  )}
+                  {RULER_MINUTES.map((m) => (
                     <span key={m} className={styles.pitchTimelineTick} style={{ left: `${(m / maxMinute) * 100}%` }}>
                       {m}&apos;
                     </span>
