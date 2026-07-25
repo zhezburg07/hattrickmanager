@@ -5,6 +5,7 @@ import WelcomeSection from "@/components/WelcomeSection";
 import FeaturesSection from "@/components/FeaturesSection";
 import ProductShowcase from "@/components/ProductShowcase";
 import PricingSection from "@/components/PricingSection";
+import HomeSidebar from "@/components/HomeSidebar";
 import Footer from "@/components/Footer";
 import styles from "./page.module.css";
 
@@ -29,13 +30,16 @@ export default function Home() {
         <TopInfoBar />
         <Header />
       </div>
-      <main>
-        <HeroBanner />
-        <WelcomeSection />
-        <FeaturesSection />
-        <ProductShowcase />
-        {SHOW_PRICING_SECTION && <PricingSection />}
-      </main>
+      <div className={styles.layout}>
+        <HomeSidebar />
+        <main className={styles.mainContent}>
+          <HeroBanner />
+          <WelcomeSection />
+          <FeaturesSection />
+          <ProductShowcase />
+          {SHOW_PRICING_SECTION && <PricingSection />}
+        </main>
+      </div>
       <Footer />
     </>
   );

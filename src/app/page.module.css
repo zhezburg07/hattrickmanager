@@ -8,3 +8,27 @@
   top: 0;
   z-index: 60;
 }
+
+/* Боковая навигация (HomeSidebar) слева от основного контента главной
+   страницы — только эта страница получает такой двухколоночный layout,
+   остальные публичные страницы им не оборачиваются. */
+.layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 24px 20px 0;
+}
+
+.mainContent {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    flex-direction: column;
+  }
+}
+
