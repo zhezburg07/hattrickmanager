@@ -788,7 +788,7 @@
   justify-content: center;
   font-size: 12px;
   background: var(--color-bg-card);
-  border: 1.5px solid var(--color-border);
+  border: none;
   cursor: help;
   z-index: 1;
 }
@@ -807,29 +807,24 @@
 
 .timelineMarkerGoal {
   --goal-icon-color: var(--color-good);
-  border-color: var(--color-good);
   background: rgba(76, 175, 111, 0.18);
 }
 
 .timelineMarkerCardYellow {
-  border-color: #e0c04a;
   background: rgba(224, 192, 74, 0.2);
 }
 
 .timelineMarkerCardRed {
-  border-color: var(--color-bad);
   background: rgba(192, 80, 63, 0.2);
 }
 
 .timelineMarkerSub {
   --sub-in-color: var(--color-good);
   --sub-out-color: var(--color-bad);
-  border-color: var(--color-accent);
   background: rgba(201, 162, 39, 0.18);
 }
 
 .timelineMarkerInjury {
-  border-color: #e0913f;
   background: rgba(224, 145, 63, 0.2);
 }
 
@@ -838,7 +833,6 @@
    отличаться от забитого гола на шкале, а не выглядеть повтором. */
 .timelineMarkerMiss {
   --goal-icon-color: var(--color-bad);
-  border-color: var(--color-bad);
   background: rgba(192, 80, 63, 0.14);
 }
 
