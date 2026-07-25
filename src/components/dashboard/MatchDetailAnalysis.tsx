@@ -561,7 +561,19 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
               (data.timelineError || !timeline ? (
                 <div className={styles.matchPitchEmpty}>{data.timelineError ?? "Хронология недоступна для этого матча."}</div>
               ) : (
-                <div className={styles.pitchTimelineTrack}>
+                <>
+                  {/* Таблица статистики хозяев — НАД временной шкалой, гостей —
+                      ПОД ней, но обе внутри границ .matchPitch (не выходят за
+                      газон) — см. .pitchTimelineTablePanel в
+                      MatchAnalysis.module.css. */}
+                  <div className={`${styles.pitchTimelineTablePanel} ${styles.pitchTimelineTablePanelTop}`}>
+                    <AttackMomentsTable
+                      teamLabel={data.homeTeamName || homeName}
+                      teamId={data.homeTeamId}
+                      stats={data.homeAttackStats}
+                    />
+                  </div>
+                  <div className={styles.pitchTimelineTrack}>
                   {RULER_MINUTES.map((m) => (
                     <span key={m} className={styles.pitchTimelineTick} style={{ left: `${(m / maxMinute) * 100}%` }}>
                       {m}&apos;
@@ -614,7 +626,15 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                       </span>
                     );
                   })}
-                </div>
+                  </div>
+                  <div className={`${styles.pitchTimelineTablePanel} ${styles.pitchTimelineTablePanelBottom}`}>
+                    <AttackMomentsTable
+                      teamLabel={data.awayTeamName || awayName}
+                      teamId={data.awayTeamId}
+                      stats={data.awayAttackStats}
+                    />
+                  </div>
+                </>
               ))}
 
             {tab === "attendance" && (
@@ -851,10 +871,6 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
 
             <div className={styles.dataPanel} style={{ marginTop: 16 }}>
               <AttackMomentsHeading />
-              <AttackMomentsTable teamLabel={data.homeTeamName || homeName} teamId={data.homeTeamId} stats={data.homeAttackStats} />
-              <div style={{ marginTop: 20 }}>
-                <AttackMomentsTable teamLabel={data.awayTeamName || awayName} teamId={data.awayTeamId} stats={data.awayAttackStats} />
-              </div>
             </div>
           </>
         )}
