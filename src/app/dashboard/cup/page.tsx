@@ -1,12 +1,12 @@
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import CupSection from "@/components/dashboard/CupSection";
+import CupSection, { type UpcomingCupMatch } from "@/components/dashboard/CupSection";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import styles from "@/components/dashboard/Dashboard.module.css";
 import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
 import { parseTeamDetailsXml } from "@/lib/teamDetails";
 import { parseClubXml } from "@/lib/clubStaff";
-import { parseMatchesXml, debugRawMatchFields } from "@/lib/matches";
+import { parseMatchesXml, debugRawMatchFields, CUP_MATCH_TYPE, type RealMatch } from "@/lib/matches";
 import { resolveOurCupPath, type OurCupPathResult } from "@/lib/cupMatches";
 
 // ВРЕМЕННАЯ диагностика — показывает, откуда (если откуда-то) реально
@@ -25,6 +25,7 @@ interface CupDebugInfo {
   chosenCupId: string | null;
   matchesRawSample: Record<string, unknown>[];
   pathDebug: string[];
+  nextMatchFound: string | null;
 }
 
 function emptyCupDebug(): CupDebugInfo {
@@ -38,6 +39,7 @@ function emptyCupDebug(): CupDebugInfo {
     chosenCupId: null,
     matchesRawSample: [],
     pathDebug: [],
+    nextMatchFound: null,
   };
 }
 
@@ -71,19 +73,34 @@ async function findCupIdFromClub(tokens: StoredHattrickTokens): Promise<string |
   }
 }
 
-async function findCupIdFromMatches(
+// Один запрос matches.xml переиспользуется для двух целей: (1) запасной
+// поиск CupID через MatchContextId кубкового матча (как и раньше), и (2)
+// поиск ближайшего ПРЕДСТОЯЩЕГО кубкового матча (MatchType=3, статус
+// UPCOMING) — resolveOurCupPath (cupmatches.xml) по определению не
+// запрашивает ещё не наступившие раунды турнира (соперник в них может быть
+// не определён), а обычный matches.xml знает о ближайшем СВОЁМ матче, даже
+// кубковом, если Hattrick уже его назначил.
+async function fetchMatchesForCup(
   tokens: StoredHattrickTokens,
   teamId: string,
-): Promise<{ cupId: string | null; rawSample: Record<string, unknown>[] }> {
+): Promise<{ matches: RealMatch[]; rawSample: Record<string, unknown>[] }> {
   try {
     const raw = await requestChppXmlRaw("matches", {}, tokens);
-    if (raw.httpStatus < 200 || raw.httpStatus >= 300) return { cupId: null, rawSample: [] };
+    if (raw.httpStatus < 200 || raw.httpStatus >= 300) return { matches: [], rawSample: [] };
     const matches = parseMatchesXml(raw.rawXml, teamId);
     const rawSample = debugRawMatchFields(raw.rawXml, 10);
-    return { cupId: matches.find((m) => m.cupId !== null)?.cupId ?? null, rawSample };
+    return { matches, rawSample };
   } catch {
-    return { cupId: null, rawSample: [] };
+    return { matches: [], rawSample: [] };
   }
+}
+
+function findNextUpcomingCupMatch(matches: RealMatch[], cupId: string | null): RealMatch | null {
+  const candidates = matches
+    .filter((m) => Number(m.matchType) === CUP_MATCH_TYPE && m.status === "UPCOMING")
+    .filter((m) => cupId === null || m.cupId === null || m.cupId === cupId)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  return candidates[0] ?? null;
 }
 
 export default async function CupPage() {
@@ -103,15 +120,17 @@ export default async function CupPage() {
   debug.teamDetailsCupName = cupNameFromTeamDetails;
 
   let cupId = cupIdFromTeamDetails;
-  if (!cupId && teamId) {
-    const [fromClub, fromMatches] = await Promise.all([
-      findCupIdFromClub(tokens),
-      findCupIdFromMatches(tokens, teamId),
+  let matchesForCup: RealMatch[] = [];
+  if (teamId) {
+    const [fromClub, matchesResult] = await Promise.all([
+      cupId ? Promise.resolve(null) : findCupIdFromClub(tokens),
+      fetchMatchesForCup(tokens, teamId),
     ]);
+    matchesForCup = matchesResult.matches;
     debug.clubCupId = fromClub;
-    debug.matchesCupId = fromMatches.cupId;
-    debug.matchesRawSample = fromMatches.rawSample;
-    cupId = fromClub ?? fromMatches.cupId ?? null;
+    debug.matchesCupId = matchesForCup.find((m) => m.cupId !== null)?.cupId ?? null;
+    debug.matchesRawSample = matchesResult.rawSample;
+    if (!cupId) cupId = fromClub ?? debug.matchesCupId;
   }
   debug.chosenCupId = cupId;
 
@@ -123,6 +142,21 @@ export default async function CupPage() {
     pathError = cupPath.error;
   }
   const errors = [teamError, pathError].filter((e): e is string => e !== null);
+
+  // Ближайший предстоящий кубковый матч — из matches.xml (см.
+  // findNextUpcomingCupMatch выше). Не показываем повторно, если тот же
+  // матч уже присутствует в cupPath.path как "текущий" раунд (проход по
+  // раундам cupmatches иногда всё же успевает захватить уже назначенный,
+  // но ещё не сыгранный раунд).
+  const rawNextMatch = findNextUpcomingCupMatch(matchesForCup, cupId);
+  const alreadyInPath = cupPath?.path.some((m) => m.matchId === rawNextMatch?.matchId) ?? false;
+  debug.nextMatchFound = rawNextMatch
+    ? `MatchID ${rawNextMatch.matchId} (${rawNextMatch.date}, соперник «${rawNextMatch.opponent}»)${alreadyInPath ? " — уже показан в пути по раундам, отдельно не дублируем" : ""}`
+    : "не найден среди матчей matches.xml (MatchType=3, статус UPCOMING)";
+  const nextMatch: UpcomingCupMatch | null =
+    rawNextMatch && !alreadyInPath
+      ? { matchId: rawNextMatch.matchId, date: rawNextMatch.date, home: rawNextMatch.home, opponent: rawNextMatch.opponent }
+      : null;
 
   return (
     <>
@@ -173,10 +207,17 @@ export default async function CupPage() {
                 ))}
                 {pathError && <div style={{ color: "#c0503f" }}>Ошибка: {pathError}</div>}
               </div>
+
+              <div className={styles.balanceLabel} style={{ marginTop: 16 }}>
+                Диагностика: ближайший предстоящий кубковый матч (matches.xml)
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 8, fontSize: 12.5 }}>
+                <div>{debug.nextMatchFound ?? "—"}</div>
+              </div>
             </div>
           )}
 
-          <CupSection cupPath={cupPath ?? undefined} />
+          <CupSection cupPath={cupPath ?? undefined} nextMatch={nextMatch} />
         </div>
       </main>
       <Footer />

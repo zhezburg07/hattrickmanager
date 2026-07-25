@@ -23,27 +23,84 @@ const dotClass: Record<RoundStatus, string> = {
 };
 const itemClass: Record<RoundStatus, string> = { won: "", lost: "", current: styles.timelineItemCurrent };
 
-export default function CupSection({ cupPath }: { cupPath?: OurCupPathResult }) {
+// Ближайший предстоящий матч кубка — источник ОТДЕЛЬНЫЙ от cupPath (тот
+// строится проходом по раундам cupmatches.xml, который по определению не
+// запрашивает ещё не наступившие раунды, см. resolveOurCupPath). Здесь же —
+// матч с MatchType=3 и статусом UPCOMING из обычного matches.xml (см.
+// findNextUpcomingCupMatch в dashboard/cup/page.tsx): та же команда
+// использует его и на "Обзоре" для ближайших матчей вообще, просто
+// отфильтрованный до кубковых. Если этот же матч уже показан в cupPath.path
+// как "текущий" раунд — сюда он не передаётся (дедуп на странице), чтобы не
+// дублировать одно и то же дважды.
+export interface UpcomingCupMatch {
+  matchId: string;
+  date: string;
+  home: boolean;
+  opponent: string;
+}
+
+function NextCupMatchBlock({ nextMatch }: { nextMatch: UpcomingCupMatch }) {
+  const { shortDate, time } = formatMatchDateTime(nextMatch.date);
+  return (
+    <div className={styles.nextMatchBlock}>
+      <div className={styles.cardTitle} style={{ marginBottom: 8 }}>
+        Ближайший матч кубка
+      </div>
+      <div className={styles.matchRow}>
+        <span className={styles.matchDate}>
+          {shortDate}
+          {time ? ` · ${time}` : ""}
+        </span>
+        <span className={styles.matchOpponent}>
+          {nextMatch.home ? "vs" : "@"} {nextMatch.opponent}
+        </span>
+        {nextMatch.home && <span className={styles.homeTag}>дома</span>}
+      </div>
+    </div>
+  );
+}
+
+export default function CupSection({
+  cupPath,
+  nextMatch,
+}: {
+  cupPath?: OurCupPathResult;
+  nextMatch?: UpcomingCupMatch | null;
+}) {
   if (!cupPath || cupPath.error) {
     return (
-      <div className={styles.card}>
-        <div className={styles.cardTitle}>Кубок</div>
-        <p className={styles.prizeNote}>
-          {cupPath?.error ??
-            "Не удалось определить, в каком кубке участвует команда, — либо сезон/кубок ещё не начался, либо CHPP пока не отдаёт эти данные."}
-        </p>
+      <div className={styles.stack}>
+        {nextMatch && (
+          <div className={styles.card}>
+            <NextCupMatchBlock nextMatch={nextMatch} />
+          </div>
+        )}
+        <div className={styles.card}>
+          <div className={styles.cardTitle}>Кубок</div>
+          <p className={styles.prizeNote}>
+            {cupPath?.error ??
+              "Не удалось определить, в каком кубке участвует команда, — либо сезон/кубок ещё не начался, либо CHPP пока не отдаёт эти данные."}
+          </p>
+        </div>
       </div>
     );
   }
 
   if (cupPath.path.length === 0) {
     return (
-      <div className={styles.card}>
-        <div className={styles.cardTitle}>{cupPath.cupName || "Кубок"}</div>
-        <p className={styles.prizeNote}>
-          Матчей нашей команды в этом кубке не найдено (сезон {cupPath.season}, текущий раунд турнира —{" "}
-          {cupPath.currentRound}). Возможно, мы ещё не участвовали или уже выбыли раньше проверенных раундов.
-        </p>
+      <div className={styles.stack}>
+        <div className={styles.card}>
+          <div className={styles.cardTitle}>{cupPath.cupName || "Кубок"}</div>
+          {nextMatch && (
+            <div style={{ marginTop: 16 }}>
+              <NextCupMatchBlock nextMatch={nextMatch} />
+            </div>
+          )}
+          <p className={styles.prizeNote} style={{ marginTop: nextMatch ? 16 : 0 }}>
+            Матчей нашей команды в этом кубке не найдено (сезон {cupPath.season}, текущий раунд турнира —{" "}
+            {cupPath.currentRound}). Возможно, мы ещё не участвовали или уже выбыли раньше проверенных раундов.
+          </p>
+        </div>
       </div>
     );
   }
@@ -74,7 +131,13 @@ export default function CupSection({ cupPath }: { cupPath?: OurCupPathResult }) 
           </span>
         </div>
 
-        <div className={styles.timeline} style={{ marginTop: 20 }}>
+        {nextMatch && (
+          <div style={{ marginTop: 20 }}>
+            <NextCupMatchBlock nextMatch={nextMatch} />
+          </div>
+        )}
+
+        <div className={styles.timeline} style={{ marginTop: nextMatch ? 12 : 20 }}>
           {cupPath.path.map((m) => {
             const status = roundStatus(m);
             const { shortDate, time } = formatMatchDateTime(m.date);

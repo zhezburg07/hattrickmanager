@@ -457,7 +457,6 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
   const awayBench = data?.awayRatings.filter((p) => fieldPosition(p.roleId, "away") === null) ?? [];
 
   const timeline = !data?.timelineError ? (data?.timeline ?? null) : null;
-  const ourSide = match.home ? "home" : "away";
   const maxMinute = timeline ? Math.max(90, ...timeline.map((ev) => ev.minute)) : 90;
   const RULER_MINUTES = [0, 15, 30, 45, 60, 75, 90].filter((m) => m <= maxMinute);
 
@@ -614,10 +613,10 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                     </span>
                   )}
                   {timeline.map((ev, i) => {
-                    const isOurs = ev.teamSide === ourSide;
+                    const isHomeEvent = ev.teamSide === "home";
                     const isRedCard = ev.kind === "card" && /красн/i.test(ev.text);
                     const isLightInjury = ev.kind === "injury" && /лёгк|ушиб/i.test(ev.text);
-                    const sideClass = isOurs ? styles.timelineMarkerAbove : styles.timelineMarkerBelow;
+                    const sideClass = isHomeEvent ? styles.timelineMarkerAbove : styles.timelineMarkerBelow;
                     const markerClass =
                       ev.kind === "goal"
                         ? styles.timelineMarkerGoal
