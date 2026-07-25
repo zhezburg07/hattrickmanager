@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import HeaderLoginDropdown from "./HeaderLoginDropdown";
 import styles from "./Header.module.css";
 
 const cabinetTabs = [
@@ -57,6 +58,7 @@ export default function Header() {
           <Link href="/how-it-works" className={styles.howItWorksLink}>
             Как это работает
           </Link>
+          {!isCabinet && <HeaderLoginDropdown />}
           {!isCabinet && (
             <a href="/api/auth/request-token" className={`btnPrimary ${styles.headerCta}`}>
               Подключить команду

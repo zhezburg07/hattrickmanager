@@ -5,7 +5,6 @@ import WelcomeSection from "@/components/WelcomeSection";
 import FeaturesSection from "@/components/FeaturesSection";
 import ProductShowcase from "@/components/ProductShowcase";
 import PricingSection from "@/components/PricingSection";
-import HomeLoginForm from "@/components/HomeLoginForm";
 import Footer from "@/components/Footer";
 import styles from "./page.module.css";
 
@@ -31,7 +30,6 @@ export default function Home() {
         <Header />
       </div>
       <main>
-        <HomeLoginForm />
         <HeroBanner />
         <WelcomeSection />
         <FeaturesSection />
