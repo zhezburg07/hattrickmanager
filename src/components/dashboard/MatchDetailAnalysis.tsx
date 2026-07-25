@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { skillWord } from "@/data/squad";
 import styles from "./MatchAnalysis.module.css";
-import { GoalBallIcon, SubstitutionIcon } from "./TimelineIcons";
+import { GoalBallIcon, SubstitutionIcon, SpecialEventIcon } from "./TimelineIcons";
 
 export interface AnalyzableMatch {
   id: number;
@@ -77,7 +77,7 @@ interface MatchAttackStats {
   missedOther: number | null;
 }
 
-type MatchTimelineKind = "goal" | "card" | "sub" | "injury" | "miss";
+type MatchTimelineKind = "goal" | "card" | "sub" | "injury" | "miss" | "special";
 
 interface MatchTimelineEntry {
   minute: number;
@@ -281,13 +281,6 @@ function AttackMomentsTable({ teamLabel, teamId, stats }: { teamLabel: string; t
           </tr>
         </thead>
         <tbody>
-          <tr className={styles.attackMomentsRowTotal}>
-            <td>Всего моментов</td>
-            <td className={styles.numCell}>{lcr}</td>
-            <td className={styles.numCell}>{fmtStat(stats?.chancesSpecialEvents)}</td>
-            <td className={styles.numCell}>{fmtStat(stats?.chancesOther)}</td>
-            <td className={styles.numCell}>{fmtStat(stats?.chancesTotal)}</td>
-          </tr>
           <tr className={styles.attackMomentsRowGoals}>
             <td>Голы</td>
             <ZoneCell value={goalsLcr} />
@@ -301,6 +294,13 @@ function AttackMomentsTable({ teamLabel, teamId, stats }: { teamLabel: string; t
             <ZoneCell value={stats?.missedSpecialEvents ?? null} />
             <ZoneCell value={stats?.missedOther ?? null} />
             <td className={styles.numCell}>{fmtStat(stats?.missed)}</td>
+          </tr>
+          <tr className={styles.attackMomentsRowTotal}>
+            <td>Всего моментов</td>
+            <td className={styles.numCell}>{lcr}</td>
+            <td className={styles.numCell}>{fmtStat(stats?.chancesSpecialEvents)}</td>
+            <td className={styles.numCell}>{fmtStat(stats?.chancesOther)}</td>
+            <td className={styles.numCell}>{fmtStat(stats?.chancesTotal)}</td>
           </tr>
         </tbody>
       </table>
@@ -343,19 +343,19 @@ const TIMELINE_EVENT_STATUS: { label: string; status: TimelineEventStatus; detai
     label: "Замены",
     status: "heuristic",
     detail:
-      "распознаются по ключевым словам в тексте события (EventList, при matchEvents=true) — лучшая доступная оценка, не гарантия: у CHPP нет отдельного подтверждённого поля именно для замены.",
+      "теперь в основном определяются по подтверждённому коду события (EventTypeID 350/351/352 — та же неофициальная, но проверяемая расшифровка кодов, что и у зон голов/непопаданий), с ключевыми словами в тексте как запасным сигналом. Показаны зелёно-красной SVG-иконкой (стрелка вверх — выход на замену, вниз — уход с поля).",
   },
   {
     label: "Нереализованные моменты",
     status: "heuristic",
     detail:
-      "теперь показываются на шкале (красноватый мяч) — извлекаются из отдельных событий EventList по коду события (EventTypeID 200-299 — диапазон \"непопадание\", та же неофициальная, но проверяемая расшифровка кодов, что и в таблице статистики), с реальной минутой каждого конкретного события. Наведите на маркер — в тексте указана зона (лево/центр/право/спецсобытие/другое).",
+      "показываются на шкале (красноватый мяч) — извлекаются из отдельных событий EventList по коду события (EventTypeID 200-299 — диапазон \"непопадание\", та же неофициальная, но проверяемая расшифровка кодов, что и в таблице статистики), с реальной минутой каждого конкретного события. Наведите на маркер — в тексте указана зона (лево/центр/право/другое); нереализованные спецсобытия показаны отдельно, см. ниже.",
   },
   {
     label: "Специальные события",
     status: "heuristic",
     detail:
-      "нереализованные спецсобытия — часть категории \"Нереализованные моменты\" выше (в тексте маркера будет «спецсобытие»); голы через спецсобытие уже были на шкале как обычные голы — Scorers не различает способ гола.",
+      "теперь тоже на шкале — восклицательный знак акцентного цвета. Нереализованные спецсобытия показаны как отдельный маркер вместо обычного \"нереализованного момента\". Голы через спецсобытие показаны ДВУМЯ маркерами рядом: обычным голом (Scorers не различает способ гола сам по себе) и отдельным восклицательным знаком — оба факта реальны.",
   },
 ];
 const TIMELINE_EVENT_ICON: Record<TimelineEventStatus, string> = { ok: "✅", heuristic: "⚠️", unavailable: "❌" };
@@ -634,7 +634,9 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                             ? styles.timelineMarkerSub
                             : ev.kind === "miss"
                               ? styles.timelineMarkerMiss
-                              : styles.timelineMarkerInjury;
+                              : ev.kind === "special"
+                                ? styles.timelineMarkerSpecial
+                                : styles.timelineMarkerInjury;
                     const icon =
                       ev.kind === "goal" ? (
                         <GoalBallIcon size={14} />
@@ -648,6 +650,8 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                         <SubstitutionIcon size={14} />
                       ) : ev.kind === "miss" ? (
                         <GoalBallIcon size={14} />
+                      ) : ev.kind === "special" ? (
+                        <SpecialEventIcon size={14} />
                       ) : isLightInjury ? (
                         "🩹"
                       ) : (

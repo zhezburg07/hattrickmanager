@@ -366,7 +366,7 @@ function computeAttackZoneBreakdown(
   };
 }
 
-export type MatchTimelineKind = "goal" | "card" | "sub" | "injury" | "miss";
+export type MatchTimelineKind = "goal" | "card" | "sub" | "injury" | "miss" | "special";
 // Есть ли в ответе полный EventList (matchEvents=true сработал) — от этого
 // зависит только наличие замен (см. parseSubstitutionsFromEventList выше):
 // голы/карточки/травмы всегда из своих отдельных подтверждённых контейнеров,
@@ -749,6 +749,9 @@ function missedChanceZoneLabel(typeId: number): string {
 // эти события на шкале не показывались вовсе — ошибочно считалось, что у
 // Hattrick есть только ИТОГ за матч (NrOfChances*), без минуты; на деле
 // каждое отдельное событие в EventList минуту всё же несёт.
+// Нереализованные СПЕЦСОБЫТИЯ (MISSED_SPECIAL_EVENT) сюда не попадают —
+// они выделены в отдельную категорию "special", см. parseSpecialEventsFromEventList
+// ниже, чтобы не показывать один и тот же момент дважды под двумя видами.
 function parseMissedChancesFromEventList(
   match: Record<string, unknown>,
   homeTeamId: string,
@@ -764,6 +767,7 @@ function parseMissedChancesFromEventList(
     try {
       const typeId = Number(e.EventTypeID ?? NaN);
       if (Number.isNaN(typeId) || typeId < 200 || typeId >= 300) continue;
+      if (MISSED_SPECIAL_EVENT.has(typeId)) continue;
       rawCount++;
       const teamId = String(e.SubjectTeamID ?? "");
       const minute = Number(e.Minute ?? NaN);
@@ -781,6 +785,62 @@ function parseMissedChancesFromEventList(
   return { entries, rawCount };
 }
 
+// Специальные события — те же списки EventTypeID, что уже используются в
+// computeAttackZoneBreakdown (GOAL_SPECIAL_EVENT/MISSED_SPECIAL_EVENT,
+// подтверждено тем же источником — HattrickOrganizer, specialME). Раньше
+// голы через спецсобытие тонули среди обычных голов (Scorers не различает
+// способ гола), а нереализованные спецсобытия были неотличимы от обычных
+// нереализованных моментов — здесь оба случая получают свой отдельный
+// маркер "special" на шкале. Для голов это ДОПОЛНИТЕЛЬНЫЙ маркер рядом с
+// обычным голом из Scorers (а не замена) — оба факта реальны и оба видны:
+// "гол был" и "гол случился именно через спецсобытие".
+function parseSpecialEventsFromEventList(
+  match: Record<string, unknown>,
+  homeTeamId: string,
+  homeTeamName: string,
+  awayTeamName: string,
+): { entries: MatchTimelineEntry[]; rawCount: number } {
+  const eventList = match.EventList as Record<string, unknown> | undefined;
+  const rawEvents = asArray(eventList?.Event);
+  const teamName = (teamId: string) => (teamId === homeTeamId ? homeTeamName : awayTeamName);
+  const entries: MatchTimelineEntry[] = [];
+  let rawCount = 0;
+  for (const e of rawEvents) {
+    try {
+      const typeId = Number(e.EventTypeID ?? NaN);
+      if (Number.isNaN(typeId)) continue;
+      const isGoalSpecial = GOAL_SPECIAL_EVENT.has(typeId);
+      const isMissSpecial = MISSED_SPECIAL_EVENT.has(typeId);
+      if (!isGoalSpecial && !isMissSpecial) continue;
+      rawCount++;
+      const teamId = String(e.SubjectTeamID ?? "");
+      const minute = Number(e.Minute ?? NaN);
+      entries.push({
+        minute: Number.isNaN(minute) ? 0 : minute,
+        matchPart: Number(e.MatchPart ?? 0) || 0,
+        text: `Специальное событие — ${isGoalSpecial ? "привело к голу" : "гол не состоялся"} (${teamName(teamId)})`,
+        kind: "special",
+        teamSide: teamSideOf(teamId, homeTeamId),
+      });
+    } catch {
+      // Пропускаем один нестандартный элемент, не теряя остальные.
+    }
+  }
+  return { entries, rawCount };
+}
+
+// ИСПРАВЛЕНО: раньше замены распознавались ТОЛЬКО по ключевым словам в
+// тексте события (SUBSTITUTION_PATTERN) — эвристика, зависящая от языка
+// ответа Hattrick, из-за чего замены могли вообще не находиться. Тот же
+// источник, что уже даёт зоны голов/непопаданий (HattrickOrganizer,
+// core/model/match/MatchEvent.MatchEventID), подтверждает и коды именно
+// для замены игрока: PLAYER_SUBSTITUTION_TEAM_IS_BEHIND(350),
+// PLAYER_SUBSTITUTION_TEAM_IS_AHEAD(351), PLAYER_SUBSTITUTION_MINUTE(352).
+// Теперь это ОСНОВНОЙ сигнал (надёжнее и не зависит от языка), а поиск по
+// ключевым словам остаётся запасным — на случай события с другим кодом,
+// но узнаваемым текстом.
+const SUBSTITUTION_EVENT_IDS = new Set([350, 351, 352]);
+
 function parseSubstitutionsFromEventList(
   match: Record<string, unknown>,
   homeTeamId: string,
@@ -790,8 +850,9 @@ function parseSubstitutionsFromEventList(
   const entries: MatchTimelineEntry[] = [];
   for (const e of rawEvents) {
     try {
+      const typeId = Number(e.EventTypeID ?? NaN);
       const text = stripHtml(String(e.EventText ?? ""));
-      if (!SUBSTITUTION_PATTERN.test(text)) continue;
+      if (!SUBSTITUTION_EVENT_IDS.has(typeId) && !SUBSTITUTION_PATTERN.test(text)) continue;
       const teamId = String(e.SubjectTeamID ?? e.SubjectTeamId ?? "");
       const minute = Number(e.Minute ?? NaN);
       entries.push({
@@ -1103,13 +1164,22 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
       homeTeamName,
       awayTeamName,
     );
+    const { entries: specialEntries, rawCount: specialRawCount } = parseSpecialEventsFromEventList(
+      match,
+      homeTeamId,
+      homeTeamName,
+      awayTeamName,
+    );
     debug.push(
       `хронология — сырые элементы: Scorers/Goal=${goalsRawCount}, Bookings/Booking=${bookingsRawCount}, ` +
-        `Injuries/Injury=${injuriesRawCount}, EventList=${eventRawCount} (из них похоже на замену: ${subEntries.length}, ` +
-        `нереализованных моментов по коду события (200-299): ${missRawCount})`,
+        `Injuries/Injury=${injuriesRawCount}, EventList=${eventRawCount} (из них похоже на замену по коду/тексту: ${subEntries.length}, ` +
+        `нереализованных моментов по коду события (200-299, без спецсобытий): ${missRawCount}, ` +
+        `специальных событий по коду (голы+непопадания): ${specialRawCount})`,
     );
 
-    const merged = [...goalsCardsEntries, ...injuryEntries, ...subEntries, ...missEntries].sort((a, b) => a.minute - b.minute);
+    const merged = [...goalsCardsEntries, ...injuryEntries, ...subEntries, ...missEntries, ...specialEntries].sort(
+      (a, b) => a.minute - b.minute,
+    );
     if (merged.length > 0) {
       timeline = merged;
       // EventList (matchEvents=true) нужен ТОЛЬКО для попытки распознать

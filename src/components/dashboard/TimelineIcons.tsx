@@ -24,6 +24,20 @@ export function GoalBallIcon({ size = 14 }: { size?: number }) {
   );
 }
 
+export function SpecialEventIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 4.5 L12 15"
+        stroke="var(--special-icon-color, var(--color-accent))"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+      <circle cx="12" cy="19.5" r="1.7" fill="var(--special-icon-color, var(--color-accent))" />
+    </svg>
+  );
+}
+
 export function SubstitutionIcon({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
