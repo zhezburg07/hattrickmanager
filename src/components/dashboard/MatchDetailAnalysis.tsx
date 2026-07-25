@@ -225,9 +225,13 @@ function fmtStat(v: number | null | undefined): string {
 // src/lib/matchAnalysis.ts. Hattrick подтверждённо отдаёт разбивку по зонам
 // (Л/Ц/П + спецсобытия + другое) только как сумму ВСЕХ моментов за матч —
 // нет отдельного счётчика именно голов и именно нереализованных попыток по
-// каждой зоне (только их итоговая сумма с голами). Поэтому строки "Голы" и
-// "Нереализованные моменты" по зонам честно "нет данных", а не предположение
-// (только столбец "Всего" в этих строках — реальное число).
+// каждой зоне (только их итоговая сумма с голами). Раньше это показывалось
+// как 2 строки "Голы"/"Нереализованные моменты" с "нет данных" в 3 из 4
+// колонок — выглядело как баг/недоделка. Теперь строим таблицу только из
+// того, что реально есть: голы и нереализованные — это ДВЕ цифры за весь
+// матч (показаны отдельно, компактно, над таблицей), а сама таблица — ровно
+// то, что Hattrick реально прислал по зонам (сумма голов+нереализованного в
+// каждой зоне), без единой пустой ячейки.
 function AttackMomentsTable({ teamLabel, teamId, stats }: { teamLabel: string; teamId: string; stats: MatchAttackStats | null }) {
   const lcr =
     stats?.chancesLeft !== null &&
@@ -241,13 +245,21 @@ function AttackMomentsTable({ teamLabel, teamId, stats }: { teamLabel: string; t
 
   return (
     <div className={styles.tableWrap} style={{ marginBottom: 20 }}>
+      <div className={styles.attackMomentsTotalsRow}>
+        <span className={styles.attackMomentsTeamName}>
+          {teamLabel}
+          {teamId ? ` (ID ${teamId})` : ""}
+        </span>
+        <span>
+          Голы: <b className={styles.attackMomentsTotalGood}>{fmtStat(stats?.goals)}</b>
+          {"  ·  "}
+          Нереализовано: <b className={styles.attackMomentsTotalBad}>{fmtStat(stats?.missed)}</b>
+        </span>
+      </div>
       <table className={styles.table}>
         <thead>
           <tr>
-            <th>
-              {teamLabel}
-              {teamId ? ` (ID ${teamId})` : ""}
-            </th>
+            <th>Всего моментов по зонам (голы + нереализованные)</th>
             <th style={{ textAlign: "right" }}>Л/Ц/П</th>
             <th style={{ textAlign: "right" }}>Спецсобытия</th>
             <th style={{ textAlign: "right" }}>Другое</th>
@@ -255,22 +267,8 @@ function AttackMomentsTable({ teamLabel, teamId, stats }: { teamLabel: string; t
           </tr>
         </thead>
         <tbody>
-          <tr className={styles.attackMomentsRowGoals}>
-            <td>Голы</td>
-            <td className={styles.numCell}>{NO_DATA}</td>
-            <td className={styles.numCell}>{NO_DATA}</td>
-            <td className={styles.numCell}>{NO_DATA}</td>
-            <td className={styles.numCell}>{fmtStat(stats?.goals)}</td>
-          </tr>
-          <tr className={styles.attackMomentsRowMissed}>
-            <td>Нереализованные моменты</td>
-            <td className={styles.numCell}>{NO_DATA}</td>
-            <td className={styles.numCell}>{NO_DATA}</td>
-            <td className={styles.numCell}>{NO_DATA}</td>
-            <td className={styles.numCell}>{fmtStat(stats?.missed)}</td>
-          </tr>
           <tr className={styles.attackMomentsRowTotal}>
-            <td>Всего</td>
+            <td>По зонам атаки</td>
             <td className={styles.numCell}>{lcr}</td>
             <td className={styles.numCell}>{fmtStat(stats?.chancesSpecialEvents)}</td>
             <td className={styles.numCell}>{fmtStat(stats?.chancesOther)}</td>
@@ -293,10 +291,12 @@ function AttackMomentsHeading() {
         Статистика атакующих моментов
       </div>
       <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 12 }}>
-        Разбивка по зонам (Л/Ц/П, спецсобытия, другое) — реальные поля matchdetails, но это ОБЩЕЕ число моментов за
-        матч без отдельного счётчика именно голов или именно нереализованных попыток в каждой зоне — поэтому в этих
-        двух строках по зонам честно "нет данных" (0 означало бы реальный известный 0, а не отсутствие поля). Что
-        именно доступно по каждому типу событий на самой временной шкале ниже — см. чеклист над лентой.
+        Hattrick отдаёт голы и нереализованные моменты как две ОБЩИЕ цифры за весь матч (показаны над таблицей у
+        каждой команды) и отдельно — разбивку ВСЕХ моментов (голы + нереализованное вместе) по зонам атаки (Л/Ц/П,
+        спецсобытия, другое). Разбить именно голы или именно нереализованное по зонам нельзя — такого отдельного
+        счётчика у CHPP нет. Что именно доступно по каждому типу событий на самой временной шкале ниже — см. чеклист
+        над лентой; сырые счётчики по каждой зоне и разбивку EventList по типам событий — в панели "Диагностика" в
+        самом низу страницы.
       </p>
     </div>
   );

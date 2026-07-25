@@ -177,17 +177,17 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .pitchZoneBox {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  min-width: 87px;
-  padding: 8px 11px;
-  border-radius: 14px;
+  gap: 4px;
+  min-width: 104px;
+  padding: 10px 13px;
+  border-radius: 17px;
   border: 2px solid;
   background: var(--color-bg-card);
 }
@@ -195,21 +195,21 @@
 .pitchZoneBoxTop {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 
 .pitchZoneBoxRating {
-  font-size: 26px;
+  font-size: 31px;
   font-weight: 800;
   color: var(--color-text);
 }
 
 .pitchZoneBoxIcon {
-  font-size: 18px;
+  font-size: 22px;
 }
 
 .pitchZoneBoxShare {
-  font-size: 16px;
+  font-size: 19px;
   font-weight: 700;
   color: var(--color-text-muted);
 }
@@ -243,12 +243,15 @@
 /* Таблицы статистики атакующих моментов — хозяева НАД временной шкалой,
    гости ПОД ней, но всё внутри тех же границ .matchPitch (не выходя за
    газон) — top+bottom (без height) сами определяют высоту полосы, средняя
-   треть между ними остаётся свободной для .pitchTimelineTrack по центру. */
+   треть между ними остаётся свободной для .pitchTimelineTrack по центру.
+   Было 0.85 (почти непрозрачно) — по запросу снижено до 0.65 (подложка
+   прозрачна на 35%): текст/таблица всё ещё уверенно читаются, но полосатый
+   газон поля слегка просвечивает сквозь подложку, как и на "Посещаемости". */
 .pitchTimelineTablePanel {
   position: absolute;
   left: 3%;
   right: 3%;
-  background: rgba(13, 30, 25, 0.85);
+  background: rgba(13, 30, 25, 0.65);
   border: 1px solid rgba(242, 237, 225, 0.15);
   border-radius: var(--radius);
   padding: 4px 8px;
@@ -830,15 +833,33 @@
   background: rgba(224, 145, 63, 0.2);
 }
 
-/* Таблица статистики атакующих моментов — заливка всей строки цветом (см.
-   AttackMomentsTable в MatchDetailAnalysis.tsx): голы зелёным, нереализовано
-   красным, итог серым. Текст остаётся читаемым на тёмном фоне карточек. */
-.attackMomentsRowGoals td {
-  background: rgba(76, 175, 111, 0.16);
+/* Таблица статистики атакующих моментов (см. AttackMomentsTable в
+   MatchDetailAnalysis.tsx) — голы/нереализованные показаны как две готовые
+   цифры за матч НАД таблицей (a not-a-table row, т.к. по зонам их разбить
+   нельзя), сама таблица — только реальная разбивка по зонам. */
+.attackMomentsTotalsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
-.attackMomentsRowMissed td {
-  background: rgba(192, 80, 63, 0.16);
+.attackMomentsTeamName {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.attackMomentsTotalGood {
+  color: var(--color-good);
+}
+
+.attackMomentsTotalBad {
+  color: var(--color-bad);
 }
 
 .attackMomentsRowTotal td {
