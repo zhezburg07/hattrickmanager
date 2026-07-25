@@ -834,37 +834,21 @@
 }
 
 /* Таблица статистики атакующих моментов (см. AttackMomentsTable в
-   MatchDetailAnalysis.tsx) — голы/нереализованные показаны как две готовые
-   цифры за матч НАД таблицей (a not-a-table row, т.к. по зонам их разбить
-   нельзя), сама таблица — только реальная разбивка по зонам. */
-.attackMomentsTotalsRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 6px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.attackMomentsTeamName {
-  font-weight: 700;
-  font-size: 13px;
-  color: var(--color-text);
-}
-
-.attackMomentsTotalGood {
-  color: var(--color-good);
-}
-
-.attackMomentsTotalBad {
-  color: var(--color-bad);
-}
-
+   MatchDetailAnalysis.tsx): "Всего моментов" — реальная разбивка по зонам
+   (серый акцент), "Голы"/"Нереализованные моменты" — только столбец "Всего"
+   реальный, ячейки по зонам — тире (не подкрашены отдельно, т.к. это не
+   значение, а пояснение по наведению, см. title в JSX). */
 .attackMomentsRowTotal td {
   background: rgba(169, 189, 181, 0.1);
   font-weight: 700;
+}
+
+.attackMomentsRowGoals td {
+  background: rgba(76, 175, 111, 0.16);
+}
+
+.attackMomentsRowMissed td {
+  background: rgba(192, 80, 63, 0.16);
 }
 
 /* Посещаемость */
