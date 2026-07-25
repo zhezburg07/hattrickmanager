@@ -1,17 +1,6 @@
 import Link from "next/link";
 import styles from "./WelcomeSection.module.css";
 
-// Пункт "Тарифы" скрыт вместе с самой секцией тарифов (см.
-// SHOW_PRICING_SECTION в src/app/page.tsx) — монетизация пока отложена,
-// ссылка вела бы в никуда. Верните true, когда вернёте секцию тарифов.
-const SHOW_PRICING_NAV_LINK = false;
-
-const navLinks: { href: string; label: string }[] = [
-  { href: "/how-it-works", label: "Как это работает" },
-  ...(SHOW_PRICING_NAV_LINK ? [{ href: "/#pricing", label: "Тарифы" }] : []),
-  { href: "/contact", label: "Контакты" },
-];
-
 // Список возможностей — по образцу референса (короткие пункты с галочкой),
 // но под наши реальные функции, а не общие фразы.
 const features: string[] = [
@@ -42,14 +31,6 @@ export default function WelcomeSection() {
   return (
     <section className="section">
       <div className={`container ${styles.grid}`}>
-        <nav className={styles.nav}>
-          {navLinks.map((l) => (
-            <Link key={l.href} href={l.href} className={styles.navLink}>
-              {l.label}
-            </Link>
-          ))}
-        </nav>
-
         <div className={styles.welcome}>
           <h1 className={styles.title}>Добро пожаловать в HattrickManager</h1>
           <p className={styles.desc}>
