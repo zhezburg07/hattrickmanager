@@ -5,7 +5,9 @@ import WelcomeSection from "@/components/WelcomeSection";
 import FeaturesSection from "@/components/FeaturesSection";
 import ProductShowcase from "@/components/ProductShowcase";
 import PricingSection from "@/components/PricingSection";
+import HomeLoginForm from "@/components/HomeLoginForm";
 import Footer from "@/components/Footer";
+import styles from "./page.module.css";
 
 // Временно скрыто на время технической настройки (подключение базы данных
 // и т.д.) — не финальное решение. Чтобы вернуть раздел "Тарифы", поставьте
@@ -24,9 +26,12 @@ export const revalidate = 60;
 export default function Home() {
   return (
     <>
-      <TopInfoBar />
-      <Header />
+      <div className={styles.stickyTop}>
+        <TopInfoBar />
+        <Header />
+      </div>
       <main>
+        <HomeLoginForm />
         <HeroBanner />
         <WelcomeSection />
         <FeaturesSection />
