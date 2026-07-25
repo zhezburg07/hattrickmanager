@@ -12,20 +12,28 @@ export interface RealYouthPlayer {
   skills: SquadSkills;
 }
 
-// Разбирает XML-ответ CHPP на файл youthplayerlist.xml — список игроков
-// юношеской академии. В отличие от youthdetails.xml (там нет самого списка
-// игроков), этот файл — единственная попытка получить список именно
-// игроков академии; название файла (youthplayerlist, а не youthplayers/
-// youthdetails, как предполагалось раньше) не проверялось в этом проекте
-// живьём до сих пор — если CHPP всё равно ответит 401/403, вызывающий код
-// (src/app/dashboard/youth/page.tsx) честно откатится на демо-данные.
+// Разбирает XML-ответ CHPP на файл youthplayerlist.xml (v1.3) — список
+// игроков юношеской академии.
 //
-// Скиллы читаются теми же именами полей, что и в players.xml (KeeperSkill,
-// DefenderSkill и т.д., см. src/lib/squadPlayers.ts) — CHPP переиспользует
-// одинаковые названия навыков в разных файлах игроков. Если в реальном
-// ответе их не окажется (например, скиллы юниоров доступны только через
-// отдельный youthplayerdetails.xml на каждого игрока) — они останутся 0,
-// т.е. останется только реальное имя/возраст, что тоже лучше, чем ничего.
+// ИСПРАВЛЕНО (важный баг — из-за него вкладка "Юношеская команда" выглядела
+// полностью пустой): схема youthplayerlist.xml подтверждена по независимому
+// CHPP-клиенту github.com/lucianoq/hattrick (chpp/file_youthplayerlist.go +
+// chpp/file_youthplayerdetails.go, структура YouthPlayerDetail переиспользуется
+// обоими файлами) и СИЛЬНО отличается от обычного players.xml, хотя раньше
+// код по ошибке читал её так, будто это тот же формат:
+// 1) Список игроков лежит под <PlayerList><YouthPlayer> — БЕЗ обёртки
+//    <Team> и с тегом именно YouthPlayer, а не Player. Раньше код искал
+//    root.Team.PlayerList.Player / root.PlayerList.Player — оба пути
+//    гарантированно давали пустой массив, поэтому HTTP-запрос вполне мог
+//    успешно отвечать 200 с реальными игроками, а страница всё равно
+//    показывала 0 игроков молча (без ошибки).
+// 2) ID игрока — тег <YouthPlayerID>, а не <PlayerID>.
+// 3) Навыки лежат ВЛОЖЕННО, в контейнере <PlayerSkills> (те же имена полей
+//    KeeperSkill/DefenderSkill/PlaymakerSkill/WingerSkill/PassingSkill/
+//    ScorerSkill/SetPiecesSkill, что и в players.xml, но не плоско на самом
+//    игроке, а внутри <PlayerSkills>).
+// 4) Национальность — плоское поле <NativeCountryName>, а не вложенный
+//    контейнер <Country><CountryName>, как в players.xml.
 export function parseYouthPlayerListXml(xml: string): RealYouthPlayer[] {
   const parser = new XMLParser();
   const data = parser.parse(xml);
@@ -33,29 +41,28 @@ export function parseYouthPlayerListXml(xml: string): RealYouthPlayer[] {
   const root = data?.HattrickData;
   assertNoChppError(root, "youthplayerlist");
 
-  const rawPlayers = root?.Team?.PlayerList?.Player ?? root?.PlayerList?.Player;
+  const rawPlayers = root?.PlayerList?.YouthPlayer ?? root?.Team?.PlayerList?.YouthPlayer;
   const players: Record<string, unknown>[] = Array.isArray(rawPlayers) ? rawPlayers : rawPlayers ? [rawPlayers] : [];
 
   return players.map((p) => {
+    const skillsRaw = (p.PlayerSkills as Record<string, unknown> | undefined) ?? {};
     const skills: SquadSkills = {
-      goalkeeping: Number(p.KeeperSkill ?? 0),
-      defending: Number(p.DefenderSkill ?? 0),
-      midfield: Number(p.PlaymakerSkill ?? 0),
-      winger: Number(p.WingerSkill ?? 0),
-      passing: Number(p.PassingSkill ?? 0),
-      scoring: Number(p.ScorerSkill ?? 0),
-      setPieces: Number(p.SetPiecesSkill ?? 0),
+      goalkeeping: Number(skillsRaw.KeeperSkill ?? 0),
+      defending: Number(skillsRaw.DefenderSkill ?? 0),
+      midfield: Number(skillsRaw.PlaymakerSkill ?? 0),
+      winger: Number(skillsRaw.WingerSkill ?? 0),
+      passing: Number(skillsRaw.PassingSkill ?? 0),
+      scoring: Number(skillsRaw.ScorerSkill ?? 0),
+      setPieces: Number(skillsRaw.SetPiecesSkill ?? 0),
     };
 
     const firstName = String(p.FirstName ?? "").trim();
     const lastName = String(p.LastName ?? "").trim();
-    const countryName = p.Country as Record<string, unknown> | undefined;
-    const nationality = countryName?.CountryName
-      ? resolveCountryByEnglishName(String(countryName.CountryName))
-      : unknownCountry;
+    const nativeCountryName = p.NativeCountryName;
+    const nationality = nativeCountryName ? resolveCountryByEnglishName(String(nativeCountryName)) : unknownCountry;
 
     return {
-      id: Number(p.PlayerID ?? 0),
+      id: Number(p.YouthPlayerID ?? 0),
       name: [firstName, lastName].filter(Boolean).join(" ") || "Без имени",
       age: Number(p.Age ?? 0),
       nationality,
@@ -63,4 +70,21 @@ export function parseYouthPlayerListXml(xml: string): RealYouthPlayer[] {
       skills,
     };
   });
+}
+
+// ВРЕМЕННАЯ диагностика — сырые счётчики для панели на dashboard/youth
+// (см. SHOW_YOUTH_DEBUG_PANEL): сколько элементов реально нашлось по
+// подтверждённому пути (root.PlayerList.YouthPlayer), чтобы при следующей
+// похожей жалобе сразу было видно, действительно ли XML пуст или это снова
+// проблема разбора.
+export function debugYouthPlayerListRawCount(xml: string): number {
+  try {
+    const parser = new XMLParser();
+    const data = parser.parse(xml);
+    const root = data?.HattrickData;
+    const rawPlayers = root?.PlayerList?.YouthPlayer ?? root?.Team?.PlayerList?.YouthPlayer;
+    return Array.isArray(rawPlayers) ? rawPlayers.length : rawPlayers ? 1 : 0;
+  } catch {
+    return 0;
+  }
 }
