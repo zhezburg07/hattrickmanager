@@ -1,16 +1,14 @@
-/* Ширина уменьшена на 25% от прежней (была во всю ширину экрана) — теперь
-   баннер занимает 75% ширины и центрируется, с рамкой по всем четырём
-   сторонам (раньше был только border-bottom, т.к. блок был "во всю
-   ширину" без видимых боковых краёв). */
+/* ОТМЕНЕНО по запросу: ширина 75%+рамка по бокам (была введена ошибочно
+   по формулировке предыдущей задачи) — баннер снова во всю ширину экрана,
+   без боковых отступов/рамок. Вместо этого уменьшена ВЫСОТА (~25%, см.
+   .inner/.logo/.logoMark/.tagline ниже — уменьшены и padding, и сами
+   элементы, чтобы всё осталось пропорционально). */
 .banner {
   position: relative;
-  width: 75%;
-  margin: 0 auto;
   background-image: url("/hero-stadium.svg");
   background-size: cover;
   background-position: center;
-  border: 1px solid var(--color-border);
-  border-top: none;
+  border-bottom: 1px solid var(--color-border);
   overflow: hidden;
 }
 
@@ -35,16 +33,16 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 64px 24px;
+  gap: 8px;
+  padding: 40px 24px;
   text-align: center;
 }
 
 .logo {
   display: flex;
   align-items: center;
-  gap: 14px;
-  font-size: 38px;
+  gap: 12px;
+  font-size: 32px;
   font-weight: 800;
   letter-spacing: 0.2px;
 }
@@ -53,9 +51,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 58px;
-  height: 58px;
-  border-radius: 12px;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
   background: var(--color-accent);
   color: var(--color-bg-darker);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
@@ -66,7 +64,7 @@
 }
 
 .tagline {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--color-text-muted);
   font-weight: 600;
   letter-spacing: 0.3px;
@@ -74,18 +72,18 @@
 
 @media (max-width: 560px) {
   .inner {
-    padding: 44px 20px;
+    padding: 30px 20px;
   }
 
   .logo {
-    font-size: 26px;
-    gap: 10px;
+    font-size: 22px;
+    gap: 8px;
   }
 
   .logoMark {
-    width: 42px;
-    height: 42px;
-    font-size: 20px;
-    border-radius: 10px;
+    width: 36px;
+    height: 36px;
+    font-size: 17px;
+    border-radius: 8px;
   }
 }
