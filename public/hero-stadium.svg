@@ -19,33 +19,33 @@
   <rect width="1600" height="520" fill="url(#glow)" />
 
   <!-- floodlight pylons -->
-  <g opacity="0.9">
-    <rect x="70" y="60" width="8" height="230" fill="#2c4a40" />
+  <g opacity="1">
+    <rect x="70" y="60" width="8" height="230" fill="#4c7c62" />
     <g>
-      <circle cx="74" cy="55" r="26" fill="#c9a227" opacity="0.18" />
-      <rect x="34" y="30" width="80" height="26" rx="4" fill="#2c4a40" />
-      <circle cx="50" cy="43" r="5" fill="#e0b830" />
-      <circle cx="68" cy="43" r="5" fill="#e0b830" />
-      <circle cx="86" cy="43" r="5" fill="#e0b830" />
-      <circle cx="104" cy="43" r="5" fill="#e0b830" />
+      <circle cx="74" cy="55" r="26" fill="#c9a227" opacity="0.28" />
+      <rect x="34" y="30" width="80" height="26" rx="4" fill="#4c7c62" />
+      <circle cx="50" cy="43" r="5" fill="#f2d477" />
+      <circle cx="68" cy="43" r="5" fill="#f2d477" />
+      <circle cx="86" cy="43" r="5" fill="#f2d477" />
+      <circle cx="104" cy="43" r="5" fill="#f2d477" />
     </g>
   </g>
-  <g opacity="0.9">
-    <rect x="1522" y="60" width="8" height="230" fill="#2c4a40" />
+  <g opacity="1">
+    <rect x="1522" y="60" width="8" height="230" fill="#4c7c62" />
     <g>
-      <circle cx="1526" cy="55" r="26" fill="#c9a227" opacity="0.18" />
-      <rect x="1486" y="30" width="80" height="26" rx="4" fill="#2c4a40" />
-      <circle cx="1502" cy="43" r="5" fill="#e0b830" />
-      <circle cx="1520" cy="43" r="5" fill="#e0b830" />
-      <circle cx="1538" cy="43" r="5" fill="#e0b830" />
-      <circle cx="1556" cy="43" r="5" fill="#e0b830" />
+      <circle cx="1526" cy="55" r="26" fill="#c9a227" opacity="0.28" />
+      <rect x="1486" y="30" width="80" height="26" rx="4" fill="#4c7c62" />
+      <circle cx="1502" cy="43" r="5" fill="#f2d477" />
+      <circle cx="1520" cy="43" r="5" fill="#f2d477" />
+      <circle cx="1538" cy="43" r="5" fill="#f2d477" />
+      <circle cx="1556" cy="43" r="5" fill="#f2d477" />
     </g>
   </g>
 
   <!-- stand bowl silhouette (back) -->
-  <path d="M-40 340 C 300 230, 1300 230, 1640 340 L 1640 260 C 1300 160, 300 160, -40 260 Z" fill="#1c3830" opacity="0.9" />
+  <path d="M-40 340 C 300 230, 1300 230, 1640 340 L 1640 260 C 1300 160, 300 160, -40 260 Z" fill="#234233" opacity="0.95" />
   <!-- seating tier hatch lines -->
-  <g stroke="#2c4a40" stroke-width="2" opacity="0.6">
+  <g stroke="#5c9678" stroke-width="2.5" opacity="0.9">
     <path d="M-20 330 C 320 225, 1280 225, 1620 330" fill="none" />
     <path d="M-10 305 C 320 205, 1280 205, 1610 305" fill="none" />
     <path d="M0 280 C 320 188, 1280 188, 1600 280" fill="none" />
@@ -59,7 +59,7 @@
 
   <!-- crowd stand front (foreground, darkest) -->
   <path d="M-40 420 C 300 330, 1300 330, 1640 420 L 1640 520 L -40 520 Z" fill="#0f211c" />
-  <g fill="#c9a227" opacity="0.35">
+  <g fill="#e0b830" opacity="0.55">
     <circle cx="120" cy="400" r="2.5" /><circle cx="160" cy="392" r="2.5" /><circle cx="200" cy="386" r="2.5" />
     <circle cx="260" cy="378" r="2.5" /><circle cx="330" cy="368" r="2.5" /><circle cx="410" cy="360" r="2.5" />
     <circle cx="500" cy="352" r="2.5" /><circle cx="600" cy="346" r="2.5" /><circle cx="700" cy="342" r="2.5" />
