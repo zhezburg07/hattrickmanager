@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { buildAuthorizationHeader, buildOAuthParams, HATTRICK_OAUTH_URLS } from "@/lib/hattrickOAuth";
 
 // Этот роут не читает ничего из самого запроса (нет searchParams/cookies), и
@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 //    постоянный ключ доступа.
 // 4. Отправляем пользователя на страницу авторизации Hattrick вместе с
 //    временным пропуском — там он логинится и жмёт "Разрешить".
-export async function GET() {
+export async function GET(request: NextRequest) {
   const consumerKey = process.env.HATTRICK_CONSUMER_KEY;
   const consumerSecret = process.env.HATTRICK_CONSUMER_SECRET;
   const callbackUrl = process.env.HATTRICK_OAUTH_CALLBACK_URL;
@@ -92,6 +92,17 @@ export async function GET() {
   };
   redirectResponse.cookies.set("hattrick_request_token", requestToken, cookieOptions);
   redirectResponse.cookies.set("hattrick_request_token_secret", requestTokenSecret, cookieOptions);
+
+  // Пришли сюда по кнопке "Подтвердить и привязать сюда" из баннера
+  // "already-linked" (см. ReducedDashboard.tsx) — запоминаем, какую именно
+  // команду пользователь согласился перепривязать, пока он идёт на
+  // авторизацию Hattrick и обратно. Callback (см. /api/auth/callback)
+  // сверит это значение с реальным Hattrick UserID, который придёт после
+  // OAuth, и перепривяжет команду только при точном совпадении.
+  const confirmReassignHattrickUserId = request.nextUrl.searchParams.get("confirmReassignHattrickUserId");
+  if (confirmReassignHattrickUserId) {
+    redirectResponse.cookies.set("hm_confirm_reassign", confirmReassignHattrickUserId, cookieOptions);
+  }
 
   return redirectResponse;
 }

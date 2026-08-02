@@ -8,7 +8,13 @@ import styles from "./Overview.module.css";
 // ещё не привязана — например, сразу после регистрации на главной странице
 // (см. чат: "Реализуй новую форму регистрации..."). Никаких запросов к CHPP
 // здесь не делается вовсе.
-export default function ReducedDashboard({ connectError }: { connectError?: string }) {
+export default function ReducedDashboard({
+  connectError,
+  hattrickUserId,
+}: {
+  connectError?: string;
+  hattrickUserId?: string;
+}) {
   return (
     <>
       <Header />
@@ -17,11 +23,18 @@ export default function ReducedDashboard({ connectError }: { connectError?: stri
           {connectError === "already-linked" && (
             <div style={{ marginBottom: 16 }}>
               <DemoModeBanner
-                title="Эта команда Hattrick уже привязана к другому аккаунту"
+                title="Эта команда Hattrick уже привязана к другой записи в базе"
                 reasons={[
-                  "Попробуйте подключить другую команду, либо обратитесь в поддержку, если считаете это ошибкой.",
+                  "Такое часто случается с командами, подключёнными ещё ДО появления входа по логину/паролю — тогда для них автоматически завелась отдельная служебная запись без логина.",
+                  "Вы только что подтвердили доступ к этой команде через сам Hattrick — значит, это точно вы. Можно перепривязать её к текущему аккаунту.",
                 ]}
-                showConnectAction={false}
+                showConnectAction={!!hattrickUserId}
+                connectHref={
+                  hattrickUserId
+                    ? `/api/auth/request-token?confirmReassignHattrickUserId=${encodeURIComponent(hattrickUserId)}`
+                    : undefined
+                }
+                connectLabel="Подтвердить и привязать сюда"
               />
             </div>
           )}

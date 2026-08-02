@@ -378,7 +378,7 @@ const SHOW_HOF_SECTION = false;
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: { connectError?: string };
+  searchParams: { connectError?: string; hattrickUserId?: string };
 }) {
   // Раньше здесь был getRequiredHattrickTokens() — он бы редиректил на "/"
   // любого, у кого нет команды Hattrick, включая только что
@@ -394,7 +394,7 @@ export default async function DashboardPage({
     // src/app/dashboard/layout.tsx уже блокирует полностью анонимных
     // посетителей — этот redirect защитный, на случай прямого вызова.
     if (!accountId) redirect("/");
-    return <ReducedDashboard connectError={searchParams.connectError} />;
+    return <ReducedDashboard connectError={searchParams.connectError} hattrickUserId={searchParams.hattrickUserId} />;
   }
 
   const hattrickUserId = await getStoredHattrickUserId();

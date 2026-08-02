@@ -286,10 +286,18 @@ export async function linkOrCreateHattrickConnection(params: {
   accessToken: string;
   accessTokenSecret: string;
   currentAccountId: string | null;
+  // Пользователь явно подтвердил перепривязку конфликтующей команды на
+  // текущий аккаунт (см. баннер "already-linked" в ReducedDashboard.tsx и
+  // /api/auth/request-token?confirmReassignHattrickUserId=...). Безопасно
+  // доверять этому подтверждению: чтобы вообще дойти досюда, пользователь
+  // только что заново прошёл настоящий OAuth Hattrick именно для этой
+  // команды — то есть подтвердил владение ею на стороне самого Hattrick,
+  // не только кликом на нашем сайте.
+  confirmReassign?: boolean;
 }): Promise<LinkOrCreateResult> {
   await ensureSchema();
   const db = sql();
-  const { hattrickUserId, accessToken, accessTokenSecret, currentAccountId } = params;
+  const { hattrickUserId, accessToken, accessTokenSecret, currentAccountId, confirmReassign } = params;
 
   const existingRows = await db`
     SELECT account_id FROM hattrick_connections WHERE hattrick_user_id = ${hattrickUserId}
@@ -298,9 +306,26 @@ export async function linkOrCreateHattrickConnection(params: {
 
   if (existingAccountId) {
     if (currentAccountId && existingAccountId !== currentAccountId) {
-      // Эта команда Hattrick уже привязана к ДРУГОМУ аккаунту сайта — не
-      // перезаписываем и не "воруем" привязку, честно сообщаем о конфликте.
-      return { status: "conflict", ownerAccountId: existingAccountId };
+      if (!confirmReassign) {
+        // Эта команда Hattrick уже привязана к ДРУГОМУ аккаунту сайта — не
+        // перезаписываем и не "воруем" привязку молча, честно сообщаем о
+        // конфликте (пользователь может подтвердить перепривязку отдельным
+        // шагом — см. confirmReassign выше).
+        return { status: "conflict", ownerAccountId: existingAccountId };
+      }
+      // Подтверждено — переносим привязку на текущий аккаунт. Частый
+      // случай: команда была подключена ДО появления регистрации по
+      // логину/паролю, для неё автоматически завёлся "служебный" аккаунт
+      // (id = hattrick_user_id, без логина), а теперь тот же человек
+      // зарегистрировал отдельный аккаунт и хочет привязать к нему ту же
+      // команду. Старый аккаунт-заглушка не удаляется — просто перестаёт
+      // владеть этой привязкой.
+      await db`
+        UPDATE hattrick_connections
+        SET account_id = ${currentAccountId}, access_token = ${accessToken}, access_token_secret = ${accessTokenSecret}, updated_at = now()
+        WHERE hattrick_user_id = ${hattrickUserId}
+      `;
+      return { status: "linked", accountId: currentAccountId };
     }
     await db`
       UPDATE hattrick_connections

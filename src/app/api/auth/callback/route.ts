@@ -138,20 +138,38 @@ export async function GET(request: NextRequest) {
       const existingSessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
       const currentAccountId = existingSessionCookie ? verifySessionCookieValue(existingSessionCookie) : null;
 
+      // Пользователь мог прийти сюда через "Подтвердить и привязать сюда"
+      // (см. ReducedDashboard.tsx) — тогда /api/auth/request-token заранее
+      // поставил cookie с ИМЕННО этим hattrickUserId, подтверждая, что
+      // пользователь осознанно согласился на перепривязку конфликтующей
+      // команды. Сверяем значение, а не просто наличие cookie — иначе старая
+      // cookie от подтверждения другой команды могла бы молча сработать и
+      // для этой.
+      const confirmReassignCookie = request.cookies.get("hm_confirm_reassign")?.value;
+      const confirmReassign = !!confirmReassignCookie && confirmReassignCookie === managerUserId;
+
       const result = await linkOrCreateHattrickConnection({
         hattrickUserId: managerUserId,
         accessToken,
         accessTokenSecret,
         currentAccountId,
+        confirmReassign,
       });
+
+      redirectResponse.cookies.delete("hm_confirm_reassign");
 
       if (result.status === "conflict") {
         // Эта команда Hattrick уже привязана к ДРУГОМУ аккаунту сайта — не
-        // перезаписываем чужую привязку, честно сообщаем об этом вместо
-        // молчаливой подмены. Сессия/cookie не трогаются.
-        const conflictResponse = NextResponse.redirect(new URL("/dashboard?connectError=already-linked", request.url));
+        // перезаписываем чужую привязку молча, честно сообщаем об этом.
+        // hattrickUserId в адресе — чтобы баннер в /dashboard мог предложить
+        // явное подтверждение перепривязки (см. confirmReassign выше), не
+        // заставляя проходить OAuth ещё раз только ради этого значения.
+        const conflictResponse = NextResponse.redirect(
+          new URL(`/dashboard?connectError=already-linked&hattrickUserId=${encodeURIComponent(managerUserId)}`, request.url),
+        );
         conflictResponse.cookies.delete("hattrick_request_token");
         conflictResponse.cookies.delete("hattrick_request_token_secret");
+        conflictResponse.cookies.delete("hm_confirm_reassign");
         return conflictResponse;
       }
 

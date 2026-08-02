@@ -4,10 +4,14 @@ export default function DemoModeBanner({
   title,
   reasons,
   showConnectAction = true,
+  connectHref = "/api/auth/request-token",
+  connectLabel = "Подключить команду",
 }: {
   title: string;
   reasons: string[];
   showConnectAction?: boolean;
+  connectHref?: string;
+  connectLabel?: string;
 }) {
   return (
     <div className={styles.demoBanner}>
@@ -23,8 +27,8 @@ export default function DemoModeBanner({
         )}
       </div>
       {showConnectAction && (
-        <a href="/api/auth/request-token" className={`btnPrimary ${styles.demoBannerAction}`}>
-          Подключить команду
+        <a href={connectHref} className={`btnPrimary ${styles.demoBannerAction}`}>
+          {connectLabel}
         </a>
       )}
     </div>
