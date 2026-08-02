@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildAuthorizationHeader, buildOAuthParams, HATTRICK_OAUTH_URLS } from "@/lib/hattrickOAuth";
 import { resolveManagerUserId } from "@/lib/manager";
-import { saveHattrickTokens } from "@/lib/hattrickTokensDb";
-import { SESSION_COOKIE, buildSessionCookieValue } from "@/lib/siteSession";
+import { linkOrCreateHattrickConnection } from "@/lib/accountsDb";
+import { SESSION_COOKIE, buildSessionCookieValue, verifySessionCookieValue } from "@/lib/siteSession";
 
 function cookieOptions(maxAge?: number) {
   return {
@@ -111,13 +111,13 @@ export async function GET(request: NextRequest) {
   }
 
   // Hattrick UserID — стабильный идентификатор менеджера (в отличие от
-  // access-токена, не меняется) — нужен как ключ, под которым токен
-  // сохраняется в базе (см. src/lib/hattrickTokensDb.ts) для долгоживущей
-  // сессии. ВАЖНО: получение UserID — второстепенный шаг и НЕ должно
-  // блокировать сам вход. Если он не удался (см. diagnostics ниже — точная
-  // причина логируется и показывается один раз баннером в личном
-  // кабинете), пользователь всё равно попадает в кабинет по обычной
-  // (не долгоживущей) сессии — см. fallback-cookies в конце функции.
+  // access-токена, не меняется) — нужен как ключ для привязки к аккаунту
+  // сайта (см. src/lib/accountsDb.ts) для долгоживущей сессии. ВАЖНО:
+  // получение UserID — второстепенный шаг и НЕ должно блокировать сам вход.
+  // Если он не удался (см. diagnostics ниже — точная причина логируется и
+  // показывается один раз баннером в личном кабинете), пользователь всё
+  // равно попадает в кабинет по обычной (не долгоживущей) сессии — см.
+  // fallback-cookies в конце функции.
   const { userId: managerUserId, diagnostics } = await resolveManagerUserId({ accessToken, accessTokenSecret });
 
   const redirectResponse = NextResponse.redirect(new URL("/dashboard", request.url));
@@ -126,13 +126,41 @@ export async function GET(request: NextRequest) {
 
   if (managerUserId) {
     try {
-      await saveHattrickTokens(managerUserId, accessToken, accessTokenSecret);
+      // Если браузер уже нёс валидную cookie сессии сайта в этом запросе —
+      // значит пользователь был залогинен (по логину/паролю или прошлой
+      // OAuth-сессии) ДО того, как начал "Подключить команду". Cookie
+      // сессии переживает весь редирект-цикл OAuth (это обычная, не
+      // временная cookie), так что её достаточно прочитать прямо здесь —
+      // отдельный OAuth state-параметр не нужен. Если она есть — новая
+      // команда привязывается к ТОМУ ЖЕ аккаунту, а не создаёт новый (см.
+      // чат: "hattrick_user_id привязывается к уже существующей учётной
+      // записи").
+      const existingSessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
+      const currentAccountId = existingSessionCookie ? verifySessionCookieValue(existingSessionCookie) : null;
+
+      const result = await linkOrCreateHattrickConnection({
+        hattrickUserId: managerUserId,
+        accessToken,
+        accessTokenSecret,
+        currentAccountId,
+      });
+
+      if (result.status === "conflict") {
+        // Эта команда Hattrick уже привязана к ДРУГОМУ аккаунту сайта — не
+        // перезаписываем чужую привязку, честно сообщаем об этом вместо
+        // молчаливой подмены. Сессия/cookie не трогаются.
+        const conflictResponse = NextResponse.redirect(new URL("/dashboard?connectError=already-linked", request.url));
+        conflictResponse.cookies.delete("hattrick_request_token");
+        conflictResponse.cookies.delete("hattrick_request_token_secret");
+        return conflictResponse;
+      }
+
       // Собственная долгоживущая cookie сессии сайта (см.
-      // src/lib/siteSession.ts) — содержит только подписанный Hattrick
-      // UserID, а не сам OAuth-токен (тот теперь в базе). При следующих
-      // визитах src/lib/hattrickApi.ts находит токен по этой cookie без
-      // повторного прохождения OAuth-флоу.
-      redirectResponse.cookies.set(SESSION_COOKIE, buildSessionCookieValue(managerUserId), cookieOptions(60 * 60 * 24 * 400));
+      // src/lib/siteSession.ts) — содержит только подписанный ID аккаунта, а
+      // не сам OAuth-токен (тот теперь в базе). При следующих визитах
+      // src/lib/hattrickApi.ts находит токен по этой cookie без повторного
+      // прохождения OAuth-флоу.
+      redirectResponse.cookies.set(SESSION_COOKIE, buildSessionCookieValue(result.accountId), cookieOptions(60 * 60 * 24 * 400));
       return redirectResponse;
     } catch (err) {
       // Сохранение в базу не удалось — тоже не блокируем вход, откатываемся

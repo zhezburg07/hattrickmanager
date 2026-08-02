@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { applyPasswordReset, findByResetToken } from "@/lib/hattrickTokensDb";
+import { applyPasswordReset, findByResetToken } from "@/lib/accountsDb";
 import { hashPassword, isValidPassword, MIN_PASSWORD_LENGTH } from "@/lib/passwordAuth";
 
 export async function POST(request: NextRequest) {
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const passwordHash = await hashPassword(password);
-    await applyPasswordReset(record.hattrickUserId, passwordHash);
+    await applyPasswordReset(record.accountId, passwordHash);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

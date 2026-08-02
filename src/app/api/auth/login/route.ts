@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findByEmail } from "@/lib/hattrickTokensDb";
+import { findByIdentifier } from "@/lib/accountsDb";
 import { verifyPassword } from "@/lib/passwordAuth";
 import { SESSION_COOKIE, buildSessionCookieValue } from "@/lib/siteSession";
 
@@ -13,33 +13,34 @@ function cookieOptions(maxAge: number) {
   };
 }
 
-// Вход по email+паролю — альтернатива повторному походу на OAuth Hattrick
-// (см. страницу /login). При совпадении ставит ТУ ЖЕ cookie сессии сайта
-// (SESSION_COOKIE), что и обычный OAuth-вход (см. /api/auth/callback) — она
-// хранит только подписанный hattrick_user_id, а сам Hattrick-токен уже лежит
-// в базе с прошлого OAuth-подключения. Поэтому дальше всё работает как
-// обычно: getStoredHattrickTokens() найдёт тот же токен по этому UserID.
+// Вход по логину ИЛИ email + пароль — альтернатива повторному походу на
+// OAuth Hattrick (см. страницу /login). Регистрация (см. /api/auth/register)
+// добавила логин как ещё один валидный идентификатор для входа, не только
+// email. При совпадении ставит ТУ ЖЕ cookie сессии сайта (SESSION_COOKIE),
+// что и обычный OAuth-вход (см. /api/auth/callback) — она хранит только
+// подписанный ID аккаунта (см. src/lib/accountsDb.ts), не сам Hattrick-
+// токен — тот (если команда подключена) уже лежит в базе отдельно.
 export async function POST(request: NextRequest) {
-  let body: { email?: string; password?: string };
+  let body: { identifier?: string; password?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Некорректный запрос." }, { status: 400 });
   }
 
-  const email = (body.email ?? "").trim();
+  const identifier = (body.identifier ?? "").trim();
   const password = body.password ?? "";
 
-  if (!email || !password) {
-    return NextResponse.json({ error: "Введите email и пароль." }, { status: 400 });
+  if (!identifier || !password) {
+    return NextResponse.json({ error: "Введите логин/email и пароль." }, { status: 400 });
   }
 
   try {
-    const record = await findByEmail(email);
-    // Намеренно один и тот же ответ и когда email не найден, и когда пароль
-    // не подошёл — чтобы нельзя было перебором узнать, какие email вообще
-    // зарегистрированы.
-    const invalidResponse = () => NextResponse.json({ error: "Неверный email или пароль." }, { status: 401 });
+    const record = await findByIdentifier(identifier);
+    // Намеренно один и тот же ответ и когда логин/email не найден, и когда
+    // пароль не подошёл — чтобы нельзя было перебором узнать, какие
+    // логины/email вообще зарегистрированы.
+    const invalidResponse = () => NextResponse.json({ error: "Неверный логин, email или пароль." }, { status: 401 });
 
     if (!record) return invalidResponse();
 
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
     if (!matches) return invalidResponse();
 
     const response = NextResponse.json({ ok: true });
-    response.cookies.set(SESSION_COOKIE, buildSessionCookieValue(record.hattrickUserId), cookieOptions(60 * 60 * 24 * 400));
+    response.cookies.set(SESSION_COOKIE, buildSessionCookieValue(record.accountId), cookieOptions(60 * 60 * 24 * 400));
     return response;
   } catch (err) {
     // База данных недоступна и т.п. — честная ошибка вместо сырого падения

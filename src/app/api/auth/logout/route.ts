@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 
 // Разлогинивает пользователя: удаляет cookie сессии сайта (см.
 // src/lib/siteSession.ts) и отправляет обратно на публичную главную. Сам
-// OAuth-токен в базе данных (см. src/lib/hattrickTokensDb.ts) не трогаем —
-// он остаётся привязанным к Hattrick UserID и просто перестаёт быть
-// доступным этому браузеру, пока пользователь не подключится заново.
+// OAuth-токен в базе данных (см. src/lib/accountsDb.ts) не трогаем — он
+// остаётся привязанным к аккаунту и просто перестаёт быть доступным этому
+// браузеру, пока пользователь не войдёт заново.
 export async function GET(request: Request) {
   const redirectResponse = NextResponse.redirect(new URL("/", request.url));
 

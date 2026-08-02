@@ -2,19 +2,33 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { buildAuthorizationHeader, buildOAuthParams, HATTRICK_OAUTH_URLS } from "./hattrickOAuth";
 import { SESSION_COOKIE, verifySessionCookieValue } from "./siteSession";
-import { getHattrickTokens } from "./hattrickTokensDb";
+import { getHattrickConnectionForAccount, getHattrickUserIdForAccount } from "./accountsDb";
 
 export interface StoredHattrickTokens {
   accessToken: string;
   accessTokenSecret: string;
 }
 
-// Читает собственную долгоживущую cookie сессии сайта (см.
-// src/lib/siteSession.ts), проверяет подпись и по извлечённому из неё
-// Hattrick UserID достаёт сохранённый в базе OAuth-токен (см.
-// src/lib/hattrickTokensDb.ts) — так пользователю не нужно заново проходить
+// ID аккаунта сайта (см. src/lib/accountsDb.ts) — зашит (подписанным) внутрь
+// cookie сессии сайта, отдельной cookie для него не заводим. Раньше здесь
+// напрямую лежал Hattrick UserID (аккаунт и подключение к Hattrick были
+// одной сущностью) — теперь это просто ID аккаунта, который МОЖЕТ быть не
+// привязан ни к какой команде Hattrick вовсе (см. регистрацию на главной).
+// Синхронная функция — не требует похода в базу, только проверку подписи.
+export function getStoredAccountId(): string | null {
+  const cookieValue = cookies().get(SESSION_COOKIE)?.value;
+  if (!cookieValue) return null;
+  return verifySessionCookieValue(cookieValue);
+}
+
+// Читает собственную долгоживущую cookie сессии сайта, по ID аккаунта из
+// неё достаёт привязанную команду Hattrick (см. src/lib/accountsDb.ts) и её
+// сохранённый OAuth-токен — так пользователю не нужно заново проходить
 // OAuth-авторизацию Hattrick на каждом визите, пока он сам не выйдет
-// (/api/auth/logout) или не отзовёт доступ на самом Hattrick.
+// (/api/auth/logout) или не отзовёт доступ на самом Hattrick. Возвращает
+// null не только при отсутствии сессии, но и когда аккаунт есть, а команда
+// Hattrick к нему ещё не привязана — это НОРМАЛЬНОЕ, ожидаемое состояние
+// для только что зарегистрированного аккаунта, а не ошибка.
 //
 // Запасной путь ("мягкий" вход, см. /api/auth/callback): если при входе не
 // удалось определить Hattrick UserID (managercompendium.xml не ответил) —
@@ -22,23 +36,20 @@ export interface StoredHattrickTokens {
 // кладётся прямо в обычную cookie браузера (без базы данных). Здесь мы
 // проверяем и её — иначе такой вход вообще не работал бы. Апгрейд до
 // долгоживущей сессии, если managercompendium.xml сработает позже, — см.
-// /api/auth/session-upgrade.
+// /api/auth/session-upgrade. Этот запасной путь никак не завязан на
+// аккаунты — он не тронут этой миграцией.
 export async function getStoredHattrickTokens(): Promise<StoredHattrickTokens | null> {
-  const cookieStore = cookies();
-  const cookieValue = cookieStore.get(SESSION_COOKIE)?.value;
-
-  if (cookieValue) {
-    const userId = verifySessionCookieValue(cookieValue);
-    if (userId) {
-      try {
-        const tokens = await getHattrickTokens(userId);
-        if (tokens) return tokens;
-      } catch {
-        // база недоступна — попробуем запасную cookie ниже
-      }
+  const accountId = getStoredAccountId();
+  if (accountId) {
+    try {
+      const connection = await getHattrickConnectionForAccount(accountId);
+      if (connection) return { accessToken: connection.accessToken, accessTokenSecret: connection.accessTokenSecret };
+    } catch {
+      // база недоступна — попробуем запасную cookie ниже
     }
   }
 
+  const cookieStore = cookies();
   const legacyToken = cookieStore.get("hattrick_access_token")?.value;
   const legacyTokenSecret = cookieStore.get("hattrick_access_token_secret")?.value;
   if (legacyToken && legacyTokenSecret) {
@@ -48,26 +59,34 @@ export async function getStoredHattrickTokens(): Promise<StoredHattrickTokens | 
   return null;
 }
 
-// Для страниц личного кабинета (/dashboard/**): src/app/dashboard/layout.tsx
-// уже перенаправляет неподключённых пользователей на главную раньше, чем
-// отрендерится любая из этих страниц, так что к моменту вызова здесь токены
-// гарантированно есть. Redirect на всякий случай — защита от прямого вызова
-// без layout (например, из будущего API-роута), а не ожидаемый путь.
+// Для страниц личного кабинета (/dashboard/**), КРОМЕ самого /dashboard
+// (см. src/app/dashboard/page.tsx — та страница сама решает, что показать
+// незалогиненной в Hattrick команде учётке, а не редиректит). Различает два
+// разных случая: аккаунта нет вообще (redirect на главную) и аккаунт есть,
+// но команда ещё не подключена (redirect на /dashboard — там честный призыв
+// "Подключить команду", а не молчаливый выброс на публичную главную).
 export async function getRequiredHattrickTokens(): Promise<StoredHattrickTokens> {
   const tokens = await getStoredHattrickTokens();
-  if (!tokens) {
-    redirect("/");
+  if (tokens) return tokens;
+
+  if (getStoredAccountId()) {
+    redirect("/dashboard");
   }
-  return tokens;
+  redirect("/");
 }
 
-// Hattrick UserID зашит (подписанным) внутрь cookie сессии сайта — отдельной
-// cookie для него больше не заводим. В отличие от getStoredHattrickTokens
-// выше, здесь не нужен поход в базу, поэтому функция остаётся синхронной.
-export function getStoredHattrickUserId(): string | null {
-  const cookieValue = cookies().get(SESSION_COOKIE)?.value;
-  if (!cookieValue) return null;
-  return verifySessionCookieValue(cookieValue);
+// Hattrick UserID привязанной команды (если есть) — теперь требует похода в
+// базу (аккаунт и Hattrick-подключение — разные таблицы, см. accountsDb.ts),
+// поэтому функция стала асинхронной (была синхронной, когда UserID лежал
+// прямо в cookie).
+export async function getStoredHattrickUserId(): Promise<string | null> {
+  const accountId = getStoredAccountId();
+  if (!accountId) return null;
+  try {
+    return await getHattrickUserIdForAccount(accountId);
+  } catch {
+    return null;
+  }
 }
 
 export interface ChppRawResponse {

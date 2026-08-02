@@ -35,11 +35,58 @@
   padding: 8px 10px;
   border-radius: 6px;
   transition: background 0.15s ease, color 0.15s ease;
+  /* Один и тот же класс применяется и к <Link>, и к <button> ("Зарегистрироваться"
+     переключает вкладку формы, а не переходит по ссылке) — сбрасываем
+     стандартные стили кнопки, чтобы оба выглядели одинаково. */
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  font: inherit;
+  cursor: pointer;
 }
 
 .navLink:hover {
   background: rgba(201, 162, 39, 0.1);
   color: var(--color-accent);
+}
+
+/* Переключатель "Войти"/"Регистрация" внутри блока входа */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  background: var(--color-bg-darker);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.tab {
+  flex: 1;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--color-text);
+}
+
+.tabActive {
+  background: var(--color-accent);
+  color: var(--color-bg-darker);
+}
+
+.tabActive:hover {
+  color: var(--color-bg-darker);
 }
 
 .form {
@@ -51,6 +98,40 @@
 .footNote {
   text-align: center;
   margin: 0;
+}
+
+/* Поле пароля с кнопкой-иконкой "показать/скрыть" внутри поля */
+.passwordField {
+  position: relative;
+  display: flex;
+}
+
+.passwordField input {
+  width: 100%;
+  padding-right: 38px;
+}
+
+.passwordToggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.passwordToggle:hover {
+  color: var(--color-accent);
+  background: rgba(201, 162, 39, 0.1);
 }
 
 @media (max-width: 900px) {

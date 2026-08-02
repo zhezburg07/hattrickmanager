@@ -73,7 +73,7 @@ export default async function SquadPage() {
     error = `Состав (players): ${message}`;
   }
 
-  const prevByPlayerId = players ? await resolvePlayerHistory(getStoredHattrickUserId(), players) : {};
+  const prevByPlayerId = players ? await resolvePlayerHistory(await getStoredHattrickUserId(), players) : {};
 
   return (
     <>

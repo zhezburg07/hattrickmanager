@@ -20,6 +20,15 @@ export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
+// Логин для регистрации (см. /api/auth/register) — буквы (включая
+// не-латинские, \p{L}), цифры, подчёркивание и дефис, 3-24 символа.
+export const MIN_USERNAME_LENGTH = 3;
+export const MAX_USERNAME_LENGTH = 24;
+
+export function isValidUsername(username: string): boolean {
+  return /^[\p{L}\p{N}_-]{3,24}$/u.test(username.trim());
+}
+
 // Минимальная длина — не "надёжный пароль" в полном смысле (спецсимволы и
 // т.п.), просто разумный минимум, чтобы не завести пароль из 1 символа.
 export const MIN_PASSWORD_LENGTH = 8;

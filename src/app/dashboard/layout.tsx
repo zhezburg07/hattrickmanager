@@ -1,16 +1,22 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { getStoredHattrickTokens } from "@/lib/hattrickApi";
+import { getStoredAccountId } from "@/lib/hattrickApi";
 import SessionUpgrader from "@/components/SessionUpgrader";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 
-// Личный кабинет требует реального подключения к Hattrick — раньше каждая
-// страница внутри /dashboard сама проверяла токены и показывала демо-данные
-// вместо реальных; теперь демо-режима нет, и вход в раздел без подключённой
-// команды просто ведёт на главную с призывом "Подключить команду".
+// Личный кабинет требует ЛЮБОЙ валидной сессии — аккаунта (см.
+// src/lib/accountsDb.ts), НЕ обязательно уже подключённой к Hattrick
+// команды. Раньше этот гейт требовал реальных Hattrick-токенов, из-за чего
+// зарегистрированный, но ещё не подключивший команду аккаунт не мог попасть
+// в кабинет вовсе — теперь /dashboard (Обзор) сам решает, показать полный
+// дашборд или урезанную версию с призывом "Подключить команду" (см.
+// src/app/dashboard/page.tsx), а этот layout лишь отсеивает полностью
+// анонимных посетителей.
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const tokens = await getStoredHattrickTokens();
-  if (!tokens) {
+  const accountId = getStoredAccountId();
+  const hasLegacySoftLogin =
+    !!cookies().get("hattrick_access_token")?.value && !!cookies().get("hattrick_access_token_secret")?.value;
+  if (!accountId && !hasLegacySoftLogin) {
     redirect("/");
   }
 

@@ -15,10 +15,13 @@ import HofPlayersSection from "@/components/dashboard/HofPlayersSection";
 import AchievementsSection from "@/components/dashboard/AchievementsSection";
 import SupportersSection from "@/components/dashboard/SupportersSection";
 import SetPasswordPrompt from "@/components/dashboard/SetPasswordPrompt";
+import ReducedDashboard from "@/components/dashboard/ReducedDashboard";
 import { defaultCurrency, chppSupportersPopularityToFanMoodLevel } from "@/data/dashboard";
 import type { MatrixTeamMeta } from "@/data/leagueMatrix";
+import { redirect } from "next/navigation";
 import {
-  getRequiredHattrickTokens,
+  getStoredHattrickTokens,
+  getStoredAccountId,
   getStoredHattrickUserId,
   requestChppXmlRaw,
   type ChppRawResponse,
@@ -40,7 +43,7 @@ import { resolveHofPlayers } from "@/lib/hofPlayers";
 import { resolveAchievements } from "@/lib/achievements";
 import { resolveSupporters } from "@/lib/supporters";
 import { upsertConnectedUser } from "@/lib/connectedUsersDb";
-import { hasEmailLogin } from "@/lib/hattrickTokensDb";
+import { hasEmailLogin } from "@/lib/accountsDb";
 import { cookies } from "next/headers";
 import styles from "@/components/dashboard/Overview.module.css";
 
@@ -372,9 +375,29 @@ const SHOW_SUPPORTERS_SECTION = false;
 // выключен.
 const SHOW_HOF_SECTION = false;
 
-export default async function DashboardPage() {
-  const tokens = await getRequiredHattrickTokens();
-  const hattrickUserId = getStoredHattrickUserId();
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: { connectError?: string };
+}) {
+  // Раньше здесь был getRequiredHattrickTokens() — он бы редиректил на "/"
+  // любого, у кого нет команды Hattrick, включая только что
+  // зарегистрированный аккаунт БЕЗ подключённой команды (это ожидаемое,
+  // нормальное состояние теперь, а не ошибка — см. чат про регистрацию без
+  // Hattrick). Дальше сама страница решает, что показать: полный дашборд
+  // (если команда подключена) или урезанную версию с призывом "Подключить
+  // команду".
+  const tokens = await getStoredHattrickTokens();
+  const accountId = getStoredAccountId();
+
+  if (!tokens) {
+    // src/app/dashboard/layout.tsx уже блокирует полностью анонимных
+    // посетителей — этот redirect защитный, на случай прямого вызова.
+    if (!accountId) redirect("/");
+    return <ReducedDashboard connectError={searchParams.connectError} />;
+  }
+
+  const hattrickUserId = await getStoredHattrickUserId();
   const [data, weeklyTsi, hof, achievements, supporters] = await Promise.all([
     resolveDashboardData(tokens),
     resolveWeeklyTsiHighlights(hattrickUserId),
@@ -422,9 +445,9 @@ export default async function DashboardPage() {
   // ставится на клиенте в SetPasswordPrompt.tsx). Ошибка базы здесь не
   // должна ронять всю страницу — тогда просто не показываем предложение.
   let showPasswordPrompt = false;
-  if (hattrickUserId && !cookies().get("password_prompt_dismissed")?.value) {
+  if (accountId && !cookies().get("password_prompt_dismissed")?.value) {
     try {
-      showPasswordPrompt = !(await hasEmailLogin(hattrickUserId));
+      showPasswordPrompt = !(await hasEmailLogin(accountId));
     } catch {
       showPasswordPrompt = false;
     }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveManagerUserId } from "@/lib/manager";
-import { saveHattrickTokens } from "@/lib/hattrickTokensDb";
+import { linkOrCreateHattrickConnection } from "@/lib/accountsDb";
 import { SESSION_COOKIE, buildSessionCookieValue } from "@/lib/siteSession";
 
 // Вызывается один раз при каждом заходе в личный кабинет (см.
@@ -27,15 +27,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ upgraded: false, reason: "manager-failed" });
   }
 
+  // Этот роут выполняется только когда SESSION_COOKIE ещё нет (см. ранний
+  // return выше) — значит currentAccountId всегда null: тут не может быть
+  // сценария "уже залогинен, привязываю ещё одну команду", только "первое
+  // подключение" или "снова увидели уже известный hattrick_user_id".
+  let result;
   try {
-    await saveHattrickTokens(userId, accessToken, accessTokenSecret);
+    result = await linkOrCreateHattrickConnection({
+      hattrickUserId: userId,
+      accessToken,
+      accessTokenSecret,
+      currentAccountId: null,
+    });
   } catch (err) {
     console.error("Не удалось сохранить токен в базе при апгрейде сессии:", err instanceof Error ? err.message : err);
     return NextResponse.json({ upgraded: false, reason: "db-error" });
   }
 
+  if (result.status === "conflict") {
+    // Практически недостижимо при currentAccountId: null (конфликт возможен
+    // только если существующая привязка принадлежит ДРУГОМУ аккаунту, а не
+    // нашему null) — обрабатываем defensively на случай гонки запросов.
+    console.error("Конфликт привязки при апгрейде сессии: команда уже привязана к другому аккаунту.");
+    return NextResponse.json({ upgraded: false, reason: "already-linked" });
+  }
+
   const response = NextResponse.json({ upgraded: true });
-  response.cookies.set(SESSION_COOKIE, buildSessionCookieValue(userId), {
+  response.cookies.set(SESSION_COOKIE, buildSessionCookieValue(result.accountId), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

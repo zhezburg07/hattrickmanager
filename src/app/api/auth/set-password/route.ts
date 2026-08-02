@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStoredHattrickUserId } from "@/lib/hattrickApi";
-import { setEmailLogin } from "@/lib/hattrickTokensDb";
+import { getStoredAccountId } from "@/lib/hattrickApi";
+import { setEmailLogin } from "@/lib/accountsDb";
 import { hashPassword, isValidEmail, isValidPassword, MIN_PASSWORD_LENGTH } from "@/lib/passwordAuth";
 
 // Вызывается из предложения "Придумайте email и пароль" на Обзоре (см.
-// SetPasswordPrompt.tsx) — привязывает email+пароль к УЖЕ подключённому
-// через OAuth аккаунту (значит, hattrick_user_id уже известен из cookie
-// сессии). Сам OAuth-токен эта операция не трогает — пароль лишь ускоряет
-// последующие входы, ничего не заменяет.
+// SetPasswordPrompt.tsx) — привязывает email+пароль к аккаунту (см.
+// src/lib/accountsDb.ts). ИСПРАВЛЕНО: раньше требовалось обязательно уже
+// подключённое через OAuth Hattrick-подключение — на деле для того, чтобы
+// просто добавить пароль ко входу на сайт, Hattrick-подключение не нужно
+// вовсе (нужен только сам аккаунт), поэтому проверка теперь смотрит на
+// getStoredAccountId(), а не на Hattrick UserID. Сам OAuth-токен (если есть)
+// эта операция не трогает — пароль лишь ускоряет последующие входы.
 export async function POST(request: NextRequest) {
-  const hattrickUserId = getStoredHattrickUserId();
-  if (!hattrickUserId) {
-    return NextResponse.json({ error: "Сессия не найдена — сначала подключите команду через Hattrick." }, { status: 401 });
+  const accountId = getStoredAccountId();
+  if (!accountId) {
+    return NextResponse.json({ error: "Сессия не найдена — сначала войдите в аккаунт." }, { status: 401 });
   }
 
   let body: { email?: string; password?: string };
@@ -33,13 +36,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const passwordHash = await hashPassword(password);
-    await setEmailLogin(hattrickUserId, email, passwordHash);
+    await setEmailLogin(accountId, email, passwordHash);
     return NextResponse.json({ ok: true });
   } catch (err) {
     // "Email уже занят" — единственная ожидаемая, безопасная для показа
-    // причина отказа (см. setEmailLogin в hattrickTokensDb.ts). Всё
-    // остальное (например, база данных недоступна) — не показываем как
-    // есть, только в логах сервера.
+    // причина отказа (см. setEmailLogin в accountsDb.ts). Всё остальное
+    // (например, база данных недоступна) — не показываем как есть, только в
+    // логах сервера.
     if (err instanceof Error && err.message.includes("уже используется")) {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }

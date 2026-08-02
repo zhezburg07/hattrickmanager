@@ -4,13 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import styles from "./AuthForm.module.css";
 
-// Вход по email+паролю — быстрая альтернатива повторному OAuth-походу на
-// Hattrick с нового устройства. Работает только для тех, кто уже подключил
-// команду через Hattrick и завёл себе пароль в личном кабинете (см.
+// Вход по логину/email+паролю — быстрая альтернатива повторному OAuth-
+// походу на Hattrick с нового устройства. Работает и для тех, кто
+// зарегистрировался напрямую (см. HomeSidebar.tsx на главной), и для тех,
+// кто подключил команду через Hattrick и завёл себе пароль позже (см.
 // SetPasswordPrompt.tsx) — само подключение команды по-прежнему возможно
 // только через OAuth, эта форма его не заменяет.
 export default function LoginForm() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -23,7 +24,7 @@ export default function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -43,20 +44,22 @@ export default function LoginForm() {
       <form className={styles.card} onSubmit={handleSubmit}>
         <div className={styles.title}>Войти по email</div>
         <p className={styles.subtitle}>
-          Только если вы уже подключали команду через Hattrick и заводили пароль в личном кабинете.
+          Подходит и для аккаунта, зарегистрированного напрямую, и для аккаунта, подключённого через Hattrick с уже
+          заведённым паролем.
         </p>
 
         {error && <p className={styles.error}>{error}</p>}
 
         <label className={styles.label}>
-          Email
+          Email или логин
           <input
             className={styles.input}
-            type="email"
+            type="text"
             required
             autoFocus
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="username"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
           />
         </label>
 
