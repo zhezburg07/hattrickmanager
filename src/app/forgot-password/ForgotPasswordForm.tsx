@@ -4,23 +4,19 @@ import { useState } from "react";
 import Link from "next/link";
 import styles from "../login/AuthForm.module.css";
 
-// ВРЕМЕННО (см. чат): реальная отправка письма ещё не подключена — сервер
-// отдаёт готовую ссылку для сброса прямо в ответе, и мы показываем её здесь
-// на экране вместо письма. Когда появится email-сервис, эта ссылка вместо
-// показа на экране будет отправляться на почту — форма и вся остальная
-// логика сброса пароля уже готовы и не изменятся.
+// Ссылка для сброса пароля реально отправляется письмом через Resend (см.
+// src/lib/email.ts, /api/auth/forgot-password) — на экране показывается
+// только нейтральное подтверждение, без самой ссылки.
 export default function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [resetLink, setResetLink] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setMessage(null);
-    setResetLink(null);
     setLoading(true);
     try {
       const res = await fetch("/api/auth/forgot-password", {
@@ -35,7 +31,6 @@ export default function ForgotPasswordForm() {
         return;
       }
       setMessage(json.message);
-      setResetLink(json.resetLink ?? null);
       setLoading(false);
     } catch {
       setError("Не удалось связаться с сервером. Попробуйте ещё раз.");
@@ -51,13 +46,6 @@ export default function ForgotPasswordForm() {
 
         {error && <p className={styles.error}>{error}</p>}
         {message && <p className={styles.success}>{message}</p>}
-        {resetLink && (
-          <div className={styles.resetLinkBox}>
-            Ссылка действует 1 час:
-            <br />
-            <a href={resetLink}>{resetLink}</a>
-          </div>
-        )}
 
         <label className={styles.label}>
           Email

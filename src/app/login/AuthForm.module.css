@@ -97,17 +97,3 @@
 .footNote a:hover {
   text-decoration: underline;
 }
-
-.resetLinkBox {
-  background: var(--color-bg-darker);
-  border: 1px dashed var(--color-border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 12.5px;
-  color: var(--color-text-muted);
-  word-break: break-all;
-}
-
-.resetLinkBox a {
-  color: var(--color-accent);
-}
