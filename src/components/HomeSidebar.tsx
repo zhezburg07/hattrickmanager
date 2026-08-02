@@ -58,7 +58,7 @@ function LoginForm() {
       )}
 
       <label className={authStyles.label}>
-        Имя пользователя
+        Email или логин
         <input
           className={authStyles.input}
           type="text"
