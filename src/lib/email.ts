@@ -27,18 +27,60 @@ function fromAddress(): string {
 
 export async function sendPasswordResetEmail(to: string, resetLink: string): Promise<void> {
   const resend = resendClient();
-  const { error } = await resend.emails.send({
-    from: fromAddress(),
-    to,
-    subject: "Восстановление пароля — HattrickManager",
-    text: `Для сброса пароля перейдите по ссылке: ${resetLink}\n\nСсылка действует 1 час. Если вы не запрашивали сброс пароля — просто проигнорируйте это письмо.`,
-    html: `
-      <p>Для сброса пароля перейдите по ссылке:</p>
-      <p><a href="${resetLink}">${resetLink}</a></p>
-      <p>Ссылка действует 1 час. Если вы не запрашивали сброс пароля — просто проигнорируйте это письмо.</p>
-    `,
-  });
-  if (error) {
-    throw new Error(`Resend отклонил отправку письма: ${error.message}`);
+  const from = fromAddress();
+
+  // resend.emails.send() по контракту SDK (node_modules/resend/dist/index.mjs,
+  // fetchRequest) не бросает исключение на HTTP-ошибку от Resend — она
+  // всегда приходит как { data: null, error: {...} } в самом ответе. Но
+  // сама библиотека логирует это (logError) только когда NODE_ENV !==
+  // "production" — то есть НИКОГДА в проде на Vercel. Раньше здесь читалась
+  // только error.message без status/name — теперь логируем весь объект
+  // ошибки Resend целиком, это единственное место, где виден настоящий
+  // текст причины 403 (неверный/просроченный ключ, ограничение аккаунта,
+  // непроверенный домен отправителя, песочница onboarding@resend.dev и
+  // т.п.). Внешний try/catch — на случай, если сам fetch внутри SDK всё же
+  // выбросит исключение (сетевой сбой и т.п.), а не просто вернёт error.
+  let response: Awaited<ReturnType<typeof resend.emails.send>>;
+  try {
+    response = await resend.emails.send({
+      from,
+      to,
+      subject: "Восстановление пароля — HattrickManager",
+      text: `Для сброса пароля перейдите по ссылке: ${resetLink}\n\nСсылка действует 1 час. Если вы не запрашивали сброс пароля — просто проигнорируйте это письмо.`,
+      html: `
+        <p>Для сброса пароля перейдите по ссылке:</p>
+        <p><a href="${resetLink}">${resetLink}</a></p>
+        <p>Ссылка действует 1 час. Если вы не запрашивали сброс пароля — просто проигнорируйте это письмо.</p>
+      `,
+    });
+  } catch (err) {
+    console.error("Resend: исключение при вызове emails.send() (сетевой сбой fetch внутри SDK?)", {
+      to,
+      from,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw new Error("Не удалось отправить письмо через Resend: сетевая ошибка при обращении к API.");
   }
+
+  const { data, error } = response;
+
+  if (error) {
+    // Полный текст ответа Resend — statusCode (обычно совпадает с HTTP-
+    // статусом, например 403), name (код причины — invalid_api_key,
+    // restricted_api_key, invalid_from_address, validation_error и т.п.) и
+    // message (человекочитаемое объяснение от самого Resend, например про
+    // ограничение песочницы onboarding@resend.dev). Пользователю на экране
+    // по-прежнему остаётся только общее сообщение (см.
+    // /api/auth/forgot-password) — это только в серверный лог.
+    console.error("Resend отклонил отправку письма:", {
+      to,
+      from,
+      statusCode: error.statusCode,
+      name: error.name,
+      message: error.message,
+    });
+    throw new Error(`Resend отклонил отправку письма [${error.statusCode ?? "?"} ${error.name}]: ${error.message}`);
+  }
+
+  console.log("Resend: письмо принято в очередь на отправку", { to, from, id: data?.id });
 }
