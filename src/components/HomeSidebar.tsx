@@ -6,6 +6,12 @@ import authStyles from "@/app/login/AuthForm.module.css";
 import { EyeIcon, EyeOffIcon } from "./AuthIcons";
 import styles from "./HomeSidebar.module.css";
 
+// Держим в синхроне с src/lib/passwordAuth.ts (MIN_USERNAME_LENGTH,
+// MIN_PASSWORD_LENGTH) — тот модуль не импортируем напрямую, т.к. он тянет
+// bcryptjs/crypto (серверные зависимости) в клиентский бандл.
+const MIN_USERNAME_LENGTH = 3;
+const MIN_PASSWORD_LENGTH = 6;
+
 const NAV_ITEMS = [
   { href: "/", label: "На главную" },
   { href: "/faq", label: "FAQ" },
@@ -101,12 +107,18 @@ function RegisterForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const isEmailFormatValid = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+  const usernameTooShort = username.length > 0 && username.trim().length < MIN_USERNAME_LENGTH;
+  const emailFormatInvalid = email.length > 0 && !isEmailFormatValid(email);
   const emailMismatch = confirmEmail.length > 0 && email.trim().toLowerCase() !== confirmEmail.trim().toLowerCase();
+  const passwordTooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
+
   const canSubmit =
-    username.trim().length >= 3 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) &&
+    username.trim().length >= MIN_USERNAME_LENGTH &&
+    isEmailFormatValid(email) &&
     email.trim().toLowerCase() === confirmEmail.trim().toLowerCase() &&
-    password.length >= 8 &&
+    password.length >= MIN_PASSWORD_LENGTH &&
     !loading;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -152,6 +164,11 @@ function RegisterForm() {
           onChange={(e) => setUsername(e.target.value)}
         />
       </label>
+      {usernameTooShort && (
+        <p className={authStyles.error} style={{ margin: 0, fontSize: 12 }}>
+          Логин должен быть не короче {MIN_USERNAME_LENGTH} символов
+        </p>
+      )}
 
       <label className={authStyles.label}>
         Email
@@ -164,6 +181,11 @@ function RegisterForm() {
           onChange={(e) => setEmail(e.target.value)}
         />
       </label>
+      {emailFormatInvalid && (
+        <p className={authStyles.error} style={{ margin: 0, fontSize: 12 }}>
+          Введите корректный email
+        </p>
+      )}
 
       <label className={authStyles.label}>
         Подтвердите email
@@ -203,6 +225,11 @@ function RegisterForm() {
           </button>
         </div>
       </label>
+      {passwordTooShort && (
+        <p className={authStyles.error} style={{ margin: 0, fontSize: 12 }}>
+          Пароль должен быть не короче {MIN_PASSWORD_LENGTH} символов
+        </p>
+      )}
 
       <button className={authStyles.button} type="submit" disabled={!canSubmit}>
         {loading ? "Регистрируем…" : "Зарегистрироваться"}

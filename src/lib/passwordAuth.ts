@@ -31,7 +31,7 @@ export function isValidUsername(username: string): boolean {
 
 // Минимальная длина — не "надёжный пароль" в полном смысле (спецсимволы и
 // т.п.), просто разумный минимум, чтобы не завести пароль из 1 символа.
-export const MIN_PASSWORD_LENGTH = 8;
+export const MIN_PASSWORD_LENGTH = 6;
 
 export function isValidPassword(password: string): boolean {
   return password.length >= MIN_PASSWORD_LENGTH;
