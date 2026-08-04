@@ -9,13 +9,17 @@ import {
 } from "@/lib/passwordAuth";
 import { SESSION_COOKIE, buildSessionCookieValue } from "@/lib/siteSession";
 
-function cookieOptions(maxAge: number) {
+// Без maxAge — сессионная cookie, как и в /api/auth/login: сессия,
+// установленная паролем (в том числе сразу после регистрации), должна
+// заканчиваться при закрытии браузера, а не жить 400 дней (см. чат).
+// Долгоживущая сессия OAuth-подключения к Hattrick (/api/auth/callback,
+// /api/auth/session-upgrade) не затронута.
+function cookieOptions() {
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     path: "/",
-    maxAge,
   };
 }
 
@@ -60,7 +64,7 @@ export async function POST(request: NextRequest) {
     const { accountId } = await registerAccount({ username, email, passwordHash });
 
     const response = NextResponse.json({ ok: true });
-    response.cookies.set(SESSION_COOKIE, buildSessionCookieValue(accountId), cookieOptions(60 * 60 * 24 * 400));
+    response.cookies.set(SESSION_COOKIE, buildSessionCookieValue(accountId), cookieOptions());
     return response;
   } catch (err) {
     // "Логин/email уже занят" — единственные ожидаемые, безопасные для

@@ -3,13 +3,17 @@ import { findByIdentifier } from "@/lib/accountsDb";
 import { verifyPassword } from "@/lib/passwordAuth";
 import { SESSION_COOKIE, buildSessionCookieValue } from "@/lib/siteSession";
 
-function cookieOptions(maxAge: number) {
+// Без maxAge — это намеренно обычная сессионная cookie: вход по паролю
+// должен требовать повторного ввода логина/пароля при каждом новом визите
+// после закрытия браузера (см. чат), в отличие от долгоживущей сессии
+// OAuth-подключения к Hattrick (см. /api/auth/callback,
+// /api/auth/session-upgrade — там maxAge 400 дней намеренно не трогаем).
+function cookieOptions() {
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     path: "/",
-    maxAge,
   };
 }
 
@@ -48,7 +52,7 @@ export async function POST(request: NextRequest) {
     if (!matches) return invalidResponse();
 
     const response = NextResponse.json({ ok: true });
-    response.cookies.set(SESSION_COOKIE, buildSessionCookieValue(record.accountId), cookieOptions(60 * 60 * 24 * 400));
+    response.cookies.set(SESSION_COOKIE, buildSessionCookieValue(record.accountId), cookieOptions());
     return response;
   } catch (err) {
     // База данных недоступна и т.п. — честная ошибка вместо сырого падения
