@@ -6,13 +6,13 @@ import { Resend } from "resend";
 // код (см. /api/auth/forgot-password) сам решает, что делать с ошибкой.
 //
 // RESEND_FROM_EMAIL необязателен: по умолчанию используется
-// "onboarding@resend.dev" — тестовый адрес Resend, работающий БЕЗ
-// подтверждения своего домена, но с ограничением: пока домен не подтверждён
-// в личном кабинете Resend, письма с этого адреса доходят только на email,
-// которым зарегистрирован сам аккаунт Resend (это ограничение самого
-// Resend, не этого кода). Чтобы отправлять реальным пользователям на любой
-// email, нужно подтвердить свой домен в Resend и указать адрес с ним в
-// RESEND_FROM_EMAIL (например, "HattrickManager <no-reply@hattrickmanager.org>").
+// "HattrickManager <no-reply@hattrickmanager.org>" — домен hattrickmanager.org
+// подтверждён в личном кабинете Resend (статус "verified"), поэтому письма с
+// этого адреса доходят любым получателям, а не только владельцу аккаунта
+// Resend (то самое ограничение тестового onboarding@resend.dev, которое было
+// причиной 403 раньше). RESEND_FROM_EMAIL по-прежнему можно переопределить
+// через переменную окружения, если понадобится другой адрес с этого же
+// домена.
 function resendClient(): Resend {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -22,7 +22,7 @@ function resendClient(): Resend {
 }
 
 function fromAddress(): string {
-  return process.env.RESEND_FROM_EMAIL ?? "HattrickManager <onboarding@resend.dev>";
+  return process.env.RESEND_FROM_EMAIL ?? "HattrickManager <no-reply@hattrickmanager.org>";
 }
 
 export async function sendPasswordResetEmail(to: string, resetLink: string): Promise<void> {
