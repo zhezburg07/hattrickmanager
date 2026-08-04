@@ -251,27 +251,17 @@ export default function HomeSidebar() {
     authBlockRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  // Два способа сюда попасть открывают вкладку регистрации одинаково:
-  // 1. Клик на "Подключить команду" в WelcomeSection.tsx у анонимного
-  //    посетителя (см. OpenAuthButton.tsx) — обычное DOM-событие, без
-  //    перезагрузки страницы.
-  // 2. Прямой заход на /api/auth/request-token без сессии — сервер (см.
-  //    /api/auth/request-token/route.ts) редиректит на "/?connectAuthRequired=1",
-  //    отсюда читаем query-параметр при монтировании. window.location.search
-  //    вместо useSearchParams() — тот требует Suspense-границу при
-  //    статической генерации, а здесь это лишняя сложность ради одного флага.
+  // Прямой заход на /api/auth/request-token без сессии — сервер (см.
+  // /api/auth/request-token/route.ts) редиректит на "/?connectAuthRequired=1",
+  // отсюда читаем query-параметр при монтировании и сразу открываем вкладку
+  // регистрации с пояснением. window.location.search вместо useSearchParams()
+  // — тот требует Suspense-границу при статической генерации, а здесь это
+  // лишняя сложность ради одного флага.
   useEffect(() => {
-    function handleOpenRegister() {
-      openRegisterTab();
-    }
-    window.addEventListener("hm:open-register", handleOpenRegister);
-
     if (new URLSearchParams(window.location.search).get("connectAuthRequired") === "1") {
       setAuthRequiredNotice(true);
       openRegisterTab();
     }
-
-    return () => window.removeEventListener("hm:open-register", handleOpenRegister);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

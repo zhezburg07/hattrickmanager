@@ -1,6 +1,3 @@
-import Link from "next/link";
-import { getStoredAccountId } from "@/lib/hattrickApi";
-import OpenAuthButton from "./OpenAuthButton";
 import styles from "./WelcomeSection.module.css";
 
 // Список возможностей — по образцу референса (короткие пункты с галочкой),
@@ -29,15 +26,7 @@ function CheckIcon() {
   );
 }
 
-// Кнопка "Подключить команду" ведёт напрямую на OAuth только для тех, у кого
-// уже есть сессия сайта (зарегистрирован или вошёл) — /api/auth/request-token
-// сам это тоже проверяет и отказывает анонимным (см. чат), но здесь ещё и
-// незачем показывать кнопку, ведущую в тупик. Анонимному посетителю вместо
-// неё показывается призыв сначала зарегистрироваться/войти, открывающий
-// вкладку регистрации в HomeSidebar.tsx (см. OpenAuthButton.tsx).
 export default function WelcomeSection() {
-  const accountId = getStoredAccountId();
-
   return (
     <section className="section">
       <div className={`container ${styles.grid}`}>
@@ -56,21 +45,6 @@ export default function WelcomeSection() {
               </li>
             ))}
           </ul>
-
-          <div className={styles.ctaRow}>
-            {accountId ? (
-              <a href="/api/auth/request-token" className={`btnPrimary ${styles.cta}`}>
-                Подключить команду
-              </a>
-            ) : (
-              <OpenAuthButton className={`btnPrimary ${styles.cta}`}>
-                Зарегистрируйтесь или войдите, чтобы подключить команду
-              </OpenAuthButton>
-            )}
-            <Link href="/login" className={styles.loginLink}>
-              Уже подключали? Войти по email
-            </Link>
-          </div>
         </div>
       </div>
     </section>
