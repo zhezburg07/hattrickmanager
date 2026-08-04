@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildAuthorizationHeader, buildOAuthParams, HATTRICK_OAUTH_URLS } from "@/lib/hattrickOAuth";
 import { resolveManagerUserId } from "@/lib/manager";
-import { linkOrCreateHattrickConnection } from "@/lib/accountsDb";
+import { linkOrCreateHattrickConnection, hasEmailLogin } from "@/lib/accountsDb";
 import { SESSION_COOKIE, buildSessionCookieValue, verifySessionCookieValue } from "@/lib/siteSession";
 
 function cookieOptions(maxAge?: number) {
@@ -173,12 +173,28 @@ export async function GET(request: NextRequest) {
         return conflictResponse;
       }
 
-      // Собственная долгоживущая cookie сессии сайта (см.
-      // src/lib/siteSession.ts) — содержит только подписанный ID аккаунта, а
-      // не сам OAuth-токен (тот теперь в базе). При следующих визитах
-      // src/lib/hattrickApi.ts находит токен по этой cookie без повторного
-      // прохождения OAuth-флоу.
-      redirectResponse.cookies.set(SESSION_COOKIE, buildSessionCookieValue(result.accountId), cookieOptions(60 * 60 * 24 * 400));
+      // Собственная cookie сессии сайта (см. src/lib/siteSession.ts) —
+      // содержит только подписанный ID аккаунта, а не сам OAuth-токен (тот
+      // теперь в базе). При следующих визитах src/lib/hattrickApi.ts находит
+      // токен по этой cookie без повторного прохождения OAuth-флоу.
+      //
+      // Долгоживущая (400 дней) — ТОЛЬКО если у аккаунта нет пароля: тогда
+      // OAuth — единственный способ снова войти, и заставлять проходить его
+      // заново (реальный поход на Hattrick.org) при каждом закрытии браузера
+      // было бы неудобно. Если пароль уже есть — сессия ДОЛЖНА быть
+      // короткой, как при обычном входе по паролю (см. /api/auth/login), а
+      // не 400 дней, ДАЖЕ если человек только что подключил команду через
+      // OAuth в рамках уже открытой короткой сессии. Раньше эта ветка всегда
+      // ставила 400 дней безусловно — из-за этого OAuth в одном визите с
+      // паролем "перезаписывал" короткую сессию долгоживущей (см. чат: вошли
+      // по паролю, подключили команду, сессия осталась активной после
+      // закрытия браузера — это и было причиной).
+      const accountHasPassword = await hasEmailLogin(result.accountId).catch(() => true);
+      redirectResponse.cookies.set(
+        SESSION_COOKIE,
+        buildSessionCookieValue(result.accountId),
+        accountHasPassword ? cookieOptions() : cookieOptions(60 * 60 * 24 * 400),
+      );
       return redirectResponse;
     } catch (err) {
       // Сохранение в базу не удалось — тоже не блокируем вход, откатываемся

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveManagerUserId } from "@/lib/manager";
-import { linkOrCreateHattrickConnection } from "@/lib/accountsDb";
+import { linkOrCreateHattrickConnection, hasEmailLogin } from "@/lib/accountsDb";
 import { SESSION_COOKIE, buildSessionCookieValue } from "@/lib/siteSession";
 
 // Вызывается один раз при каждом заходе в личный кабинет (см.
@@ -52,13 +52,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ upgraded: false, reason: "already-linked" });
   }
 
+  // Долгоживущая (400 дней) — только если у аккаунта нет пароля (см.
+  // тот же комментарий в /api/auth/callback). Если пароль уже есть —
+  // короткая сессионная cookie, как при обычном входе по паролю.
+  const accountHasPassword = await hasEmailLogin(result.accountId).catch(() => true);
   const response = NextResponse.json({ upgraded: true });
   response.cookies.set(SESSION_COOKIE, buildSessionCookieValue(result.accountId), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 400,
     path: "/",
+    ...(accountHasPassword ? {} : { maxAge: 60 * 60 * 24 * 400 }),
   });
   // Запасные cookie больше не нужны — теперь всё идёт через долгоживущую сессию.
   response.cookies.delete("hattrick_access_token");
