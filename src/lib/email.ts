@@ -62,25 +62,19 @@ export async function sendPasswordResetEmail(to: string, resetLink: string): Pro
     throw new Error("Не удалось отправить письмо через Resend: сетевая ошибка при обращении к API.");
   }
 
-  const { data, error } = response;
+  const { data, error, headers } = response;
 
   if (error) {
-    // Полный текст ответа Resend — statusCode (обычно совпадает с HTTP-
-    // статусом, например 403), name (код причины — invalid_api_key,
-    // restricted_api_key, invalid_from_address, validation_error и т.п.) и
-    // message (человекочитаемое объяснение от самого Resend, например про
-    // ограничение песочницы onboarding@resend.dev). Пользователю на экране
-    // по-прежнему остаётся только общее сообщение (см.
-    // /api/auth/forgot-password) — это только в серверный лог.
-    console.error("Resend отклонил отправку письма:", {
-      to,
-      from,
-      statusCode: error.statusCode,
-      name: error.name,
-      message: error.message,
-    });
+    // Логируем ВЕСЬ объект error целиком (не только statusCode/name/message
+    // по отдельности) плюс заголовки ответа (там бывает x-request-id — по
+    // нему сама Resend может найти конкретный запрос в поддержке) — раньше
+    // логировались только три выбранных поля, а вдруг Resend вернёт что-то
+    // ещё по конкретной причине отказа. Пользователю на экране по-прежнему
+    // остаётся только общее сообщение (см. /api/auth/forgot-password) — это
+    // только в серверный лог.
+    console.error("Resend отклонил отправку письма — полный объект ответа:", JSON.stringify({ to, from, error, headers }, null, 2));
     throw new Error(`Resend отклонил отправку письма [${error.statusCode ?? "?"} ${error.name}]: ${error.message}`);
   }
 
-  console.log("Resend: письмо принято в очередь на отправку", { to, from, id: data?.id });
+  console.log("Resend: письмо принято в очередь на отправку — полный объект ответа:", JSON.stringify({ to, from, data, headers }, null, 2));
 }
