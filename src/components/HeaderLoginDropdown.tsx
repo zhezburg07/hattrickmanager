@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import authStyles from "@/app/login/AuthForm.module.css";
+import { GoalBallIcon } from "./dashboard/TimelineIcons";
 import styles from "./Header.module.css";
 
 // Компактная выпадающая форма входа по email+паролю — та же логика и тот же
@@ -57,12 +58,16 @@ export default function HeaderLoginDropdown() {
     <div className={styles.loginWrap} ref={wrapRef}>
       <button
         type="button"
-        className={styles.loginTrigger}
+        className={styles.overviewBall}
+        title="Войти"
+        aria-label="Войти"
         aria-haspopup="true"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        Войти
+        <span style={{ "--goal-icon-color": "var(--color-accent)" } as React.CSSProperties}>
+          <GoalBallIcon size={18} />
+        </span>
       </button>
 
       {open && (

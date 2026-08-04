@@ -45,41 +45,14 @@
   gap: 16px;
 }
 
-.howItWorksLink {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-  transition: color 0.15s ease;
-}
-
-.howItWorksLink:hover {
-  color: var(--color-accent);
-}
-
 /* Компактная выпадающая форма входа (см. HeaderLoginDropdown.tsx) — та же
    пара "относительная обёртка + абсолютная панель под ней", что и у
    .menuWrap/.dropdown ниже, только панель шире (под поля формы, а не под
-   список пунктов меню). */
+   список пунктов меню). Сам триггер — иконка мяча, стилизована как
+   .overviewBall (см. ниже), общий класс с иконками личного кабинета. */
 .loginWrap {
   position: relative;
   display: inline-block;
-}
-
-.loginTrigger {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-  padding: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.loginTrigger:hover {
-  color: var(--color-accent);
 }
 
 .loginDropdown {
@@ -171,16 +144,6 @@
   flex: none;
 }
 
-/* Скрываем ссылку раньше, чем сам логотип+CTA перестают помещаться в ряд —
-   иначе на промежуточных ширинах (между мобильной и десктопной) логотип и
-   ссылка сталкиваются впритык без отступа (justify-content: space-between
-   не гарантирует минимальный зазор, только распределяет свободное место). */
-@media (max-width: 640px) {
-  .howItWorksLink {
-    display: none;
-  }
-}
-
 @media (max-width: 480px) {
   .logo {
     font-size: 15px;
@@ -201,11 +164,5 @@
   .overviewBall svg {
     width: 16px;
     height: 16px;
-  }
-
-  .headerCta {
-    padding: 8px 12px;
-    font-size: 12px;
-    white-space: nowrap;
   }
 }
