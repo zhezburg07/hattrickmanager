@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import authStyles from "@/app/login/AuthForm.module.css";
 import { EyeIcon, EyeOffIcon } from "./AuthIcons";
@@ -243,12 +243,37 @@ function RegisterForm() {
 // развёрнуты (не выпадающие, в отличие от HeaderLoginDropdown в шапке).
 export default function HomeSidebar() {
   const [tab, setTab] = useState<"login" | "register">("login");
+  const [authRequiredNotice, setAuthRequiredNotice] = useState(false);
   const authBlockRef = useRef<HTMLDivElement>(null);
 
   function openRegisterTab() {
     setTab("register");
     authBlockRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
+
+  // Два способа сюда попасть открывают вкладку регистрации одинаково:
+  // 1. Клик на "Подключить команду" в WelcomeSection.tsx у анонимного
+  //    посетителя (см. OpenAuthButton.tsx) — обычное DOM-событие, без
+  //    перезагрузки страницы.
+  // 2. Прямой заход на /api/auth/request-token без сессии — сервер (см.
+  //    /api/auth/request-token/route.ts) редиректит на "/?connectAuthRequired=1",
+  //    отсюда читаем query-параметр при монтировании. window.location.search
+  //    вместо useSearchParams() — тот требует Suspense-границу при
+  //    статической генерации, а здесь это лишняя сложность ради одного флага.
+  useEffect(() => {
+    function handleOpenRegister() {
+      openRegisterTab();
+    }
+    window.addEventListener("hm:open-register", handleOpenRegister);
+
+    if (new URLSearchParams(window.location.search).get("connectAuthRequired") === "1") {
+      setAuthRequiredNotice(true);
+      openRegisterTab();
+    }
+
+    return () => window.removeEventListener("hm:open-register", handleOpenRegister);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <aside className={styles.sidebar}>
@@ -267,6 +292,11 @@ export default function HomeSidebar() {
       </div>
 
       <div className={styles.block} ref={authBlockRef}>
+        {authRequiredNotice && (
+          <p className={authStyles.error} style={{ margin: 0, fontSize: 12.5 }}>
+            Чтобы подключить команду, сначала войдите или зарегистрируйтесь.
+          </p>
+        )}
         <div className={styles.tabs}>
           <button
             type="button"

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildAuthorizationHeader, buildOAuthParams, HATTRICK_OAUTH_URLS } from "@/lib/hattrickOAuth";
+import { getStoredAccountId } from "@/lib/hattrickApi";
 
 // Этот роут не читает ничего из самого запроса (нет searchParams/cookies), и
 // без этой строки Next.js считает его "статическим" и кеширует один и тот же
@@ -24,6 +25,16 @@ export const dynamic = "force-dynamic";
 // 4. Отправляем пользователя на страницу авторизации Hattrick вместе с
 //    временным пропуском — там он логинится и жмёт "Разрешить".
 export async function GET(request: NextRequest) {
+  // Подключение команды доступно только уже вошедшим/зарегистрированным —
+  // раньше прямой заход на этот путь запускал OAuth для кого угодно, даже
+  // анонимного посетителя, у которого потом просто не было бы аккаунта,
+  // чтобы привязать результат (см. чат про поведение после регистрации/
+  // входа). Редиректим на главную с флагом — HomeSidebar.tsx откроет
+  // вкладку регистрации и покажет объяснение.
+  if (!getStoredAccountId()) {
+    return NextResponse.redirect(new URL("/?connectAuthRequired=1", request.url));
+  }
+
   const consumerKey = process.env.HATTRICK_CONSUMER_KEY;
   const consumerSecret = process.env.HATTRICK_CONSUMER_SECRET;
   const callbackUrl = process.env.HATTRICK_OAUTH_CALLBACK_URL;

@@ -1,8 +1,21 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import styles from "./Footer.module.css";
 
+// Внутри личного кабинета футер с публичными ссылками (FAQ, Контакты и
+// т.д.) не показывается вовсе — единственный намеренный способ покинуть
+// кабинет обратно на публичный сайт должен быть явный "Выйти" в Header.tsx
+// (см. чат про поведение после входа). Определяем это по pathname (тот же
+// приём, что уже использует Header.tsx через isCabinet), а не правкой всех
+// ~15 страниц, которые рендерят <Footer /> по отдельности.
 export default function Footer() {
+  const pathname = usePathname();
+  const isCabinet = pathname?.startsWith("/dashboard") ?? false;
   const year = new Date().getFullYear();
+
+  if (isCabinet) return null;
 
   return (
     <footer className={styles.footer}>

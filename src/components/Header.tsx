@@ -47,7 +47,12 @@ export default function Header() {
   return (
     <header className={styles.header}>
       <div className={`container ${styles.inner}`}>
-        <Link href="/" className={styles.logo}>
+        {/* Внутри личного кабинета логотип ведёт на /dashboard, а не на
+            публичную главную — единственный намеренный способ покинуть
+            кабинет обратно на публичный сайт должен быть явный "Выйти" ниже,
+            а не случайный клик по логотипу (см. чат про поведение после
+            входа). */}
+        <Link href={isCabinet ? "/dashboard" : "/"} className={styles.logo}>
           <span className={styles.logoMark}>H</span>
           <span className={styles.logoText}>
             Hattrick<strong>Manager</strong>
@@ -55,9 +60,11 @@ export default function Header() {
         </Link>
 
         <div className={styles.actions}>
-          <Link href="/how-it-works" className={styles.howItWorksLink}>
-            Как это работает
-          </Link>
+          {!isCabinet && (
+            <Link href="/how-it-works" className={styles.howItWorksLink}>
+              Как это работает
+            </Link>
+          )}
           {!isCabinet && <HeaderLoginDropdown />}
           {!isCabinet && (
             <a href="/api/auth/request-token" className={`btnPrimary ${styles.headerCta}`}>
