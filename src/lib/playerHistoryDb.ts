@@ -197,6 +197,21 @@ export async function saveWeeklyTsiSnapshot(hattrickUserId: string, players: Squ
   );
 }
 
+// Момент последнего сохранённого снимка навыков игроков для этого
+// пользователя — реальный факт из базы (см. UpdatesSection.tsx), а не
+// выдуманный "прогресс обновления". Снимки сохраняются при каждом заходе на
+// Состав/Расстановку (см. resolvePlayerHistory выше), так что null означает
+// "ни разу не заходили ни на одну из этих вкладок".
+export async function getLatestSkillSnapshotAt(hattrickUserId: string): Promise<Date | null> {
+  await ensureTable();
+  const db = sql();
+  const rows = await db`
+    SELECT MAX(updated_at) AS latest FROM player_weekly_stat_snapshots WHERE hattrick_user_id = ${hattrickUserId}
+  `;
+  const latest = rows[0]?.latest;
+  return latest ? new Date(latest) : null;
+}
+
 export interface WeeklyTsiEntry {
   playerId: number;
   name: string;

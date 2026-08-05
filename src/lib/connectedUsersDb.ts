@@ -55,6 +55,27 @@ export async function upsertConnectedUser(hattrickUserId: string, teamName: stri
   `;
 }
 
+// Запись одного пользователя — для раздела "Обновления" в личном кабинете
+// (см. UpdatesSection.tsx), в отличие от getAllConnectedUsers ниже (только
+// для /admin, отдаёт всех).
+export async function getConnectedUser(hattrickUserId: string): Promise<ConnectedUser | null> {
+  await ensureTable();
+  const db = sql();
+  const rows = await db`
+    SELECT hattrick_user_id, team_name, first_connected_at, last_seen_at
+    FROM connected_users
+    WHERE hattrick_user_id = ${hattrickUserId}
+  `;
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  return {
+    hattrickUserId: String(row.hattrick_user_id),
+    teamName: row.team_name,
+    firstConnectedAt: row.first_connected_at,
+    lastSeenAt: row.last_seen_at,
+  };
+}
+
 export async function getAllConnectedUsers(): Promise<ConnectedUser[]> {
   await ensureTable();
   const db = sql();
