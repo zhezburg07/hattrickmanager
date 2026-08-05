@@ -173,6 +173,23 @@ export async function GET(request: NextRequest) {
         return conflictResponse;
       }
 
+      if (result.status === "no-session") {
+        // Короткая сессия сайта исчезла где-то между /api/auth/request-token
+        // и этим callback'ом (например, пользователь закрыл браузер, пока
+        // сидел на странице авторизации Hattrick) — раньше это молча
+        // заводило новый "голый" аккаунт без пароля (см. чат). Вместо этого
+        // отправляем на главную с понятным объяснением вместо тихого
+        // создания аккаунта — HomeSidebar.tsx покажет сообщение и откроет
+        // вкладку регистрации.
+        const sessionExpiredResponse = NextResponse.redirect(
+          new URL("/?connectAuthRequired=1&sessionExpired=1", request.url),
+        );
+        sessionExpiredResponse.cookies.delete("hattrick_request_token");
+        sessionExpiredResponse.cookies.delete("hattrick_request_token_secret");
+        sessionExpiredResponse.cookies.delete("hm_confirm_reassign");
+        return sessionExpiredResponse;
+      }
+
       // Собственная cookie сессии сайта (см. src/lib/siteSession.ts) —
       // содержит только подписанный ID аккаунта, а не сам OAuth-токен (тот
       // теперь в базе). При следующих визитах src/lib/hattrickApi.ts находит

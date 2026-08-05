@@ -243,7 +243,7 @@ function RegisterForm() {
 // развёрнуты (не выпадающие, в отличие от HeaderLoginDropdown в шапке).
 export default function HomeSidebar() {
   const [tab, setTab] = useState<"login" | "register">("login");
-  const [authRequiredNotice, setAuthRequiredNotice] = useState(false);
+  const [authRequiredNotice, setAuthRequiredNotice] = useState<"none" | "auth-required" | "session-expired">("none");
   const authBlockRef = useRef<HTMLDivElement>(null);
 
   function openRegisterTab() {
@@ -253,13 +253,19 @@ export default function HomeSidebar() {
 
   // Прямой заход на /api/auth/request-token без сессии — сервер (см.
   // /api/auth/request-token/route.ts) редиректит на "/?connectAuthRequired=1",
-  // отсюда читаем query-параметр при монтировании и сразу открываем вкладку
+  // отсюда читаем query-параметры при монтировании и сразу открываем вкладку
   // регистрации с пояснением. window.location.search вместо useSearchParams()
   // — тот требует Suspense-границу при статической генерации, а здесь это
-  // лишняя сложность ради одного флага.
+  // лишняя сложность ради пары флагов.
+  //
+  // sessionExpired=1 — отдельный случай (см. /api/auth/callback): короткая
+  // сессия исчезла посреди OAuth-похода на Hattrick (например, закрыли
+  // браузер на странице авторизации) — сообщение для него точнее, чем общее
+  // "сначала войдите или зарегистрируйтесь".
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("connectAuthRequired") === "1") {
-      setAuthRequiredNotice(true);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connectAuthRequired") === "1") {
+      setAuthRequiredNotice(params.get("sessionExpired") === "1" ? "session-expired" : "auth-required");
       openRegisterTab();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -282,9 +288,11 @@ export default function HomeSidebar() {
       </div>
 
       <div className={styles.block} ref={authBlockRef}>
-        {authRequiredNotice && (
+        {authRequiredNotice !== "none" && (
           <p className={authStyles.error} style={{ margin: 0, fontSize: 12.5 }}>
-            Чтобы подключить команду, сначала войдите или зарегистрируйтесь.
+            {authRequiredNotice === "session-expired"
+              ? "Сессия истекла, пожалуйста, зарегистрируйтесь заново, чтобы подключить команду."
+              : "Чтобы подключить команду, сначала войдите или зарегистрируйтесь."}
           </p>
         )}
         <div className={styles.tabs}>

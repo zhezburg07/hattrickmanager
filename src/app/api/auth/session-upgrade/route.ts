@@ -52,6 +52,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ upgraded: false, reason: "already-linked" });
   }
 
+  if (result.status === "no-session") {
+    // См. тот же комментарий в /api/auth/callback — раньше здесь молча
+    // заводился новый "голый" аккаунт без пароля. Теперь просто ничего не
+    // делаем: пользователь остаётся на временных cookie (hasLegacySoftLogin
+    // в dashboard/layout.tsx) до следующей попытки, вместо тихого создания
+    // аккаунта. SessionUpgrader.tsx всё равно не проверяет тело ответа.
+    return NextResponse.json({ upgraded: false, reason: "no-account-session" });
+  }
+
   // Всегда короткая (сессионная) cookie — см. тот же комментарий в
   // /api/auth/callback: регистрация теперь обязательна для всех, отдельная
   // долгоживущая ветка для "чистых" OAuth-аккаунтов без пароля больше не

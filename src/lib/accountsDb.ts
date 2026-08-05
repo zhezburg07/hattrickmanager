@@ -274,13 +274,15 @@ export async function getHattrickUserIdForAccount(accountId: string): Promise<st
 
 export type LinkOrCreateResult =
   | { status: "linked"; accountId: string }
-  | { status: "conflict"; ownerAccountId: string };
+  | { status: "conflict"; ownerAccountId: string }
+  | { status: "no-session" };
 
 // Вызывается один раз, сразу после успешного обмена на Access Token (см.
 // /api/auth/callback и /api/auth/session-upgrade) — решает, привязать ли
 // эту команду Hattrick к УЖЕ залогиненному (по логину/паролю или по прошлой
-// сессии) аккаунту, найти существующую привязку, или завести новый аккаунт
-// "по старинке" (OAuth без предварительной регистрации).
+// сессии) аккаунту, или найти существующую привязку. Регистрация обязательна
+// для всех — без currentAccountId и без уже существующей привязки создавать
+// новый аккаунт больше нельзя (см. status: "no-session" ниже).
 export async function linkOrCreateHattrickConnection(params: {
   hattrickUserId: string;
   accessToken: string;
@@ -346,19 +348,17 @@ export async function linkOrCreateHattrickConnection(params: {
     return { status: "linked", accountId: currentAccountId };
   }
 
-  // Нет ни существующей привязки, ни текущей сессии — обычное первое OAuth-
-  // подключение без предварительной регистрации (сегодняшнее поведение по
-  // умолчанию). id аккаунта = hattrick_user_id, как и у перенесённых строк.
-  await db`
-    INSERT INTO accounts (id, created_at, updated_at)
-    VALUES (${hattrickUserId}, now(), now())
-    ON CONFLICT (id) DO NOTHING
-  `;
-  await db`
-    INSERT INTO hattrick_connections (hattrick_user_id, account_id, access_token, access_token_secret, created_at, updated_at)
-    VALUES (${hattrickUserId}, ${hattrickUserId}, ${accessToken}, ${accessTokenSecret}, now(), now())
-    ON CONFLICT (hattrick_user_id)
-    DO UPDATE SET access_token = EXCLUDED.access_token, access_token_secret = EXCLUDED.access_token_secret, updated_at = now()
-  `;
-  return { status: "linked", accountId: hattrickUserId };
+  // Нет ни существующей привязки, ни текущей сессии сайта — раньше это было
+  // "обычное первое OAuth-подключение без предварительной регистрации" и
+  // молча заводило новый "голый" аккаунт без пароля (id = hattrick_user_id).
+  // Регистрация теперь обязательна для всех (см. чат: "убери возможность
+  // существования чистых OAuth-аккаунтов без пароля"), так что дошедших
+  // сюда без currentAccountId быть не должно в норме — единственный
+  // реальный способ здесь оказаться — короткая сессия (см. чат про сессии)
+  // исчезла где-то между /api/auth/request-token и этим вызовом, например
+  // если пользователь закрыл браузер, пока сидел на странице авторизации
+  // Hattrick. Вместо того чтобы молча создавать новый аккаунт — сообщаем об
+  // этом вызывающему коду (см. /api/auth/callback), он покажет понятную
+  // ошибку с предложением зарегистрироваться заново.
+  return { status: "no-session" };
 }
