@@ -27,10 +27,13 @@ const cabinetTabs = [
 const HIDDEN_NAV_HREFS = new Set(["/dashboard/finance", "/dashboard/stadium", "/dashboard/training"]);
 const visibleCabinetTabs = cabinetTabs.filter((tab) => !HIDDEN_NAV_HREFS.has(tab.href));
 
+const STALE_SYNC_MS = 7 * 24 * 60 * 60 * 1000; // неделя
+
 export default function Header() {
   const pathname = usePathname();
   const isCabinet = pathname?.startsWith("/dashboard") ?? false;
   const [open, setOpen] = useState(false);
+  const [showUpdatesReminder, setShowUpdatesReminder] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -43,6 +46,31 @@ export default function Header() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open]);
+
+  // Иконка "Обновления" — не постоянный элемент, а напоминание: видна,
+  // только когда данные не синхронизировались больше недели (или вообще ни
+  // разу), см. чат. Header.tsx остаётся клиентским компонентом (без этого
+  // публичные страницы снова стали бы динамическими только ради одной
+  // иконки внутри кабинета) — вместо этого клиентский fetch по требованию,
+  // только когда мы вообще внутри кабинета, к уже существующему
+  // GET /api/dashboard/sync (тот же роут, что и ручная синхронизация, но
+  // GET там ничего не трогает в CHPP, только читает статус).
+  useEffect(() => {
+    if (!isCabinet) return;
+    let cancelled = false;
+    fetch("/api/dashboard/sync", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: { lastSyncedAt?: string | null } | null) => {
+        if (cancelled || !json) return;
+        const lastSyncedAt = json.lastSyncedAt ?? null;
+        const isStale = !lastSyncedAt || Date.now() - new Date(lastSyncedAt).getTime() > STALE_SYNC_MS;
+        setShowUpdatesReminder(isStale);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isCabinet]);
 
   return (
     <header className={styles.header}>
@@ -67,12 +95,12 @@ export default function Header() {
               можно с самой главной страницы (WelcomeSection.tsx) или уже
               будучи залогиненным. */}
           {!isCabinet && <HeaderLoginDropdown />}
-          {isCabinet && (
+          {isCabinet && showUpdatesReminder && (
             <Link
               href="/dashboard/updates"
               className={styles.overviewBall}
-              title="Обновления"
-              aria-label="Обновления"
+              title="Данные не обновлялись больше недели — обновить?"
+              aria-label="Данные не обновлялись больше недели — обновить?"
             >
               <svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true">
                 <circle cx="16" cy="16" r="15" fill="none" stroke="currentColor" strokeWidth="1.6" />
