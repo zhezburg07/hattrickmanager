@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildAuthorizationHeader, buildOAuthParams, HATTRICK_OAUTH_URLS } from "@/lib/hattrickOAuth";
 import { resolveManagerUserId } from "@/lib/manager";
-import { linkOrCreateHattrickConnection, hasEmailLogin } from "@/lib/accountsDb";
+import { linkOrCreateHattrickConnection } from "@/lib/accountsDb";
 import { SESSION_COOKIE, buildSessionCookieValue, verifySessionCookieValue } from "@/lib/siteSession";
 
 function cookieOptions(maxAge?: number) {
@@ -112,12 +112,12 @@ export async function GET(request: NextRequest) {
 
   // Hattrick UserID — стабильный идентификатор менеджера (в отличие от
   // access-токена, не меняется) — нужен как ключ для привязки к аккаунту
-  // сайта (см. src/lib/accountsDb.ts) для долгоживущей сессии. ВАЖНО:
+  // сайта (см. src/lib/accountsDb.ts) и выдачи cookie сессии сайта. ВАЖНО:
   // получение UserID — второстепенный шаг и НЕ должно блокировать сам вход.
   // Если он не удался (см. diagnostics ниже — точная причина логируется и
   // показывается один раз баннером в личном кабинете), пользователь всё
-  // равно попадает в кабинет по обычной (не долгоживущей) сессии — см.
-  // fallback-cookies в конце функции.
+  // равно попадает в кабинет — см. fallback-cookies в конце функции, cookie
+  // сессии сайта тогда не ставится вовсе (см. /api/auth/session-upgrade).
   const { userId: managerUserId, diagnostics } = await resolveManagerUserId({ accessToken, accessTokenSecret });
 
   const redirectResponse = NextResponse.redirect(new URL("/dashboard", request.url));
@@ -178,23 +178,13 @@ export async function GET(request: NextRequest) {
       // теперь в базе). При следующих визитах src/lib/hattrickApi.ts находит
       // токен по этой cookie без повторного прохождения OAuth-флоу.
       //
-      // Долгоживущая (400 дней) — ТОЛЬКО если у аккаунта нет пароля: тогда
-      // OAuth — единственный способ снова войти, и заставлять проходить его
-      // заново (реальный поход на Hattrick.org) при каждом закрытии браузера
-      // было бы неудобно. Если пароль уже есть — сессия ДОЛЖНА быть
-      // короткой, как при обычном входе по паролю (см. /api/auth/login), а
-      // не 400 дней, ДАЖЕ если человек только что подключил команду через
-      // OAuth в рамках уже открытой короткой сессии. Раньше эта ветка всегда
-      // ставила 400 дней безусловно — из-за этого OAuth в одном визите с
-      // паролем "перезаписывал" короткую сессию долгоживущей (см. чат: вошли
-      // по паролю, подключили команду, сессия осталась активной после
-      // закрытия браузера — это и было причиной).
-      const accountHasPassword = await hasEmailLogin(result.accountId).catch(() => true);
-      redirectResponse.cookies.set(
-        SESSION_COOKIE,
-        buildSessionCookieValue(result.accountId),
-        accountHasPassword ? cookieOptions() : cookieOptions(60 * 60 * 24 * 400),
-      );
+      // Всегда короткая (сессионная) cookie — регистрация теперь обязательна
+      // для всех, "чистых" OAuth-аккаунтов без пароля больше не заводится
+      // (см. чат), поэтому больше нет причины различать длинную/короткую
+      // сессию по признаку "есть пароль или нет" — раньше это только
+      // порождало путаницу (OAuth в одном визите с паролем "перезаписывал"
+      // короткую сессию долгоживущей).
+      redirectResponse.cookies.set(SESSION_COOKIE, buildSessionCookieValue(result.accountId), cookieOptions());
       return redirectResponse;
     } catch (err) {
       // Сохранение в базу не удалось — тоже не блокируем вход, откатываемся
@@ -204,13 +194,12 @@ export async function GET(request: NextRequest) {
   }
 
   // "Мягкий" откат: UserID не определился (или не сохранился в базу) — вход
-  // всё равно завершается успешно, просто без долгоживущей сессии в этот
-  // раз. Access Token/Secret кладём прямо в cookie БЕЗ maxAge — это обычная
-  // сессия браузера (исчезнет при закрытии браузера, тогда придётся войти
-  // заново), а не долгоживущая. Если managercompendium.xml сработает при
-  // обычном использовании сайта, долгоживущая сессия подключится сама (см.
+  // всё равно завершается успешно, просто cookie сессии сайта (hm_session)
+  // пока не ставится. Access Token/Secret кладём прямо в cookie БЕЗ maxAge —
+  // обычная сессия браузера. Если managercompendium.xml сработает при
+  // обычном использовании сайта, cookie сессии сайта подключится сама (см.
   // /api/auth/session-upgrade + src/components/SessionUpgrader.tsx).
-  console.error("Вход без долгоживущей сессии — не удалось определить UserID:", diagnostics.join(" | "));
+  console.error("Вход без cookie сессии сайта — не удалось определить UserID:", diagnostics.join(" | "));
 
   redirectResponse.cookies.set("hattrick_access_token", accessToken, cookieOptions());
   redirectResponse.cookies.set("hattrick_access_token_secret", accessTokenSecret, cookieOptions());

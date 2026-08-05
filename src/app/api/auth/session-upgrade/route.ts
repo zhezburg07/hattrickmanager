@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveManagerUserId } from "@/lib/manager";
-import { linkOrCreateHattrickConnection, hasEmailLogin } from "@/lib/accountsDb";
+import { linkOrCreateHattrickConnection } from "@/lib/accountsDb";
 import { SESSION_COOKIE, buildSessionCookieValue } from "@/lib/siteSession";
 
 // Вызывается один раз при каждом заходе в личный кабинет (см.
 // src/components/SessionUpgrader.tsx, подключён в dashboard/layout.tsx).
 // Если пользователь вошёл через "мягкий" откат (см. /api/auth/callback —
-// managercompendium.xml не ответил при входе, поэтому долгоживущая сессия
+// managercompendium.xml не ответил при входе, поэтому cookie сессии сайта
 // не была выдана), здесь мы пробуем получить UserID ещё раз и, если
-// получилось, "дозаписываем" долгоживущую сессию — без этого при каждом
-// закрытии браузера пришлось бы заново проходить OAuth.
+// получилось, "дозаписываем" cookie сессии сайта — без этого пользователь
+// так и остался бы без hm_session до следующего полного прохождения OAuth.
 export async function POST(request: NextRequest) {
   if (request.cookies.get(SESSION_COOKIE)?.value) {
     return NextResponse.json({ upgraded: false, reason: "already-upgraded" });
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
   const { userId, diagnostics } = await resolveManagerUserId({ accessToken, accessTokenSecret }, 1);
   if (!userId) {
-    console.error("Не удалось обновить сессию до долгоживущей:", diagnostics.join(" | "));
+    console.error("Не удалось выдать cookie сессии сайта:", diagnostics.join(" | "));
     return NextResponse.json({ upgraded: false, reason: "manager-failed" });
   }
 
@@ -52,19 +52,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ upgraded: false, reason: "already-linked" });
   }
 
-  // Долгоживущая (400 дней) — только если у аккаунта нет пароля (см.
-  // тот же комментарий в /api/auth/callback). Если пароль уже есть —
-  // короткая сессионная cookie, как при обычном входе по паролю.
-  const accountHasPassword = await hasEmailLogin(result.accountId).catch(() => true);
+  // Всегда короткая (сессионная) cookie — см. тот же комментарий в
+  // /api/auth/callback: регистрация теперь обязательна для всех, отдельная
+  // долгоживущая ветка для "чистых" OAuth-аккаунтов без пароля больше не
+  // нужна.
   const response = NextResponse.json({ upgraded: true });
   response.cookies.set(SESSION_COOKIE, buildSessionCookieValue(result.accountId), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    ...(accountHasPassword ? {} : { maxAge: 60 * 60 * 24 * 400 }),
   });
-  // Запасные cookie больше не нужны — теперь всё идёт через долгоживущую сессию.
+  // Запасные cookie больше не нужны — теперь всё идёт через cookie сессии сайта.
   response.cookies.delete("hattrick_access_token");
   response.cookies.delete("hattrick_access_token_secret");
   return response;
