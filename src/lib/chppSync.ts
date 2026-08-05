@@ -314,6 +314,39 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       countryIdLookupResult.lookup ?? undefined,
     );
 
+    // ВРЕМЕННАЯ диагностика (см. чат: флаги стран пропали после Фазы 2) —
+    // показывает КАЖДОЕ звено цепочки резолва национальности отдельно:
+    // сырые CountryID из XML (до какой-либо обработки), сработал ли
+    // homeCountry (LeagueID → worlddetails), сработал ли общий справочник
+    // стран (getCountryIdLookup, у него своя история ненадёжности без
+    // фильтра LeagueID — см. src/lib/worldCountries.ts), и что в итоге
+    // получилось у первых нескольких игроков. Смотреть в Vercel Runtime
+    // Logs после следующей синхронизации. Убрать, когда причина найдена.
+    console.log(
+      "Диагностика национальности игроков:",
+      JSON.stringify(
+        {
+          homeCountry,
+          countryIdLookup: {
+            found: countryIdLookupResult.countriesFound,
+            error: countryIdLookupResult.error,
+            hasLookup: !!countryIdLookupResult.lookup,
+          },
+          rawCountryIdsFromXml: (() => {
+            const matches = [...raw.players.rawXml.matchAll(/<CountryID>(\d+)<\/CountryID>/g)];
+            return matches.slice(0, 8).map((m) => m[1]);
+          })(),
+          resolvedSample: players.slice(0, 5).map((p) => ({
+            id: p.id,
+            name: p.name,
+            nationality: p.nationality,
+          })),
+        },
+        null,
+        2,
+      ),
+    );
+
     // Рейтинги последних матчей (звёзды) — до 3 сыгранных матчей, каждый
     // требует своего matchlineup.xml. Список сыгранных матчей уже есть
     // (parsedMatches выше) — второй раз matches.xml не запрашиваем.
