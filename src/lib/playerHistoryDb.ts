@@ -26,7 +26,7 @@ function sql() {
 // тоже не подошла бы: пятничное обновление попадало бы в СЕРЕДИНУ такой
 // недели, а не на её границу, и до-/после-тренировочные значения мешались бы
 // в одном бакете. Поэтому неделя здесь считается от пятницы до пятницы.
-function trainingWeekKey(date: Date): string {
+export function trainingWeekKey(date: Date): string {
   const day = date.getUTCDay(); // 0=вс, 1=пн, …, 5=пт, 6=сб
   const diff = (day - 5 + 7) % 7; // сколько дней назад была ближайшая пятница
   const friday = new Date(date);
@@ -125,34 +125,14 @@ export async function saveCurrentWeekSnapshot(
   );
 }
 
-// Читает снимок последней ПРОШЕДШЕЙ тренировочной недели, сразу
-// сохраняет/обновляет бакет ТЕКУЩЕЙ недели и возвращает карту
-// playerId -> снимок "было" для подсветки изменений. Один и тот же вызов
-// используется и на "Составе", и на "Расстановке" (см. squad/page.tsx,
-// lineup/page.tsx) — сравнение и подсветка одинаковы на обеих вкладках.
-// Если что-то пошло не так с базой — не ломает страницу, просто сравнивать
-// будет не с чем в этот раз.
-export async function resolvePlayerHistory(
-  hattrickUserId: string | null,
-  players: SquadPlayer[],
-): Promise<Record<number, PlayerStatSnapshot | undefined>> {
-  if (!hattrickUserId || players.length === 0) return {};
-
-  try {
-    const currentWeek = trainingWeekKey(new Date());
-    const previous = await getPreviousWeekSnapshots(hattrickUserId, currentWeek);
-    await saveCurrentWeekSnapshot(hattrickUserId, currentWeek, players);
-    // "Побочный эффект": заодно кладём/обновляем недельный снимок TSI (см.
-    // ниже) — Состав и Расстановка уже и так запрашивают полный список
-    // реальных игроков, так что для "Лучшего/худшего игрока недели" на
-    // Обзоре не нужен отдельный запрос к CHPP. Ошибка здесь не должна
-    // портить обычное сравнение "было → стало" выше.
-    saveWeeklyTsiSnapshot(hattrickUserId, players).catch(() => {});
-    return previous;
-  } catch {
-    return {};
-  }
-}
+// Раньше здесь была resolvePlayerHistory() — читала прошлый недельный снимок
+// И сразу же сохраняла текущий за один вызов, вызывалась при КАЖДОМ визите
+// на Состав/Расстановку. После перехода этих вкладок на чтение сохранённых
+// данных (см. src/lib/chppSync.ts) свежие данные CHPP появляются только во
+// время синхронизации — поэтому запись снимка (saveCurrentWeekSnapshot +
+// saveWeeklyTsiSnapshot) теперь происходит там же, один раз за
+// синхронизацию, а страницы делают только чтение (getPreviousWeekSnapshots
+// напрямую) при отрисовке стрелок роста/падения.
 
 let weeklyTableEnsured = false;
 

@@ -83,7 +83,7 @@ function asArray(value: unknown): Record<string, unknown>[] {
 // Коды TacticType в matchdetails.xml — по неофициальной, но широко
 // цитируемой в сообществе Hattrick схеме (0/1/2/4/7/8; 3, 5, 6 в разных
 // источниках описываются противоречиво). НЕ сверено с живым ответом.
-const tacticTypeLabel: Record<number, string> = {
+export const tacticTypeLabel: Record<number, string> = {
   0: "Обычная",
   1: "Прессинг",
   2: "Контратаки",
@@ -127,7 +127,7 @@ function readRoleCode(p: Record<string, unknown>): number | null {
   return Number.isNaN(code) ? null : code;
 }
 
-function parseOpponentLineup(
+export function parseOpponentLineup(
   team: Record<string, unknown> | undefined,
 ): { ratings: OpponentPlayerRating[]; anyRoleCodeFound: boolean } {
   const lineup = team?.Lineup as Record<string, unknown> | undefined;
@@ -156,7 +156,7 @@ function parseOpponentLineup(
   return { ratings: ratings.sort((a, b) => b.rating - a.rating), anyRoleCodeFound };
 }
 
-function deriveFormation(ratings: OpponentPlayerRating[]): string | null {
+export function deriveFormation(ratings: OpponentPlayerRating[]): string | null {
   const counted = ratings.filter((r) => r.zone !== null && r.zone !== "GK");
   if (counted.length === 0) return null;
   let def = 0;
@@ -171,7 +171,7 @@ function deriveFormation(ratings: OpponentPlayerRating[]): string | null {
   return `${def}-${mid}-${fwd}`;
 }
 
-function computeZoneStrength(ratings: OpponentPlayerRating[], anyRoleCodeFound: boolean): OpponentZoneStrength {
+export function computeZoneStrength(ratings: OpponentPlayerRating[], anyRoleCodeFound: boolean): OpponentZoneStrength {
   if (!anyRoleCodeFound) {
     return {
       ratings: {},

@@ -16,11 +16,10 @@ import AchievementsSection from "@/components/dashboard/AchievementsSection";
 import SupportersSection from "@/components/dashboard/SupportersSection";
 import SetPasswordPrompt from "@/components/dashboard/SetPasswordPrompt";
 import ReducedDashboard from "@/components/dashboard/ReducedDashboard";
-import SyncButton from "@/components/dashboard/SyncButton";
+import SyncFailedScreen from "@/components/dashboard/SyncFailedScreen";
 import { redirect } from "next/navigation";
 import { getStoredHattrickTokens, getStoredAccountId, getStoredHattrickUserId } from "@/lib/hattrickApi";
-import { isChppAuthError } from "@/lib/chppError";
-import { syncTeamData, getStoredOverviewData, getAchievementsData, getSyncStatus } from "@/lib/chppSync";
+import { ensureSynced, getStoredOverviewData, getAchievementsData } from "@/lib/chppSync";
 import { defaultCurrency } from "@/data/dashboard";
 import { resolveWeeklyTsiHighlights } from "@/lib/playerHistoryDb";
 import { resolveHofPlayers } from "@/lib/hofPlayers";
@@ -66,58 +65,16 @@ export default async function DashboardPage({
   const hattrickUserId = await getStoredHattrickUserId();
 
   // Архитектура "снимок в базе вместо живого запроса при каждом визите" (см.
-  // чат) — Обзор больше не бьёт по CHPP напрямую. Вместо этого:
-  // 1. Если ни разу не синхронизировались (chpp_sync_status ещё нет) —
-  //    синхронизируемся один раз здесь же, автоматически, без действий
-  //    пользователя — именно это и есть "автоматическое обновление при
-  //    первом входе" (см. чат, пункт 1 требований). Дальнейшие визиты этот
-  //    блок больше не выполняют — статус уже есть.
-  // 2. Если последняя синхронизация вообще ни разу не была успешной —
-  //    показываем понятный экран с кнопкой "Повторить" вместо тихого сбоя
-  //    или пустого дашборда (см. чат, пункт 3 требований).
-  // 3. Иначе читаем уже сохранённые данные (getStoredOverviewData) — ни
-  //    одного обращения к CHPP на этой загрузке страницы.
-  let syncStatus = hattrickUserId ? await getSyncStatus(hattrickUserId) : null;
-  if (hattrickUserId && !syncStatus) {
-    await syncTeamData(hattrickUserId, tokens);
-    syncStatus = await getSyncStatus(hattrickUserId);
-  }
+  // чат) — Обзор больше не бьёт по CHPP напрямую. ensureSynced() запускает
+  // синхронизацию автоматически при самом первом визите (без действий
+  // пользователя) и просто возвращает статус на всех последующих визитах.
+  // Если синхронизация ни разу не была успешной — SyncFailedScreen вместо
+  // тихого сбоя или пустого дашборда (см. чат, пункт 3 требований); та же
+  // проверка теперь общая для любой мигрированной страницы, не только Обзора.
+  const syncStatus = hattrickUserId ? await ensureSynced(hattrickUserId, tokens) : null;
 
   if (syncStatus && syncStatus.status === "failed" && !syncStatus.lastSyncedAt) {
-    // Ни разу не было ни одной успешной синхронизации — показывать пустой
-    // дашборд бессмысленно, честно объясняем и даём кнопку "Повторить" (тот
-    // же /api/dashboard/sync, что и на "Обновления"). Отдельно — если
-    // причина именно протухший/отозванный токен, формулировка точнее:
-    // пароль здесь не поможет, нужен именно повторный OAuth.
-    const isAuthFailure = syncStatus.lastError ? isChppAuthError(new Error(syncStatus.lastError)) : false;
-    return (
-      <>
-        <Header />
-        <main className={styles.page}>
-          <div className="container" style={{ paddingBottom: 48, paddingTop: 24 }}>
-            <div style={{ marginBottom: 16 }}>
-              <DemoModeBanner
-                title={isAuthFailure ? "Нужно заново подключить команду" : "Не удалось синхронизировать данные"}
-                reasons={
-                  isAuthFailure
-                    ? [
-                        "Сохранённое разрешение от Hattrick перестало действовать — такое бывает редко, например если токен устарел или доступ был отозван на самом Hattrick.",
-                        "Это не ошибка сайта и не потеря данных — после повторного подключения всё вернётся как было.",
-                      ]
-                    : [
-                        syncStatus.lastError ?? "Неизвестная ошибка.",
-                        "Попробуйте ещё раз — это не повредит уже сохранённые данные, если они были.",
-                      ]
-                }
-                showConnectAction={isAuthFailure}
-              />
-            </div>
-            {!isAuthFailure && <SyncButton label="Повторить синхронизацию" />}
-          </div>
-        </main>
-        <Footer />
-      </>
-    );
+    return <SyncFailedScreen lastError={syncStatus.lastError} />;
   }
 
   const data = hattrickUserId

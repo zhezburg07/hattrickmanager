@@ -25,8 +25,8 @@ import { parseMatchesXml } from "./matches";
 // чужую — с явным teamID). Здесь нужна только "наша" сторона, поэтому одного
 // запроса на матч достаточно (teamID не передаём — CHPP по умолчанию отдаёт
 // команду залогиненного пользователя).
-const RECENT_MATCH_COUNT = 3;
-const MATCH_LINEUP_VERSION = "2.1";
+export const RECENT_MATCH_COUNT = 3;
+export const MATCH_LINEUP_VERSION = "2.1";
 
 export interface RecentMatchRatingsResult {
   lastMatchRatings: Record<number, number>;
@@ -91,7 +91,7 @@ function asArray(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? (value as Record<string, unknown>[]) : value ? [value as Record<string, unknown>] : [];
 }
 
-function parseMatchLineupRatings(xml: string): Record<number, number> {
+export function parseMatchLineupRatings(xml: string): Record<number, number> {
   const parser = new XMLParser();
   const data = parser.parse(xml);
   const root = data?.HattrickData;
