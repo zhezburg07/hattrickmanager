@@ -8,7 +8,7 @@ import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
 // самого Hattrick готовым читаемым текстом — переводить/придумывать
 // подписи самим не нужно, только категория (CategoryID, 6 официальных
 // значений) переведена на русский для бейджа.
-const ACHIEVEMENTS_VERSION = "1.2";
+export const ACHIEVEMENTS_VERSION = "1.2";
 
 const categoryLabels: Record<number, string> = {
   1: "Рейтинг",

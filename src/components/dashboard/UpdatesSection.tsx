@@ -1,3 +1,4 @@
+import SyncButton from "./SyncButton";
 import styles from "./Updates.module.css";
 
 function formatDateTime(value: Date | string): string {
@@ -12,23 +13,52 @@ function formatDateTime(value: Date | string): string {
 
 // Раньше здесь была полностью выдуманная симуляция очереди обновлений (с
 // таймером и прогресс-баром) — реальной фоновой системы очередей нет и не
-// планируется, а строка "Последнее обновление интерфейса" ниже показывала
-// просто момент рендера страницы, что тоже ничего не значило. Теперь вместо
-// этого — два настоящих факта из базы (см. dashboard/updates/page.tsx):
-// когда последний раз сохранён снимок навыков игроков (player_weekly_stat_snapshots)
-// и когда был последний визит в личный кабинет (connected_users.last_seen_at).
-// Ни то, ни другое не связано с реальным ограничением частоты CHPP — его
-// просто нет, данные читаются живьём при каждом заходе.
+// планируется. Затем — просто момент рендера страницы, тоже ничего не
+// значивший. Теперь архитектура данных изменилась целиком (см. чат): вместо
+// живого запроса к CHPP при каждом открытии вкладки, данные сохраняются в
+// базу при синхронизации — один раз автоматически сразу после подключения
+// команды, и дальше только по кнопке ниже. lastSyncedAt/syncStatus приходят
+// из chpp_sync_status (см. src/lib/chppSyncDb.ts) — та же дата, что
+// обновляется и автосинхронизацией, и кнопкой.
 export default function UpdatesSection({
+  lastSyncedAt,
+  syncStatus,
+  lastSyncError,
   lastSnapshotAt,
   lastSeenAt,
 }: {
+  lastSyncedAt: string | null;
+  syncStatus: "ok" | "partial" | "failed" | "in_progress" | null;
+  lastSyncError: string | null;
   lastSnapshotAt: Date | null;
   lastSeenAt: string | null;
 }) {
   return (
     <div className={styles.card}>
       <div className={styles.cardTitle}>Обновления</div>
+
+      {lastSyncedAt ? (
+        <p className={styles.statusLine}>
+          Последнее обновление: <b>{formatDateTime(lastSyncedAt)}</b>
+        </p>
+      ) : (
+        <p className={styles.statusLine}>Данные ещё ни разу не синхронизировались.</p>
+      )}
+      {syncStatus === "partial" && (
+        <p className={styles.statusLine} style={{ color: "var(--color-bad)" }}>
+          Часть разделов не удалось обновить в последний раз.
+        </p>
+      )}
+      {syncStatus === "failed" && lastSyncedAt && (
+        <p className={styles.statusLine} style={{ color: "var(--color-bad)" }}>
+          Последняя попытка обновить не удалась{lastSyncError ? `: ${lastSyncError}` : ""} — показаны данные с
+          предыдущей успешной синхронизации.
+        </p>
+      )}
+
+      <div style={{ margin: "10px 0" }}>
+        <SyncButton />
+      </div>
 
       {lastSnapshotAt && (
         <p className={styles.statusLine}>
@@ -48,10 +78,12 @@ export default function UpdatesSection({
       )}
 
       <p className={styles.explainText}>
-        Отдельной фоновой системы обновлений нет — HattrickManager запрашивает у Hattrick свежие данные напрямую
-        каждый раз, когда вы открываете раздел личного кабинета (Обзор, Состав, Финансы и т.д.). Никаких ограничений
-        по частоте запросов со стороны CHPP нет — данные обновляются автоматически при каждом заходе, никакой очереди
-        или времени ожидания не существует.
+        Данные Обзора теперь сохраняются в базу при синхронизации, а не запрашиваются у Hattrick заново при каждом
+        открытии. Автоматическая синхронизация происходит один раз, сразу после подключения команды — дальше
+        обновление только по кнопке выше. Остальные разделы личного кабинета пока обновляются вживую при каждом
+        заходе — это временно, они переходят на то же хранилище постепенно. Никаких ограничений по частоте запросов
+        со стороны CHPP нет — очереди или времени ожидания не существует, обновление стало осознанным действием,
+        а не происходит незаметно само по себе.
       </p>
     </div>
   );
