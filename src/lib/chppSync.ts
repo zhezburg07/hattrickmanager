@@ -31,6 +31,22 @@ import {
   type OpponentAnalysisResult,
 } from "./opponentAnalysis";
 import { trainingWeekKey, saveCurrentWeekSnapshot, saveWeeklyTsiSnapshot } from "./playerHistoryDb";
+import { parseArenaDetailsXml, type RealArenaCapacity } from "./arena";
+import { parseTrainingXml, type RealTraining } from "./training";
+import { parseYouthPlayerListXml, debugYouthPlayerListRawCount, type RealYouthPlayer } from "./youthPlayers";
+import { parseChallengesXml, type ArenaChallengesResult } from "./hattrickArena";
+import {
+  toSeasonMatches,
+  dedupeMatches,
+  filterTrainingRelevantMatches,
+  debugRawMatchFields,
+  parseArchiveEchoedRange,
+  CUP_MATCH_TYPE,
+} from "./matches";
+import type { SeasonMatch } from "@/data/matches";
+import { resolveOurCupPath, type OurCupPathResult } from "./cupMatches";
+import type { UpcomingCupMatch } from "@/components/dashboard/CupSection";
+import { parseTransfersTeamXml, TRANSFERS_TEAM_VERSION, type TransferHistoryResult } from "./transferMarket";
 import {
   saveSnapshotSuccess,
   saveSnapshotError,
@@ -59,6 +75,14 @@ export const DATA_KEYS = {
   worldCurrency: "worldCurrency",
   achievements: "achievements",
   opponentAnalysis: "opponentAnalysis",
+  // Фаза 3
+  arena: "arena",
+  training: "training",
+  youthPlayers: "youthPlayers",
+  arenaChallenges: "arenaChallenges",
+  matchesCalendar: "matchesCalendar",
+  cupInfo: "cupInfo",
+  transferHistory: "transferHistory",
 } as const;
 
 export interface StoredTeamData {
@@ -71,6 +95,11 @@ export interface StoredTeamData {
   badgeLabel?: string;
   powerRatingValue?: number;
   powerRatingWorldRank?: number;
+  // Нужны только Кубкам (см. чат "Фаза 3") — не читались в Фазе 1/2, но
+  // teamdetails.xml их уже отдавал, ничего нового не запрашиваем.
+  stillInCup: boolean | null;
+  cupId: string | null;
+  cupName: string | null;
 }
 
 export interface StoredLeagueData {
@@ -83,6 +112,53 @@ export interface StoredLeagueData {
 export interface StoredPlayersData {
   summary: RealSquadSummary;
   players: SquadPlayer[];
+}
+
+// Составные результаты Фазы 3 хранят ошибку/предупреждение ВНУТРИ самого
+// объекта (как и делали исходные resolve*-функции этих страниц), а не через
+// error-колонку chpp_snapshots — там несколько независимых причастных
+// частичных сбоев (например teamdetails ИЛИ matchesarchive для матчей), и
+// одной строки ошибки на весь ключ недостаточно.
+
+export interface StoredYouthPlayersData {
+  players: RealYouthPlayer[] | null;
+  error: string | null;
+  // Диагностика youthplayerlist (см. SHOW_YOUTH_DEBUG_PANEL в
+  // youth/page.tsx) — HTTP-статус и реально разобранное число игроков,
+  // чтобы отличать "запрос упал" от "запрос успешен, но разбор дал пусто".
+  httpStatus: number | null;
+  rawPlayerCount: number;
+}
+
+export interface StoredMatchesCalendar {
+  matches: SeasonMatch[] | null;
+  ourTeamName: string;
+  error: string | null;
+  warning: string | null;
+  // Диагностика конвейера matches→matchesarchive→объединение→фильтр (см.
+  // SHOW_MATCHES_DEBUG в matches/page.tsx).
+  debugCounts: string[];
+  debugRaw: Record<string, unknown>[];
+}
+
+export interface CupDebugInfo {
+  teamId: string | null;
+  stillInCup: boolean | null;
+  teamDetailsCupId: string | null;
+  teamDetailsCupName: string | null;
+  clubCupId: string | null;
+  matchesCupId: string | null;
+  chosenCupId: string | null;
+  matchesRawSample: Record<string, unknown>[];
+  pathDebug: string[];
+  nextMatchFound: string | null;
+}
+
+export interface StoredCupInfo {
+  cupPath: OurCupPathResult | null;
+  nextMatch: UpcomingCupMatch | null;
+  errors: string[];
+  debug: CupDebugInfo;
 }
 
 const emptyOpponentAnalysis: OpponentAnalysisResult = {
@@ -144,6 +220,10 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   let leagueId = "";
   let leagueLevelUnitId = "";
   let trainerPlayerId = "";
+  let stillInCup: boolean | null = null;
+  let cupIdFromTeamDetails: string | null = null;
+  let cupNameFromTeamDetails: string | null = null;
+  let ourTeamName = "";
 
   const teamRaw = await requestChppXmlRaw("teamdetails", {}, tokens).catch(() => null);
   try {
@@ -153,6 +233,10 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     leagueId = team.leagueId;
     leagueLevelUnitId = team.leagueLevelUnitId;
     trainerPlayerId = team.trainerPlayerId;
+    stillInCup = team.stillInCup;
+    cupIdFromTeamDetails = team.cupId;
+    cupNameFromTeamDetails = team.cupName;
+    ourTeamName = team.teamName;
 
     const stored: StoredTeamData = {
       teamId,
@@ -164,6 +248,9 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       badgeLabel: team.teamRank !== null ? `#${team.teamRank}` : team.leagueName || undefined,
       powerRatingValue: team.powerRatingValue ?? undefined,
       powerRatingWorldRank: team.powerRatingGlobalRank ?? undefined,
+      stillInCup,
+      cupId: cupIdFromTeamDetails,
+      cupName: cupNameFromTeamDetails,
     };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.team, stored);
   } catch (err) {
@@ -193,6 +280,13 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     { key: "club", file: "club", params: {} },
     { key: "players", file: "players", params: { version: PLAYERS_XML_VERSION } },
     { key: "achievements", file: "achievements", params: { version: ACHIEVEMENTS_VERSION } },
+    // Фаза 3 — независимые запросы (без параметров, полученных из
+    // teamdetails), поэтому идут в том же параллельном шаге.
+    { key: "arenadetails", file: "arenadetails", params: {} },
+    { key: "training", file: "training", params: {} },
+    { key: "youthplayerlist", file: "youthplayerlist", params: { version: "1.3" } },
+    { key: "challenges", file: "challenges", params: {} },
+    { key: "transfersteam", file: "transfersteam", params: { pageIndex: "0", version: TRANSFERS_TEAM_VERSION } },
     ...(leagueId ? [{ key: "worlddetails", file: "worlddetails", params: { LeagueID: leagueId } }] : []),
     ...(leagueLevelUnitId
       ? [{ key: "leaguefixtures", file: "leaguefixtures", params: { LeagueLevelUnitID: leagueLevelUnitId } }]
@@ -292,11 +386,14 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     anyFailed = true;
   }
 
-  // -- club (состав тренерского штаба) --
+  // -- club (состав тренерского штаба + youthLevel/cupId — переиспользуются
+  // ниже Юношеской командой и Кубками, отдельно club.xml для них не
+  // запрашивается) --
+  let parsedClub: RealClubStaff | null = null;
   try {
     assertOkStatus(raw.club);
-    const club: RealClubStaff = parseClubXml(raw.club.rawXml);
-    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.club, club);
+    parsedClub = parseClubXml(raw.club.rawXml);
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.club, parsedClub);
     anySucceeded = true;
   } catch (err) {
     await saveSnapshotError(hattrickUserId, DATA_KEYS.club, `Персонал (club): ${errorMessage(err)}`);
@@ -312,39 +409,6 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       raw.players.rawXml,
       homeCountry,
       countryIdLookupResult.lookup ?? undefined,
-    );
-
-    // ВРЕМЕННАЯ диагностика (см. чат: флаги стран пропали после Фазы 2) —
-    // показывает КАЖДОЕ звено цепочки резолва национальности отдельно:
-    // сырые CountryID из XML (до какой-либо обработки), сработал ли
-    // homeCountry (LeagueID → worlddetails), сработал ли общий справочник
-    // стран (getCountryIdLookup, у него своя история ненадёжности без
-    // фильтра LeagueID — см. src/lib/worldCountries.ts), и что в итоге
-    // получилось у первых нескольких игроков. Смотреть в Vercel Runtime
-    // Logs после следующей синхронизации. Убрать, когда причина найдена.
-    console.log(
-      "Диагностика национальности игроков:",
-      JSON.stringify(
-        {
-          homeCountry,
-          countryIdLookup: {
-            found: countryIdLookupResult.countriesFound,
-            error: countryIdLookupResult.error,
-            hasLookup: !!countryIdLookupResult.lookup,
-          },
-          rawCountryIdsFromXml: (() => {
-            const matches = [...raw.players.rawXml.matchAll(/<CountryID>(\d+)<\/CountryID>/g)];
-            return matches.slice(0, 8).map((m) => m[1]);
-          })(),
-          resolvedSample: players.slice(0, 5).map((p) => ({
-            id: p.id,
-            name: p.name,
-            nationality: p.nationality,
-          })),
-        },
-        null,
-        2,
-      ),
     );
 
     // Рейтинги последних матчей (звёзды) — до 3 сыгранных матчей, каждый
@@ -428,6 +492,92 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     anyFailed = true;
   }
 
+  // -- arena (Стадион) --
+  try {
+    assertOkStatus(raw.arenadetails);
+    const arena: RealArenaCapacity = parseArenaDetailsXml(raw.arenadetails.rawXml);
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arena, arena);
+    anySucceeded = true;
+  } catch (err) {
+    await saveSnapshotError(hattrickUserId, DATA_KEYS.arena, `Стадион (arenadetails): ${errorMessage(err)}`);
+    anyFailed = true;
+  }
+
+  // -- training (Тренировка) — второстепенная деталь: training.xml ни разу
+  // не пробовался живьём до появления этого проекта (см. src/lib/training.ts)
+  // — неудача не считается сбоем синхронизации, как и раньше молча
+  // оставляла тестовые значения по умолчанию.
+  try {
+    if (raw.training) {
+      assertOkStatus(raw.training);
+      const training: RealTraining = parseTrainingXml(raw.training.rawXml);
+      await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.training, training);
+    }
+  } catch (err) {
+    await saveSnapshotError(hattrickUserId, DATA_KEYS.training, errorMessage(err));
+  }
+
+  // -- youthPlayers (Юношеская команда) — youthLevel уже есть в "club" выше,
+  // здесь только сам список игроков академии. Ошибка и диагностика (HTTP-
+  // статус, реально разобранное число игроков) хранятся ВНУТРИ объекта, как
+  // и в исходном resolveYouthPlayers, а не отдельной колонкой — страница
+  // показывает их и на "серых" ошибках (SHOW_YOUTH_DEBUG_PANEL).
+  {
+    let youthPlayers: RealYouthPlayer[] | null = null;
+    let youthError: string | null = null;
+    let youthHttpStatus: number | null = null;
+    let youthRawCount = 0;
+    try {
+      youthHttpStatus = raw.youthplayerlist?.httpStatus ?? null;
+      youthRawCount = raw.youthplayerlist ? debugYouthPlayerListRawCount(raw.youthplayerlist.rawXml) : 0;
+      assertOkStatus(raw.youthplayerlist);
+      youthPlayers = parseYouthPlayerListXml(raw.youthplayerlist.rawXml);
+      anySucceeded = true;
+    } catch (err) {
+      youthError = `Список академии (youthplayerlist): ${errorMessage(err)}`;
+      anyFailed = true;
+    }
+    const stored: StoredYouthPlayersData = {
+      players: youthPlayers,
+      error: youthError,
+      httpStatus: youthHttpStatus,
+      rawPlayerCount: youthRawCount,
+    };
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.youthPlayers, stored);
+  }
+
+  // -- arenaChallenges (заявки на товарищеские матчи, см. "Матчи") --
+  try {
+    assertOkStatus(raw.challenges);
+    const { sentByUs, offersFromOthers } = parseChallengesXml(raw.challenges.rawXml);
+    const result: ArenaChallengesResult = { sentByUs, offersFromOthers, error: null };
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arenaChallenges, result);
+    anySucceeded = true;
+  } catch (err) {
+    await saveSnapshotError(
+      hattrickUserId,
+      DATA_KEYS.arenaChallenges,
+      `Заявки на товарищеские матчи (challenges): ${errorMessage(err)}`,
+    );
+    anyFailed = true;
+  }
+
+  // -- transferHistory (Трансферы — только историческая часть; живой поиск
+  // остаётся on-demand, см. /api/dashboard/transfer-search) --
+  try {
+    assertOkStatus(raw.transfersteam);
+    const transferHistory: TransferHistoryResult = parseTransfersTeamXml(raw.transfersteam.rawXml);
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.transferHistory, transferHistory);
+    anySucceeded = true;
+  } catch (err) {
+    await saveSnapshotError(
+      hattrickUserId,
+      DATA_KEYS.transferHistory,
+      `История трансферов (transfersteam): ${errorMessage(err)}`,
+    );
+    anyFailed = true;
+  }
+
   // -- opponentAnalysis (Расстановка: разбор соперника в ближайшем матче) --
   // Три последовательных шага (ближайший соперник → его последний сыгранный
   // матч → состав того матча) — принципиально зависят друг от друга, как и
@@ -502,6 +652,221 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   } catch (err) {
     await saveSnapshotError(hattrickUserId, DATA_KEYS.opponentAnalysis, `Анализ соперника: ${errorMessage(err)}`);
     anyFailed = true;
+  }
+
+  // -- matchesCalendar (Матчи: список + история прошлых сезонов через
+  // matchesarchive) — teamId и текущий сезон (parsedMatches/raw.matches) уже
+  // получены выше для секции "matches", здесь только добавляем историю через
+  // 6 окон matchesarchive (см. комментарий в исходном matches/page.tsx про
+  // причины именно такого разбиения) и собираем финальный список. Ошибка и
+  // предупреждение хранятся ВНУТРИ объекта (как и раньше на странице), а не
+  // через error-колонку — независимых частичных причин несколько.
+  {
+    const debugCounts: string[] = [];
+    let debugRaw: Record<string, unknown>[] = [];
+    let calendarError: string | null = null;
+    let calendarWarning: string | null = null;
+    let shownMatches: SeasonMatch[] | null = null;
+
+    try {
+      if (!teamId) throw new Error("Не определена наша команда (teamdetails).");
+      if (!raw.matches || !parsedMatches) throw new Error("Не удалось получить список матчей (matches).");
+
+      const currentSeasonMatches = parsedMatches;
+      debugCounts.push(`matches.xml: ${currentSeasonMatches.length} матчей (HTTP ${raw.matches.httpStatus})`);
+      debugRaw = debugRawMatchFields(raw.matches.rawXml);
+
+      const toHattrickTimeString = (d: Date) => {
+        const parts = new Intl.DateTimeFormat("en-GB", {
+          timeZone: "Europe/Stockholm",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hourCycle: "h23",
+        }).formatToParts(d);
+        const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+        return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
+      };
+
+      const ARCHIVE_WINDOW_DAYS = 45;
+      const ARCHIVE_WINDOW_COUNT = 6;
+      const dayMs = 24 * 60 * 60 * 1000;
+      const now = new Date();
+      const archiveWindows = Array.from({ length: ARCHIVE_WINDOW_COUNT }, (_, i) => {
+        const last = new Date(now.getTime() - i * ARCHIVE_WINDOW_DAYS * dayMs);
+        const first = new Date(last.getTime() - ARCHIVE_WINDOW_DAYS * dayMs);
+        return { firstMatchDate: toHattrickTimeString(first), lastMatchDate: toHattrickTimeString(last) };
+      });
+
+      let archiveMatches: RealMatch[] = [];
+      let archiveWarning: string | null = null;
+      const archiveResults = await Promise.allSettled(
+        archiveWindows.map((w) =>
+          requestChppXmlRaw("matchesarchive", { FirstMatchDate: w.firstMatchDate, LastMatchDate: w.lastMatchDate }, tokens),
+        ),
+      );
+
+      let anyArchiveSuccess = false;
+      let clampedWindowCount = 0;
+      archiveResults.forEach((result, i) => {
+        const w = archiveWindows[i];
+        const windowLabel = `окно ${i + 1}/${ARCHIVE_WINDOW_COUNT} (${w.firstMatchDate}..${w.lastMatchDate})`;
+        if (result.status !== "fulfilled") {
+          const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+          debugCounts.push(`matchesarchive.xml [${windowLabel}]: ошибка запроса — ${message}`);
+          return;
+        }
+        const archiveRaw = result.value;
+        if (archiveRaw.httpStatus < 200 || archiveRaw.httpStatus >= 300) {
+          debugCounts.push(`matchesarchive.xml [${windowLabel}]: HTTP ${archiveRaw.httpStatus}`);
+          return;
+        }
+        try {
+          const windowMatches = parseMatchesXml(archiveRaw.rawXml, teamId, { isArchive: true });
+          archiveMatches.push(...windowMatches);
+          anyArchiveSuccess = true;
+          const echoed = parseArchiveEchoedRange(archiveRaw.rawXml);
+          const clamped = echoed.firstMatchDate !== null && echoed.firstMatchDate !== w.firstMatchDate;
+          if (clamped) clampedWindowCount += 1;
+          debugCounts.push(
+            `matchesarchive.xml [${windowLabel}]: ${windowMatches.length} матчей` +
+              (clamped ? ` ⚠ CHPP применил другой диапазон: ${echoed.firstMatchDate}..${echoed.lastMatchDate}` : ""),
+          );
+        } catch (err) {
+          debugCounts.push(`matchesarchive.xml [${windowLabel}]: ошибка разбора — ${errorMessage(err)}`);
+        }
+      });
+
+      if (!anyArchiveSuccess) {
+        archiveWarning = "Полная история прошлых сезонов (matchesarchive) недоступна — показан только текущий сезон (matches).";
+      } else if (clampedWindowCount > 0) {
+        archiveWarning = `CHPP подрезал запрошенный диапазон дат в ${clampedWindowCount} из ${ARCHIVE_WINDOW_COUNT} запросов к matchesarchive — история может быть неполной несмотря на попытку.`;
+      }
+      debugCounts.push(`matchesarchive.xml — всего собрано из всех окон: ${archiveMatches.length} матчей`);
+
+      const merged = dedupeMatches([...currentSeasonMatches, ...archiveMatches]);
+      debugCounts.push(`после объединения и удаления дублей: ${merged.length}`);
+
+      if (merged.length === 0) {
+        const archiveNote = archiveMatches.length === 0 ? " и matchesarchive" : "";
+        throw new Error(
+          `Матчи (matches${archiveNote}): запрос выполнился (HTTP ${raw.matches.httpStatus}), но вернул пустой список матчей — либо у команды ещё нет ни одного матча в ответе CHPP, либо структура ответа отличается от ожидаемой (см. RealMatch в src/lib/matches.ts).`,
+        );
+      }
+
+      let trainingRelevant = filterTrainingRelevantMatches(merged);
+      debugCounts.push(`после строгого фильтра (сыграно + основная команда): ${trainingRelevant.length}`);
+
+      if (merged.length !== trainingRelevant.length) {
+        const passedIds = new Set(trainingRelevant.map((m) => m.matchId));
+        const excluded = merged.filter((m) => !passedIds.has(m.matchId));
+        let notFinished = 0;
+        let missingScore = 0;
+        let youth = 0;
+        for (const m of excluded) {
+          if (m.status !== "FINISHED") notFinished += 1;
+          else if (m.ourScore === null || m.oppScore === null) missingScore += 1;
+          else if (m.sourceSystem === "youth") youth += 1;
+        }
+        debugCounts.push(
+          `отсеяно ${excluded.length}: не "FINISHED" — ${notFinished}, нет счёта — ${missingScore}, sourceSystem="youth" — ${youth}`,
+        );
+        debugCounts.push(
+          `сырые поля первых отсеянных: ${excluded
+            .slice(0, 8)
+            .map((m) => `#${m.matchId} ${m.date} status=${m.status} score=${m.ourScore}:${m.oppScore} src=${m.sourceSystem} type=${m.matchType}`)
+            .join(" | ")}`,
+        );
+      }
+      let filterWarning: string | null = null;
+      if (trainingRelevant.length === 0) {
+        trainingRelevant = merged.filter((m) => m.status === "FINISHED" && m.ourScore !== null && m.oppScore !== null);
+        debugCounts.push(`после мягкого фильтра (только "сыграно"): ${trainingRelevant.length}`);
+        if (trainingRelevant.length > 0) {
+          filterWarning =
+            "Не удалось надёжно отличить матчи основной команды от юношеских/Hattrick Arena по данным CHPP (поле SourceSystem) — показаны все сыгранные матчи без этой фильтрации.";
+        }
+      }
+
+      const MAX_MATCHES_SHOWN = 25;
+      shownMatches = toSeasonMatches(trainingRelevant).slice(0, MAX_MATCHES_SHOWN);
+      calendarWarning = [archiveWarning, filterWarning].filter(Boolean).join(" ") || null;
+      anySucceeded = true;
+    } catch (err) {
+      calendarError = `Матчи (matches): ${errorMessage(err)}`;
+      anyFailed = true;
+    }
+
+    const stored: StoredMatchesCalendar = {
+      matches: shownMatches,
+      ourTeamName,
+      error: calendarError,
+      warning: calendarWarning,
+      debugCounts,
+      debugRaw,
+    };
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.matchesCalendar, stored);
+  }
+
+  // -- cupInfo (Кубки: путь по раундам текущего кубка + ближайший
+  // предстоящий кубковый матч) — teamId/stillInCup/cupId/cupName из
+  // teamdetails, club (parsedClub) и matches (parsedMatches) уже получены
+  // выше для своих секций, здесь только запасной поиск CupID и сам проход
+  // по раундам cupmatches (resolveOurCupPath — единственный по-настоящему
+  // новый запрос в этой секции, его пагинация неизбежно последовательна). --
+  {
+    const debug: CupDebugInfo = {
+      teamId: teamId || null,
+      stillInCup,
+      teamDetailsCupId: cupIdFromTeamDetails,
+      teamDetailsCupName: cupNameFromTeamDetails,
+      clubCupId: parsedClub?.cupId ?? null,
+      matchesCupId: null,
+      chosenCupId: null,
+      matchesRawSample: [],
+      pathDebug: [],
+      nextMatchFound: null,
+    };
+    const errors: string[] = [];
+
+    let cupId = cupIdFromTeamDetails;
+    const matchesForCup = parsedMatches ?? [];
+    if (teamId) {
+      debug.matchesCupId = matchesForCup.find((m) => m.cupId !== null)?.cupId ?? null;
+      debug.matchesRawSample = raw.matches ? debugRawMatchFields(raw.matches.rawXml, 10) : [];
+      if (!cupId) cupId = debug.clubCupId ?? debug.matchesCupId;
+    } else {
+      errors.push("Кубки (teamdetails): не удалось определить нашу команду.");
+    }
+    debug.chosenCupId = cupId;
+
+    let cupPath: OurCupPathResult | null = null;
+    if (cupId && teamId) {
+      cupPath = await resolveOurCupPath(tokens, cupId, teamId);
+      debug.pathDebug = cupPath.debug;
+      if (cupPath.error) errors.push(cupPath.error);
+    }
+
+    const rawNextMatch = matchesForCup
+      .filter((m) => Number(m.matchType) === CUP_MATCH_TYPE && m.status === "UPCOMING")
+      .filter((m) => cupId === null || m.cupId === null || m.cupId === cupId)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+    const alreadyInPath = cupPath?.path.some((m) => m.matchId === rawNextMatch?.matchId) ?? false;
+    debug.nextMatchFound = rawNextMatch
+      ? `MatchID ${rawNextMatch.matchId} (${rawNextMatch.date}, соперник «${rawNextMatch.opponent}»)${alreadyInPath ? " — уже показан в пути по раундам, отдельно не дублируем" : ""}`
+      : "не найден среди матчей matches.xml (MatchType=3, статус UPCOMING)";
+    const nextMatch: UpcomingCupMatch | null =
+      rawNextMatch && !alreadyInPath
+        ? { matchId: rawNextMatch.matchId, date: rawNextMatch.date, home: rawNextMatch.home, opponent: rawNextMatch.opponent }
+        : null;
+
+    const stored: StoredCupInfo = { cupPath, nextMatch, errors, debug };
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.cupInfo, stored);
+    if (errors.length === 0) anySucceeded = true;
+    else anyFailed = true;
   }
 
   const finalStatus: SyncResult["status"] = anyFailed && !anySucceeded ? "failed" : anyFailed ? "partial" : "ok";
@@ -691,6 +1056,171 @@ export async function getStoredLineupData(hattrickUserId: string): Promise<Lineu
     error: playersEntry?.error ?? null,
     opponentAnalysis,
   };
+}
+
+// --- Чтение сохранённых данных для остальных разделов (Фаза 3) -----------
+
+export interface FinancePageData {
+  data: RealEconomy | null;
+  error: string | null;
+  currencyLabel: string | undefined;
+}
+
+export async function getStoredFinanceData(hattrickUserId: string): Promise<FinancePageData> {
+  const snapshots = await getAllSnapshots(hattrickUserId);
+  const economyEntry = snapshots[DATA_KEYS.economy];
+  const worldCurrency = snapshots[DATA_KEYS.worldCurrency]?.data as WorldLeagueInfo | null;
+  return {
+    data: (economyEntry?.data as RealEconomy | null) ?? null,
+    error: economyEntry?.error ?? null,
+    currencyLabel: worldCurrency?.currencyLabel,
+  };
+}
+
+export interface StadiumPageData {
+  data: RealArenaCapacity | null;
+  error: string | null;
+  currencyLabel: string | undefined;
+}
+
+export async function getStoredStadiumData(hattrickUserId: string): Promise<StadiumPageData> {
+  const snapshots = await getAllSnapshots(hattrickUserId);
+  const arenaEntry = snapshots[DATA_KEYS.arena];
+  const worldCurrency = snapshots[DATA_KEYS.worldCurrency]?.data as WorldLeagueInfo | null;
+  return {
+    data: (arenaEntry?.data as RealArenaCapacity | null) ?? null,
+    error: arenaEntry?.error ?? null,
+    currencyLabel: worldCurrency?.currencyLabel,
+  };
+}
+
+export interface TrainingPageData {
+  coachName: string | undefined;
+  coachLeadership: number | undefined;
+  coachError: string | null;
+  training: RealTraining | null;
+}
+
+// Тренер ищется среди уже сохранённого ростера ("players" — тот же ключ,
+// что читают Состав/Расстановка), отдельный запрос players.xml здесь не
+// нужен. training.xml — второстепенная деталь (см. комментарий у секции
+// "training" в syncTeamData) — при отсутствии молча остаёмся без реальных
+// значений, без отдельной ошибки.
+export async function getStoredTrainingData(hattrickUserId: string): Promise<TrainingPageData> {
+  const snapshots = await getAllSnapshots(hattrickUserId);
+  const team = snapshots[DATA_KEYS.team]?.data as StoredTeamData | null;
+  const playersEntry = snapshots[DATA_KEYS.players];
+  const playersData = playersEntry?.data as StoredPlayersData | null;
+  const training = (snapshots[DATA_KEYS.training]?.data as RealTraining | null) ?? null;
+
+  let coachName: string | undefined;
+  let coachLeadership: number | undefined;
+  let coachError: string | null = null;
+  if (team?.trainerPlayerId && playersData) {
+    const trainer = playersData.players.find((p) => String(p.id) === team.trainerPlayerId);
+    if (trainer) {
+      coachName = trainer.name;
+      coachLeadership = trainer.leadership;
+    } else {
+      coachError = "Тренер не найден среди игроков ростера (players.xml)";
+    }
+  } else {
+    coachError = snapshots[DATA_KEYS.team]?.error ?? playersEntry?.error ?? "Тренер (teamdetails/players): нет данных.";
+  }
+
+  return { coachName, coachLeadership, coachError, training };
+}
+
+export interface YouthPageData {
+  youthLevel: number | null;
+  levelError: string | null;
+  players: RealYouthPlayer[] | null;
+  playersError: string | null;
+  playersHttpStatus: number | null;
+  rawPlayerCount: number;
+}
+
+export async function getStoredYouthData(hattrickUserId: string): Promise<YouthPageData> {
+  const snapshots = await getAllSnapshots(hattrickUserId);
+  const clubEntry = snapshots[DATA_KEYS.club];
+  const club = clubEntry?.data as RealClubStaff | null;
+  const youthEntry = snapshots[DATA_KEYS.youthPlayers];
+  const youth = youthEntry?.data as StoredYouthPlayersData | null;
+
+  return {
+    youthLevel: club?.youthLevel ?? null,
+    levelError: clubEntry?.error ?? null,
+    players: youth?.players ?? null,
+    playersError: youth?.error ?? null,
+    playersHttpStatus: youth?.httpStatus ?? null,
+    rawPlayerCount: youth?.rawPlayerCount ?? 0,
+  };
+}
+
+export interface MatchesPageData {
+  matches: SeasonMatch[] | null;
+  ourTeamName: string;
+  error: string | null;
+  warning: string | null;
+  debugCounts: string[];
+  debugRaw: Record<string, unknown>[];
+  challenges: ArenaChallengesResult;
+}
+
+const emptyArenaChallenges: ArenaChallengesResult = { sentByUs: [], offersFromOthers: [], error: null };
+
+export async function getStoredMatchesCalendar(hattrickUserId: string): Promise<MatchesPageData> {
+  const snapshots = await getAllSnapshots(hattrickUserId);
+  const calendarEntry = snapshots[DATA_KEYS.matchesCalendar];
+  const calendar = calendarEntry?.data as StoredMatchesCalendar | null;
+  const challengesEntry = snapshots[DATA_KEYS.arenaChallenges];
+  const challenges = (challengesEntry?.data as ArenaChallengesResult | null) ?? {
+    ...emptyArenaChallenges,
+    error: challengesEntry?.error ?? null,
+  };
+
+  return {
+    matches: calendar?.matches ?? null,
+    ourTeamName: calendar?.ourTeamName ?? "",
+    error: calendar?.error ?? calendarEntry?.error ?? null,
+    warning: calendar?.warning ?? null,
+    debugCounts: calendar?.debugCounts ?? [],
+    debugRaw: calendar?.debugRaw ?? [],
+    challenges,
+  };
+}
+
+export async function getStoredCupData(hattrickUserId: string): Promise<StoredCupInfo> {
+  const snapshots = await getAllSnapshots(hattrickUserId);
+  const entry = snapshots[DATA_KEYS.cupInfo];
+  const stored = entry?.data as StoredCupInfo | null;
+  return (
+    stored ?? {
+      cupPath: null,
+      nextMatch: null,
+      errors: entry?.error ? [entry.error] : [],
+      debug: {
+        teamId: null,
+        stillInCup: null,
+        teamDetailsCupId: null,
+        teamDetailsCupName: null,
+        clubCupId: null,
+        matchesCupId: null,
+        chosenCupId: null,
+        matchesRawSample: [],
+        pathDebug: [],
+        nextMatchFound: null,
+      },
+    }
+  );
+}
+
+export async function getStoredTransferHistory(
+  hattrickUserId: string,
+): Promise<{ data: TransferHistoryResult | null; error: string | null }> {
+  const snapshots = await getAllSnapshots(hattrickUserId);
+  const entry = snapshots[DATA_KEYS.transferHistory];
+  return { data: (entry?.data as TransferHistoryResult | null) ?? null, error: entry?.error ?? null };
 }
 
 // Общая точка входа для любой мигрированной страницы (Обзор, Состав,

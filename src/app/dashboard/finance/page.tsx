@@ -2,39 +2,27 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import FinanceSection from "@/components/dashboard/FinanceSection";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
+import SyncFailedScreen from "@/components/dashboard/SyncFailedScreen";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
-import { parseEconomyXml, type RealEconomy } from "@/lib/economy";
-import { resolveRealCurrencyLabel } from "@/lib/worldCurrency";
+import { getRequiredHattrickTokens, getStoredHattrickUserId } from "@/lib/hattrickApi";
+import { ensureSynced, getStoredFinanceData } from "@/lib/chppSync";
 
-// Названия полей в src/lib/economy.ts сверены с реальным ответом на живом
-// аккаунте — диагностика сырых полей <Team> больше не нужна на экране.
-// Поставьте true, если снова понадобится свериться с CHPP (например, если
-// Hattrick изменит схему economy.xml).
-const SHOW_ECONOMY_DEBUG = false;
-
-async function resolveEconomy(
-  tokens: StoredHattrickTokens,
-): Promise<{ data: RealEconomy | null; error: string | null }> {
-  try {
-    const raw = await requestChppXmlRaw("economy", {}, tokens);
-    if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
-      throw new Error(`HTTP ${raw.httpStatus}: ${raw.rawXml.slice(0, 200)}`);
-    }
-    return { data: parseEconomyXml(raw.rawXml), error: null };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "неизвестная ошибка";
-    return { data: null, error: `Финансы (economy): ${message}` };
-  }
-}
-
+// Раньше эта страница сама запрашивала economy.xml при каждом открытии.
+// Теперь читает уже сохранённый снимок (см. src/lib/chppSync.ts) — сама
+// синхронизация происходит один раз автоматически при первом визите в
+// кабинет или по кнопке "Обновить данные".
 export default async function FinancePage() {
   const tokens = await getRequiredHattrickTokens();
+  const hattrickUserId = await getStoredHattrickUserId();
 
-  const [{ data: economy, error }, { label: currencyLabel }] = await Promise.all([
-    resolveEconomy(tokens),
-    resolveRealCurrencyLabel(tokens),
-  ]);
+  const syncStatus = hattrickUserId ? await ensureSynced(hattrickUserId, tokens) : null;
+  if (syncStatus && syncStatus.status === "failed" && !syncStatus.lastSyncedAt) {
+    return <SyncFailedScreen lastError={syncStatus.lastError} />;
+  }
+
+  const { data: economy, error, currencyLabel } = hattrickUserId
+    ? await getStoredFinanceData(hattrickUserId)
+    : { data: null, error: null, currencyLabel: undefined };
 
   return (
     <>
@@ -50,19 +38,6 @@ export default async function FinancePage() {
               lastWeek={economy.lastWeek}
               currencyLabel={currencyLabel ?? undefined}
             />
-          )}
-          {SHOW_ECONOMY_DEBUG && economy && (
-            <div className={styles.card}>
-              <div className={styles.balanceLabel}>Диагностика: сырые поля economy.xml → Team</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 8, fontSize: 12.5 }}>
-                {Object.entries(economy.rawTeamFields).map(([key, value]) => (
-                  <div key={key} style={{ display: "flex", gap: 10 }}>
-                    <span style={{ color: "var(--color-text-muted)", minWidth: 220 }}>{key}</span>
-                    <span>{typeof value === "object" ? JSON.stringify(value) : String(value)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
           )}
         </div>
       </main>

@@ -2,33 +2,23 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import StadiumSection from "@/components/dashboard/StadiumSection";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
+import SyncFailedScreen from "@/components/dashboard/SyncFailedScreen";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
-import { parseArenaDetailsXml, type RealArenaCapacity } from "@/lib/arena";
-import { resolveRealCurrencyLabel } from "@/lib/worldCurrency";
-
-async function resolveArenaData(
-  tokens: StoredHattrickTokens,
-): Promise<{ data: RealArenaCapacity | null; error: string | null }> {
-  try {
-    const raw = await requestChppXmlRaw("arenadetails", {}, tokens);
-    if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
-      throw new Error(`HTTP ${raw.httpStatus}: ${raw.rawXml.slice(0, 200)}`);
-    }
-    return { data: parseArenaDetailsXml(raw.rawXml), error: null };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "неизвестная ошибка";
-    return { data: null, error: `Стадион (arenadetails): ${message}` };
-  }
-}
+import { getRequiredHattrickTokens, getStoredHattrickUserId } from "@/lib/hattrickApi";
+import { ensureSynced, getStoredStadiumData } from "@/lib/chppSync";
 
 export default async function StadiumPage() {
   const tokens = await getRequiredHattrickTokens();
+  const hattrickUserId = await getStoredHattrickUserId();
 
-  const [{ data, error }, { label: currencyLabel }] = await Promise.all([
-    resolveArenaData(tokens),
-    resolveRealCurrencyLabel(tokens),
-  ]);
+  const syncStatus = hattrickUserId ? await ensureSynced(hattrickUserId, tokens) : null;
+  if (syncStatus && syncStatus.status === "failed" && !syncStatus.lastSyncedAt) {
+    return <SyncFailedScreen lastError={syncStatus.lastError} />;
+  }
+
+  const { data, error, currencyLabel } = hattrickUserId
+    ? await getStoredStadiumData(hattrickUserId)
+    : { data: null, error: null, currencyLabel: undefined };
 
   return (
     <>

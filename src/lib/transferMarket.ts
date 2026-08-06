@@ -22,7 +22,7 @@ import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
 // валюты команды — единственное такое исключение. Цена конкретного трансфера
 // (Price/AskingPrice/HighestBid) такого исключения не имеет, значит идёт в
 // обычной локальной валюте команды — как и все суммы в economy.xml.
-const TRANSFERS_TEAM_VERSION = "1.2";
+export const TRANSFERS_TEAM_VERSION = "1.2";
 const TRANSFERS_SEARCH_VERSION = "1.1";
 const TRANSFERS_PLAYER_VERSION = "1.1";
 

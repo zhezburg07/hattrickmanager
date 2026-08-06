@@ -45,27 +45,33 @@ function parseChallengeEntry(entry: Record<string, unknown>): ArenaChallengeEntr
   };
 }
 
+// Разбор вынесен отдельно от fetch (см. чат "Фаза 3") — синхронизация
+// (src/lib/chppSync.ts) переиспользует уже полученный raw XML вместо
+// повторного запроса challenges.xml.
+export function parseChallengesXml(xml: string): Omit<ArenaChallengesResult, "error"> {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  assertNoChppError(root, "challenges");
+
+  const team = root?.Team as Record<string, unknown> | undefined;
+  const challengesByMe = asArray((team?.ChallengesByMe as Record<string, unknown> | undefined)?.Challenge);
+  const offersByOthers = asArray((team?.OffersByOthers as Record<string, unknown> | undefined)?.Offer);
+
+  return {
+    sentByUs: challengesByMe.map(parseChallengeEntry),
+    offersFromOthers: offersByOthers.map(parseChallengeEntry),
+  };
+}
+
 export async function resolveArenaChallenges(tokens: StoredHattrickTokens): Promise<ArenaChallengesResult> {
   try {
     const raw = await requestChppXmlRaw("challenges", {}, tokens);
     if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
       throw new Error(`HTTP ${raw.httpStatus}: ${raw.rawXml.slice(0, 200)}`);
     }
-
-    const parser = new XMLParser();
-    const data = parser.parse(raw.rawXml);
-    const root = data?.HattrickData;
-    assertNoChppError(root, "challenges");
-
-    const team = root?.Team as Record<string, unknown> | undefined;
-    const challengesByMe = asArray((team?.ChallengesByMe as Record<string, unknown> | undefined)?.Challenge);
-    const offersByOthers = asArray((team?.OffersByOthers as Record<string, unknown> | undefined)?.Offer);
-
-    return {
-      sentByUs: challengesByMe.map(parseChallengeEntry),
-      offersFromOthers: offersByOthers.map(parseChallengeEntry),
-      error: null,
-    };
+    const { sentByUs, offersFromOthers } = parseChallengesXml(raw.rawXml);
+    return { sentByUs, offersFromOthers, error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     return { sentByUs: [], offersFromOthers: [], error: `Заявки на товарищеские матчи (challenges): ${message}` };

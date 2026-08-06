@@ -1,13 +1,26 @@
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import TransfersSection from "@/components/dashboard/TransfersSection";
+import SyncFailedScreen from "@/components/dashboard/SyncFailedScreen";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getRequiredHattrickTokens } from "@/lib/hattrickApi";
-import { resolveTransferHistory } from "@/lib/transferMarket";
+import { getRequiredHattrickTokens, getStoredHattrickUserId } from "@/lib/hattrickApi";
+import { ensureSynced, getStoredTransferHistory } from "@/lib/chppSync";
 
+// Только историческая часть (transfersteam) читает сохранённый снимок —
+// живой поиск по рынку (transfersearch, TransferSearchPanel.tsx) остаётся
+// on-demand, без изменений.
 export default async function TransfersPage() {
   const tokens = await getRequiredHattrickTokens();
-  const { data: history, error } = await resolveTransferHistory(tokens);
+  const hattrickUserId = await getStoredHattrickUserId();
+
+  const syncStatus = hattrickUserId ? await ensureSynced(hattrickUserId, tokens) : null;
+  if (syncStatus && syncStatus.status === "failed" && !syncStatus.lastSyncedAt) {
+    return <SyncFailedScreen lastError={syncStatus.lastError} />;
+  }
+
+  const { data: history, error } = hattrickUserId
+    ? await getStoredTransferHistory(hattrickUserId)
+    : { data: null, error: null };
 
   return (
     <>

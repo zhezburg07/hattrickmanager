@@ -2,63 +2,30 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import YouthTable from "@/components/dashboard/YouthTable";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
+import SyncFailedScreen from "@/components/dashboard/SyncFailedScreen";
 import styles from "@/components/dashboard/Dashboard.module.css";
-import { getRequiredHattrickTokens, requestChppXmlRaw, type StoredHattrickTokens } from "@/lib/hattrickApi";
-import { parseClubXml } from "@/lib/clubStaff";
-import { parseYouthPlayerListXml, debugYouthPlayerListRawCount, type RealYouthPlayer } from "@/lib/youthPlayers";
+import { getRequiredHattrickTokens, getStoredHattrickUserId } from "@/lib/hattrickApi";
+import { ensureSynced, getStoredYouthData } from "@/lib/chppSync";
 
 // ВРЕМЕННАЯ диагностика — показывает реальный HTTP-статус и количество
-// игроков, найденных в ответе youthplayerlist, чтобы сразу отличать "запрос
-// упал" от "запрос успешен, но разбор XML вернул пусто" (именно вторая
-// причина оказалась настоящим багом — см. комментарий в src/lib/youthPlayers.ts).
+// игроков, найденных в ответе youthplayerlist (снятый во время синхронизации),
+// чтобы сразу отличать "запрос упал" от "запрос успешен, но разбор XML
+// вернул пусто". Поставьте false, когда список стабильно показывает
+// реальных игроков академии.
 const SHOW_YOUTH_DEBUG_PANEL = true;
-
-async function resolveYouthLevel(tokens: StoredHattrickTokens): Promise<{ youthLevel: number | null; error: string | null }> {
-  try {
-    const raw = await requestChppXmlRaw("club", {}, tokens);
-    if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
-      throw new Error(`HTTP ${raw.httpStatus}: ${raw.rawXml.slice(0, 200)}`);
-    }
-    return { youthLevel: parseClubXml(raw.rawXml).youthLevel, error: null };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "неизвестная ошибка";
-    return { youthLevel: null, error: `Академия (club): ${message}` };
-  }
-}
-
-// ИСПРАВЛЕНО: раньше версия файла не передавалась явно (по умолчанию
-// requestChppXmlRaw подставляет "1.5") — подтверждённая по независимому
-// CHPP-клиенту версия именно этого файла — "1.3" (chpp/file_youthplayerlist.go,
-// YouthPlayerListAPIVersion). Настоящая причина пустой вкладки была не в
-// версии (см. src/lib/youthPlayers.ts), но версия указана явно на всякий
-// случай — так же, как уже сделано для youthplayerdetails.xml.
-async function resolveYouthPlayers(tokens: StoredHattrickTokens): Promise<{
-  players: RealYouthPlayer[] | null;
-  error: string | null;
-  httpStatus: number | null;
-  rawPlayerCount: number;
-}> {
-  let httpStatus: number | null = null;
-  try {
-    const raw = await requestChppXmlRaw("youthplayerlist", { version: "1.3" }, tokens);
-    httpStatus = raw.httpStatus;
-    const rawPlayerCount = debugYouthPlayerListRawCount(raw.rawXml);
-    if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
-      throw new Error(`HTTP ${raw.httpStatus}: ${raw.rawXml.slice(0, 200)}`);
-    }
-    return { players: parseYouthPlayerListXml(raw.rawXml), error: null, httpStatus, rawPlayerCount };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "неизвестная ошибка";
-    return { players: null, error: `Список академии (youthplayerlist): ${message}`, httpStatus, rawPlayerCount: 0 };
-  }
-}
 
 export default async function YouthPage() {
   const tokens = await getRequiredHattrickTokens();
-  const [
-    { youthLevel, error: levelError },
-    { players, error: playersError, httpStatus: playersHttpStatus, rawPlayerCount },
-  ] = await Promise.all([resolveYouthLevel(tokens), resolveYouthPlayers(tokens)]);
+  const hattrickUserId = await getStoredHattrickUserId();
+
+  const syncStatus = hattrickUserId ? await ensureSynced(hattrickUserId, tokens) : null;
+  if (syncStatus && syncStatus.status === "failed" && !syncStatus.lastSyncedAt) {
+    return <SyncFailedScreen lastError={syncStatus.lastError} />;
+  }
+
+  const { youthLevel, levelError, players, playersError, playersHttpStatus, rawPlayerCount } = hattrickUserId
+    ? await getStoredYouthData(hattrickUserId)
+    : { youthLevel: null, levelError: null, players: null, playersError: null, playersHttpStatus: null, rawPlayerCount: 0 };
   const errors = [levelError, playersError].filter((e): e is string => e !== null);
 
   return (
