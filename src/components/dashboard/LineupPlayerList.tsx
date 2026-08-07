@@ -197,8 +197,11 @@ export default function LineupPlayerList({
     list.sort((a, b) => {
       const va = getValue(a, sortKey, overrides, trainerPlayerId);
       const vb = getValue(b, sortKey, overrides, trainerPlayerId);
-      const cmp =
+      let cmp =
         typeof va === "string" && typeof vb === "string" ? va.localeCompare(vb, "ru") : (va as number) - (vb as number);
+      // Внутри одной позиции — по TSI по убыванию (см. тот же тай-брейк в
+      // SquadTable.tsx).
+      if (cmp === 0 && sortKey === "positionGroup") cmp = b.tsi - a.tsi;
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;

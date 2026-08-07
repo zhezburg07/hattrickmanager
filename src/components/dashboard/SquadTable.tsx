@@ -248,10 +248,16 @@ export default function SquadTable({
     list.sort((a, b) => {
       const va = getValue(a, sortKey, overrides, effectiveTrainerPlayerId);
       const vb = getValue(b, sortKey, overrides, effectiveTrainerPlayerId);
-      const cmp =
+      let cmp =
         typeof va === "string" && typeof vb === "string"
           ? va.localeCompare(vb, "ru")
           : (va as number) - (vb as number);
+      // Внутри одной позиции — по TSI по убыванию (лучшие сверху), а не по
+      // порядку прихода данных: сортировка по "Поз." — единственная, где
+      // возможны настоящие связи (несколько игроков одного амплуа), для
+      // остальных столбцов совпадающие значения — редкость, тай-брейк там
+      // не нужен.
+      if (cmp === 0 && sortKey === "positionGroup") cmp = b.tsi - a.tsi;
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
