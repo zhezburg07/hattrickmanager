@@ -2,6 +2,7 @@ import { XMLParser } from "fast-xml-parser";
 import { assertNoChppError } from "./chppError";
 import { inferPositionGroup } from "./squadPlayers";
 import { resolveCountryByEnglishName, unknownCountry, type Country, type PositionGroup, type SquadSkills } from "@/data/squad";
+import type { YouthPlayerDetailsResult } from "./youthPlayerDetails";
 
 export interface RealYouthPlayer {
   id: number;
@@ -9,7 +10,32 @@ export interface RealYouthPlayer {
   age: number;
   nationality: Country;
   positionGroup: PositionGroup;
+  // Из youthplayerlist.xml — запасной вариант, если запрос подробностей
+  // конкретного игрока (ниже) не удался.
   skills: SquadSkills;
+  // Подробности сверх общего списка — отдельный запрос youthplayerdetails.xml
+  // НА КАЖДОГО игрока академии во время синхронизации (см. chppSync.ts,
+  // src/lib/youthPlayerDetails.ts). Оттуда же более точные навыки — при
+  // успехе именно они заменяют skills выше. undefined, если запрос для
+  // этого конкретного игрока не удался (тогда skills — из общего списка).
+  details?: YouthPlayerDetailsResult;
+}
+
+// Общий разбор <PlayerSkills> — используется и для youthplayerlist.xml
+// (список), и для youthplayerdetails.xml (один игрок): CHPP переиспользует
+// одну и ту же структуру YouthPlayerDetail в обоих файлах (подтверждено по
+// независимому CHPP-клиенту github.com/lucianoq/hattrick).
+export function parseYouthSkillsRaw(skillsRaw: Record<string, unknown> | undefined): SquadSkills {
+  const s = skillsRaw ?? {};
+  return {
+    goalkeeping: Number(s.KeeperSkill ?? 0),
+    defending: Number(s.DefenderSkill ?? 0),
+    midfield: Number(s.PlaymakerSkill ?? 0),
+    winger: Number(s.WingerSkill ?? 0),
+    passing: Number(s.PassingSkill ?? 0),
+    scoring: Number(s.ScorerSkill ?? 0),
+    setPieces: Number(s.SetPiecesSkill ?? 0),
+  };
 }
 
 // Разбирает XML-ответ CHPP на файл youthplayerlist.xml (v1.3) — список
@@ -45,16 +71,7 @@ export function parseYouthPlayerListXml(xml: string): RealYouthPlayer[] {
   const players: Record<string, unknown>[] = Array.isArray(rawPlayers) ? rawPlayers : rawPlayers ? [rawPlayers] : [];
 
   return players.map((p) => {
-    const skillsRaw = (p.PlayerSkills as Record<string, unknown> | undefined) ?? {};
-    const skills: SquadSkills = {
-      goalkeeping: Number(skillsRaw.KeeperSkill ?? 0),
-      defending: Number(skillsRaw.DefenderSkill ?? 0),
-      midfield: Number(skillsRaw.PlaymakerSkill ?? 0),
-      winger: Number(skillsRaw.WingerSkill ?? 0),
-      passing: Number(skillsRaw.PassingSkill ?? 0),
-      scoring: Number(skillsRaw.ScorerSkill ?? 0),
-      setPieces: Number(skillsRaw.SetPiecesSkill ?? 0),
-    };
+    const skills = parseYouthSkillsRaw(p.PlayerSkills as Record<string, unknown> | undefined);
 
     const firstName = String(p.FirstName ?? "").trim();
     const lastName = String(p.LastName ?? "").trim();

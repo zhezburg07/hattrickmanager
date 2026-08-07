@@ -216,3 +216,32 @@ export async function resolveOurCupPath(
 
   return { cupId, cupName: current.cupName, season: current.season, currentRound: current.round, path, debug, error: null };
 }
+
+// Только название и сезон турнира по CupID, без прохода по раундам — для
+// кубков, из которых команда уже выбыла в этом сезоне (см. чат "Кубки:
+// вернуть историю"). Полный resolveOurCupPath здесь не подходит: его первый
+// запрос (без Season/CupRound) возвращает ПОСЛЕДНИЙ раунд ВСЕГО турнира на
+// сегодняшний день, а не последний раунд, где реально играла наша уже
+// выбывшая команда — проход назад от чужого "текущего" раунда был бы и
+// неверной точкой отсчёта, и лишними запросами. Путь по такому кубку вместо
+// этого строится напрямую из уже известных матчей (matches.xml/
+// matchesarchive.xml — они уже помечены своим CupID, см. chppSync.ts),
+// здесь нужно только имя и сезон самого турнира одним лёгким запросом.
+export async function fetchCupMeta(
+  tokens: StoredHattrickTokens,
+  cupId: string,
+): Promise<{ cupName: string; season: number } | null> {
+  try {
+    const raw = await requestChppXmlRaw("cupmatches", { CupID: cupId, version: CUP_MATCHES_VERSION }, tokens);
+    if (raw.httpStatus < 200 || raw.httpStatus >= 300) return null;
+    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+    const data = parser.parse(raw.rawXml);
+    const root = data?.HattrickData;
+    assertNoChppError(root, "cupmatches");
+    const cup = root?.Cup as Record<string, unknown> | undefined;
+    if (!cup) return null;
+    return { cupName: String(cup.CupName ?? ""), season: Number(cup.CupSeason ?? 0) };
+  } catch {
+    return null;
+  }
+}

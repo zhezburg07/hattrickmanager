@@ -34,6 +34,7 @@ import { trainingWeekKey, saveCurrentWeekSnapshot, saveWeeklyTsiSnapshot } from 
 import { parseArenaDetailsXml, type RealArenaCapacity } from "./arena";
 import { parseTrainingXml, type RealTraining } from "./training";
 import { parseYouthPlayerListXml, debugYouthPlayerListRawCount, type RealYouthPlayer } from "./youthPlayers";
+import { parseYouthPlayerDetailsXml, YOUTH_PLAYER_DETAILS_VERSION } from "./youthPlayerDetails";
 import { parseChallengesXml, type ArenaChallengesResult } from "./hattrickArena";
 import {
   toSeasonMatches,
@@ -44,7 +45,7 @@ import {
   CUP_MATCH_TYPE,
 } from "./matches";
 import type { SeasonMatch } from "@/data/matches";
-import { resolveOurCupPath, type OurCupPathResult } from "./cupMatches";
+import { resolveOurCupPath, fetchCupMeta, type OurCupPathResult, type RealCupMatch } from "./cupMatches";
 import type { UpcomingCupMatch } from "@/components/dashboard/CupSection";
 import { parseTransfersTeamXml, TRANSFERS_TEAM_VERSION, type TransferHistoryResult } from "./transferMarket";
 import {
@@ -152,10 +153,23 @@ export interface CupDebugInfo {
   matchesRawSample: Record<string, unknown>[];
   pathDebug: string[];
   nextMatchFound: string | null;
+  // Другие CupID, найденные в matches.xml/matchesarchive.xml за этот сезон
+  // (см. "cupInfo" ниже) — кубки, из которых команда уже выбыла, каскад
+  // Национальный Кубок → Кубок Вызова → ... Пустой список — не значит
+  // ошибку, просто команда в этом сезоне играла только в одном кубке (или
+  // ни в одном).
+  pastCupIds: string[];
 }
 
 export interface StoredCupInfo {
-  cupPath: OurCupPathResult | null;
+  // Все кубки, в которых команда участвовала в этом сезоне — от самого
+  // раннего к текущему/последнему (см. "cupInfo" ниже). Раньше здесь было
+  // только ОДНО поле cupPath (текущий кубок) — после миграции на
+  // chpp_snapshots (Фаза 3) незаметно потерялась история кубков, из которых
+  // команда уже выбыла (см. чат "Кубки: вернуть историю"), потому что
+  // resolveOurCupPath в принципе умеет строить путь только по ОДНОМУ,
+  // заранее известному CupID.
+  cupPaths: OurCupPathResult[];
   nextMatch: UpcomingCupMatch | null;
   errors: string[];
   debug: CupDebugInfo;
@@ -174,6 +188,45 @@ const emptyOpponentAnalysis: OpponentAnalysisResult = {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "неизвестная ошибка";
+}
+
+// Путь по кубку, из которого команда уже выбыла в этом сезоне — строится
+// напрямую из уже известных матчей (matches.xml/matchesarchive.xml, см.
+// mergedSeasonMatches), без единого запроса к cupmatches.xml за раунды: они
+// уже все сыграны и уже есть в списке матчей команды. Раунд — это просто
+// порядковый номер среди своих матчей этого CupID по дате (CHPP не
+// присылает номер раунда в matches.xml, но реальный порядок раундов кубка
+// всегда совпадает с порядком дат матчей). Название/сезон турнира — из
+// fetchCupMeta (один лёгкий запрос, см. cupMatches.ts), может быть
+// недоступно (null) — тогда путь всё равно строится, просто с пустым
+// названием (UI покажет "Кубок").
+function pastCupPathFromMatches(
+  cupId: string,
+  matches: RealMatch[],
+  meta: { cupName: string; season: number } | null,
+): OurCupPathResult {
+  const ourMatches = matches
+    .filter((m) => m.cupId === cupId)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const path: RealCupMatch[] = ourMatches.map((m, i) => ({
+    matchId: m.matchId,
+    date: m.date,
+    home: m.home,
+    opponent: m.opponent,
+    status: m.status,
+    ourScore: m.ourScore,
+    oppScore: m.oppScore,
+    round: i + 1,
+  }));
+  return {
+    cupId,
+    cupName: meta?.cupName ?? "",
+    season: meta?.season ?? 0,
+    currentRound: path.length,
+    path,
+    debug: [`Путь построен из уже известных матчей (matches/matchesarchive), без прохода по раундам cupmatches: ${path.length} матч(ей).`],
+    error: null,
+  };
 }
 
 async function requestAllRaw(
@@ -364,6 +417,14 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // заново, как делали resolveLastMatchRatings/resolveOpponentAnalysis при
   // живом запросе; Обзор сам отфильтрует недавние/ближайшие при чтении) --
   let parsedMatches: RealMatch[] | null = null;
+  // Текущий сезон + matchesarchive, объединённые и без дублей — заполняется
+  // в секции "matchesCalendar" ниже, но нужен ещё и "cupInfo" (полная
+  // история кубков сезона, включая уже завершённые/проигранные — matches.xml
+  // один даёт только ~50 последних матчей, чего мало, если команда успела
+  // сыграть кубок+лигу+товарищеские). Держим в этой более широкой области
+  // видимости, а не только внутри блока "matchesCalendar", специально ради
+  // этого переиспользования.
+  let mergedSeasonMatches: RealMatch[] | null = null;
   try {
     assertOkStatus(raw.matches);
     parsedMatches = parseMatchesXml(raw.matches.rawXml, teamId);
@@ -522,6 +583,16 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // статус, реально разобранное число игроков) хранятся ВНУТРИ объекта, как
   // и в исходном resolveYouthPlayers, а не отдельной колонкой — страница
   // показывает их и на "серых" ошибках (SHOW_YOUTH_DEBUG_PANEL).
+  //
+  // Настоящие навыки — отдельным запросом youthplayerdetails.xml НА КАЖДОГО
+  // игрока академии (см. чат "Юношеская команда: подключить реальные
+  // навыки"), а не только базовые из youthplayerlist.xml выше: тот же ответ
+  // заодно даёт карьерную статистику/слова скаута/последний матч —
+  // используем по максимуму, раз уже запрашиваем этот файл на каждого
+  // игрока, вместо отдельного live-запроса по клику (см. раньше
+  // /api/dashboard/youth-player-details — теперь не нужен, страница читает
+  // details прямо из снимка). Один игрок не отвечает — просто остаётся без
+  // details, с навыками из youthplayerlist.xml как есть.
   {
     let youthPlayers: RealYouthPlayer[] | null = null;
     let youthError: string | null = null;
@@ -533,6 +604,28 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       assertOkStatus(raw.youthplayerlist);
       youthPlayers = parseYouthPlayerListXml(raw.youthplayerlist.rawXml);
       anySucceeded = true;
+
+      if (youthPlayers.length > 0) {
+        const detailResults = await Promise.allSettled(
+          youthPlayers.map((p) =>
+            requestChppXmlRaw(
+              "youthplayerdetails",
+              { youthPlayerId: String(p.id), showScoutCall: "true", showLastMatch: "true", version: YOUTH_PLAYER_DETAILS_VERSION },
+              tokens,
+            ),
+          ),
+        );
+        youthPlayers = youthPlayers.map((p, i) => {
+          const r = detailResults[i];
+          if (r.status !== "fulfilled" || r.value.httpStatus < 200 || r.value.httpStatus >= 300) return p;
+          try {
+            const details = parseYouthPlayerDetailsXml(r.value.rawXml);
+            return { ...p, skills: details.skills, details };
+          } catch {
+            return p;
+          }
+        });
+      }
     } catch (err) {
       youthError = `Список академии (youthplayerlist): ${errorMessage(err)}`;
       anyFailed = true;
@@ -749,6 +842,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
 
       const merged = dedupeMatches([...currentSeasonMatches, ...archiveMatches]);
       debugCounts.push(`после объединения и удаления дублей: ${merged.length}`);
+      mergedSeasonMatches = merged;
 
       if (merged.length === 0) {
         const archiveNote = archiveMatches.length === 0 ? " и matchesarchive" : "";
@@ -811,12 +905,19 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.matchesCalendar, stored);
   }
 
-  // -- cupInfo (Кубки: путь по раундам текущего кубка + ближайший
-  // предстоящий кубковый матч) — teamId/stillInCup/cupId/cupName из
-  // teamdetails, club (parsedClub) и matches (parsedMatches) уже получены
-  // выше для своих секций, здесь только запасной поиск CupID и сам проход
-  // по раундам cupmatches (resolveOurCupPath — единственный по-настоящему
-  // новый запрос в этой секции, его пагинация неизбежно последовательна). --
+  // -- cupInfo (Кубки: полная история сезона — путь по раундам ТЕКУЩЕГО
+  // кубка плюс путь по каждому кубку, из которого команда уже выбыла в этом
+  // сезоне, плюс ближайший предстоящий кубковый матч). teamId/stillInCup/
+  // cupId/cupName из teamdetails, club (parsedClub) уже получены выше для
+  // своих секций. matchesForCup берём из ОБЪЕДИНЁННОГО списка сезона
+  // (mergedSeasonMatches — matches.xml + matchesarchive.xml, см. секцию
+  // "matchesCalendar" выше), а не только matches.xml — там всего ~50
+  // последних матчей, и более ранние кубковые матчи (уже выбывший кубок)
+  // вполне могли из него выпасть. Единственный по-настоящему новый запрос
+  // здесь — resolveOurCupPath ДЛЯ ТЕКУЩЕГО кубка (его пагинация по раундам
+  // неизбежно последовательна); для уже пройденных кубков раунды строятся
+  // напрямую из уже известных матчей (pastCupPathFromMatches), плюс по
+  // одному лёгкому запросу fetchCupMeta на кубок за названием турнира. --
   {
     const debug: CupDebugInfo = {
       teamId: teamId || null,
@@ -829,11 +930,12 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       matchesRawSample: [],
       pathDebug: [],
       nextMatchFound: null,
+      pastCupIds: [],
     };
     const errors: string[] = [];
 
     let cupId = cupIdFromTeamDetails;
-    const matchesForCup = parsedMatches ?? [];
+    const matchesForCup = mergedSeasonMatches ?? parsedMatches ?? [];
     if (teamId) {
       debug.matchesCupId = matchesForCup.find((m) => m.cupId !== null)?.cupId ?? null;
       debug.matchesRawSample = raw.matches ? debugRawMatchFields(raw.matches.rawXml, 10) : [];
@@ -843,18 +945,45 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     }
     debug.chosenCupId = cupId;
 
-    let cupPath: OurCupPathResult | null = null;
+    let currentCupPath: OurCupPathResult | null = null;
     if (cupId && teamId) {
-      cupPath = await resolveOurCupPath(tokens, cupId, teamId);
-      debug.pathDebug = cupPath.debug;
-      if (cupPath.error) errors.push(cupPath.error);
+      currentCupPath = await resolveOurCupPath(tokens, cupId, teamId);
+      debug.pathDebug = currentCupPath.debug;
+      if (currentCupPath.error) errors.push(currentCupPath.error);
     }
+
+    // Другие CupID среди сыгранных кубковых матчей сезона — кубки, из
+    // которых команда уже выбыла (каскад Национальный → Кубок Вызова → ...).
+    // Сортировка по дате первого своего матча в кубке — от самого раннего к
+    // самому позднему, текущий кубок (если есть) добавляется последним, как
+    // самый актуальный этап каскада.
+    const pastCupIds = [
+      ...new Set(
+        matchesForCup
+          .filter((m) => Number(m.matchType) === CUP_MATCH_TYPE && m.status === "FINISHED" && m.cupId !== null && m.cupId !== cupId)
+          .map((m) => m.cupId as string),
+      ),
+    ].sort((a, b) => {
+      const dateOf = (id: string) =>
+        matchesForCup.filter((m) => m.cupId === id).sort((x, y) => x.date.localeCompare(y.date))[0]?.date ?? "";
+      return dateOf(a).localeCompare(dateOf(b));
+    });
+    debug.pastCupIds = pastCupIds;
+
+    const pastCupPaths = await Promise.all(
+      pastCupIds.map(async (id) => {
+        const meta = await fetchCupMeta(tokens, id);
+        return pastCupPathFromMatches(id, matchesForCup, meta);
+      }),
+    );
+
+    const cupPaths: OurCupPathResult[] = [...pastCupPaths, ...(currentCupPath ? [currentCupPath] : [])];
 
     const rawNextMatch = matchesForCup
       .filter((m) => Number(m.matchType) === CUP_MATCH_TYPE && m.status === "UPCOMING")
       .filter((m) => cupId === null || m.cupId === null || m.cupId === cupId)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
-    const alreadyInPath = cupPath?.path.some((m) => m.matchId === rawNextMatch?.matchId) ?? false;
+    const alreadyInPath = currentCupPath?.path.some((m) => m.matchId === rawNextMatch?.matchId) ?? false;
     debug.nextMatchFound = rawNextMatch
       ? `MatchID ${rawNextMatch.matchId} (${rawNextMatch.date}, соперник «${rawNextMatch.opponent}»)${alreadyInPath ? " — уже показан в пути по раундам, отдельно не дублируем" : ""}`
       : "не найден среди матчей matches.xml (MatchType=3, статус UPCOMING)";
@@ -863,7 +992,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         ? { matchId: rawNextMatch.matchId, date: rawNextMatch.date, home: rawNextMatch.home, opponent: rawNextMatch.opponent }
         : null;
 
-    const stored: StoredCupInfo = { cupPath, nextMatch, errors, debug };
+    const stored: StoredCupInfo = { cupPaths, nextMatch, errors, debug };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.cupInfo, stored);
     if (errors.length === 0) anySucceeded = true;
     else anyFailed = true;
@@ -1205,7 +1334,7 @@ export async function getStoredCupData(hattrickUserId: string): Promise<StoredCu
   const stored = entry?.data as StoredCupInfo | null;
   return (
     stored ?? {
-      cupPath: null,
+      cupPaths: [],
       nextMatch: null,
       errors: entry?.error ? [entry.error] : [],
       debug: {
@@ -1219,6 +1348,7 @@ export async function getStoredCupData(hattrickUserId: string): Promise<StoredCu
         matchesRawSample: [],
         pathDebug: [],
         nextMatchFound: null,
+        pastCupIds: [],
       },
     }
   );

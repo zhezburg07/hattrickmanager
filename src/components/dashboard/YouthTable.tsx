@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { positionGroupLabel, skillLabel, skillWord, type Country, type PositionGroup, type SquadSkills } from "@/data/squad";
+import { positionGroupLabel, skillLabel, skillWord, type SquadSkills } from "@/data/squad";
+import type { RealYouthPlayer } from "@/lib/youthPlayers";
 import NationalityTag from "./NationalityTag";
-import YouthPlayerDetailModal, { type RealYouthPlayerRow } from "./YouthPlayerDetailModal";
+import YouthPlayerDetailModal from "./YouthPlayerDetailModal";
 import styles from "./SquadTable.module.css";
 
 type SkillKey = keyof SquadSkills;
@@ -27,23 +28,15 @@ function tierFromRatio(ratio: number): string {
   return styles.skillTierLow;
 }
 
-function PromoteButton() {
-  return (
-    <button type="button" className="btnSecondary" disabled title="Переводы в основной состав скоро появятся">
-      Перевести в основу
-    </button>
-  );
-}
-
 export default function YouthTable({
   youthLevel,
   players,
 }: {
   youthLevel?: number;
-  players?: RealYouthPlayerRow[];
+  players?: RealYouthPlayer[];
 }) {
   const roster = players ?? [];
-  const [selectedPlayer, setSelectedPlayer] = useState<RealYouthPlayerRow | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<RealYouthPlayer | null>(null);
 
   return (
     <>
@@ -101,7 +94,6 @@ export default function YouthTable({
                     </span>
                   </th>
                 ))}
-                <th />
               </tr>
             </thead>
             <tbody>
@@ -120,9 +112,6 @@ export default function YouthTable({
                       </span>
                     </td>
                   ))}
-                  <td>
-                    <PromoteButton />
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -151,10 +140,6 @@ export default function YouthTable({
                     <span className={styles.playerCardSkillValue}>{skillWord(p.skills[k])}</span>
                   </div>
                 ))}
-              </div>
-
-              <div style={{ marginTop: 12 }}>
-                <PromoteButton />
               </div>
             </div>
           ))}

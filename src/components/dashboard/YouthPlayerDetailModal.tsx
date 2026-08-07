@@ -1,38 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { positionGroupLabel, skillLabel, skillWord, type Country, type PositionGroup, type SquadSkills } from "@/data/squad";
+import { positionGroupLabel, skillLabel, skillWord } from "@/data/squad";
+import type { RealYouthPlayer } from "@/lib/youthPlayers";
 import NationalityTag from "./NationalityTag";
 import styles from "./PlayerDetailModal.module.css";
 
-export interface RealYouthPlayerRow {
-  id: number;
-  name: string;
-  age: number;
-  nationality: Country;
-  positionGroup: PositionGroup;
-  skills: SquadSkills;
-}
-
-const skillKeys: (keyof SquadSkills)[] = ["goalkeeping", "defending", "midfield", "winger", "passing", "scoring", "setPieces"];
-
-interface YouthPlayerDetailsResponse {
-  data: {
-    arrivalDate: string;
-    canBePromotedIn: number;
-    careerGoals: number;
-    careerHattricks: number;
-    leagueGoals: number;
-    friendlyGoals: number;
-    statement: string | null;
-    scoutName: string | null;
-    scoutComments: string[];
-    lastMatchDate: string | null;
-    lastMatchRating: number | null;
-  } | null;
-  error: string | null;
-}
+const skillKeys: (keyof RealYouthPlayer["skills"])[] = [
+  "goalkeeping",
+  "defending",
+  "midfield",
+  "winger",
+  "passing",
+  "scoring",
+  "setPieces",
+];
 
 function AvatarIcon() {
   return (
@@ -47,14 +30,16 @@ function AvatarIcon() {
 // Карточка юношеского игрока — youthplayerlist.xml (общий список, уже
 // используется на вкладке "Юношеская команда") даёт только базовые поля;
 // подробности (дата прихода, срок до перевода в основу, карьерная
-// статистика, слова скаута, последний матч) — отдельный файл
-// youthplayerdetails.xml, запрашивается при открытии карточки (см.
-// src/lib/youthPlayerDetails.ts).
+// статистика, слова скаута, последний матч) — из отдельного файла
+// youthplayerdetails.xml, но теперь запрошенного ЗАРАНЕЕ, во время
+// синхронизации, на каждого игрока академии сразу (см. chppSync.ts) — сама
+// карточка больше не делает живой запрос по клику, просто показывает уже
+// готовый player.details.
 export default function YouthPlayerDetailModal({
   player,
   onClose,
 }: {
-  player: RealYouthPlayerRow;
+  player: RealYouthPlayer;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -65,30 +50,7 @@ export default function YouthPlayerDetailModal({
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
-  const [loading, setLoading] = useState(true);
-  const [details, setDetails] = useState<YouthPlayerDetailsResponse["data"]>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetch(`/api/dashboard/youth-player-details?youthPlayerId=${player.id}`)
-      .then((res) => res.json())
-      .then((json: YouthPlayerDetailsResponse) => {
-        if (cancelled) return;
-        if (json.error) setError(json.error);
-        else setDetails(json.data);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Не удалось загрузить подробности");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [player.id]);
+  const details = player.details;
 
   return createPortal(
     <div className={styles.overlay} onClick={onClose}>
@@ -121,9 +83,8 @@ export default function YouthPlayerDetailModal({
         </div>
 
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--color-border)", fontSize: 12, lineHeight: 1.6 }}>
-          {loading && <span style={{ color: "var(--color-text-muted)" }}>Загрузка подробностей…</span>}
-          {!loading && error && <span style={{ color: "var(--color-text-muted)" }}>{error}</span>}
-          {!loading && !error && details && (
+          {!details && <span style={{ color: "var(--color-text-muted)" }}>Подробности недоступны для этого игрока.</span>}
+          {details && (
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <div>
                 Пришёл в академию: <b>{details.arrivalDate || "неизвестно"}</b>

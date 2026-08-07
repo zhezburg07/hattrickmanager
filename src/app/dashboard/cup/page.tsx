@@ -5,7 +5,7 @@ import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import SyncFailedScreen from "@/components/dashboard/SyncFailedScreen";
 import styles from "@/components/dashboard/Dashboard.module.css";
 import { getRequiredHattrickTokens, getStoredHattrickUserId } from "@/lib/hattrickApi";
-import { ensureSynced, getStoredCupData } from "@/lib/chppSync";
+import { ensureSynced, getStoredCupData, type StoredCupInfo } from "@/lib/chppSync";
 
 // ВРЕМЕННАЯ диагностика — показывает, откуда (если откуда-то) реально
 // нашёлся CupID (teamdetails/club/matches) и что вернул проход по раундам
@@ -22,10 +22,10 @@ export default async function CupPage() {
     return <SyncFailedScreen lastError={syncStatus.lastError} />;
   }
 
-  const { cupPath, nextMatch, errors, debug } = hattrickUserId
+  const { cupPaths, nextMatch, errors, debug } = hattrickUserId
     ? await getStoredCupData(hattrickUserId)
     : {
-        cupPath: null,
+        cupPaths: [] as StoredCupInfo["cupPaths"],
         nextMatch: null,
         errors: [] as string[],
         debug: {
@@ -39,6 +39,7 @@ export default async function CupPage() {
           matchesRawSample: [] as Record<string, unknown>[],
           pathDebug: [] as string[],
           nextMatchFound: null,
+          pastCupIds: [] as string[],
         },
       };
 
@@ -66,6 +67,10 @@ export default async function CupPage() {
                   CupID из matches.xml (MatchContextId у матча с MatchType=3): {debug.matchesCupId ?? "не найден / не запрашивался"}
                 </div>
                 <div style={{ fontWeight: 700, marginTop: 4 }}>Итоговый CupID: {debug.chosenCupId ?? "не найден — cupmatches не запрашивался"}</div>
+                <div>
+                  Другие кубки этого сезона (уже выбыли):{" "}
+                  {debug.pastCupIds.length > 0 ? debug.pastCupIds.join(", ") : "не найдены"}
+                </div>
               </div>
 
               {debug.matchesRawSample.length > 0 && (
@@ -100,7 +105,7 @@ export default async function CupPage() {
             </div>
           )}
 
-          <CupSection cupPath={cupPath ?? undefined} nextMatch={nextMatch} />
+          <CupSection cupPaths={cupPaths} nextMatch={nextMatch} />
         </div>
       </main>
       <Footer />

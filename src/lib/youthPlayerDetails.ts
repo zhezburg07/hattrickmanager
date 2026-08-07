@@ -2,6 +2,8 @@ import { XMLParser } from "fast-xml-parser";
 import { assertNoChppError } from "./chppError";
 import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
 import { stripHtml } from "./htmlText";
+import { parseYouthSkillsRaw } from "./youthPlayers";
+import type { SquadSkills } from "@/data/squad";
 
 // Подробные данные о юношеском игроке сверх общего списка
 // youthplayerlist.xml (youthplayerdetails.xml, v1.3) — подтверждено по
@@ -9,9 +11,13 @@ import { stripHtml } from "./htmlText";
 // называется "youthPlayerId" (со строчной "d", в отличие от youthTeamID) —
 // подтверждено в исходнике клиента. showScoutCall/showLastMatch запрошены
 // явно, чтобы получить комментарии скаута и последний сыгранный матч.
-const YOUTH_PLAYER_DETAILS_VERSION = "1.3";
+export const YOUTH_PLAYER_DETAILS_VERSION = "1.3";
 
 export interface YouthPlayerDetailsResult {
+  // Тот же <PlayerSkills>, что и в youthplayerlist.xml, только теперь по
+  // конкретному игроку отдельным запросом — источник настоящих навыков
+  // (см. чат "Юношеская команда: подключить реальные навыки").
+  skills: SquadSkills;
   arrivalDate: string;
   canBePromotedIn: number;
   careerGoals: number;
@@ -47,8 +53,10 @@ export function parseYouthPlayerDetailsXml(xml: string): YouthPlayerDetailsResul
   );
 
   const lastMatch = player.LastMatch as Record<string, unknown> | undefined;
+  const skills = parseYouthSkillsRaw(player.PlayerSkills as Record<string, unknown> | undefined);
 
   return {
+    skills,
     arrivalDate: String(player.ArrivalDate ?? ""),
     canBePromotedIn: Number(player.CanBePromotedIn ?? 0),
     careerGoals: Number(player.CareerGoals ?? 0),
