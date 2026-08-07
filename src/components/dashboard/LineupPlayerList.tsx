@@ -24,12 +24,14 @@ import {
   DiffArrow,
   formatAge,
   effectiveAbbrev,
+  positionSortValue,
   AmpluaAccent,
   PositionBadgeReadOnly,
   StatusRow,
   SkillNumberCell,
   LoyaltyCell,
   RatingCell,
+  AverageRow,
   type SkillKey,
 } from "./squadCells";
 import styles from "./SquadTable.module.css";
@@ -75,14 +77,19 @@ const textColumns = new Set<SortKey>(["flag", "name", "positionGroup", "status"]
 
 const statusRank: Record<PlayerStatus, number> = { starting: 0, bench: 1, squad: 1, injured: 2 };
 
-function getValue(player: SquadPlayer, key: SortKey, overrides: PositionOverrides): string | number {
+function getValue(
+  player: SquadPlayer,
+  key: SortKey,
+  overrides: PositionOverrides,
+  trainerPlayerId: number | undefined,
+): string | number {
   switch (key) {
     case "flag":
       return player.nationality.name;
     case "name":
       return player.name;
     case "positionGroup":
-      return effectiveAbbrev(player, overrides);
+      return positionSortValue(player, overrides, trainerPlayerId);
     case "age":
       return player.age + player.ageDays / 112;
     case "status":
@@ -115,6 +122,7 @@ export default function LineupPlayerList({
   subIds,
   payloadForPlayer,
   prevByPlayerId,
+  trainerPlayerId,
 }: {
   players: SquadPlayer[];
   onDropToBench: (payload: DragPayload) => void;
@@ -124,12 +132,17 @@ export default function LineupPlayerList({
   subIds: Set<number>;
   payloadForPlayer: (playerId: number) => DragPayload;
   prevByPlayerId?: Record<number, PlayerStatSnapshot | undefined>;
+  trainerPlayerId?: number;
 }) {
   const [isOver, setIsOver] = useState(false);
-  const [sortKey, setSortKey] = useState<SortKey>("status");
+  // По умолчанию — Вратарь → Защитник → Полузащитник → Вингер → Нападающий,
+  // тренер последним (см. positionSortValue в squadCells.tsx), как и в
+  // "Составе" — столбец по-прежнему кликабелен для ручной пересортировки.
+  const [sortKey, setSortKey] = useState<SortKey>("positionGroup");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const dragGhostRef = useRef<HTMLSpanElement>(null);
   const { overrides } = usePositionOverrides();
+  const resolvedPrevByPlayerId = prevByPlayerId ?? {};
 
   // Прячем столбцы целиком, если ни у одного игрока нет данных (см.
   // SquadTable.tsx, тот же принцип).
@@ -140,14 +153,14 @@ export default function LineupPlayerList({
   const sorted = useMemo(() => {
     const list = [...players];
     list.sort((a, b) => {
-      const va = getValue(a, sortKey, overrides);
-      const vb = getValue(b, sortKey, overrides);
+      const va = getValue(a, sortKey, overrides, trainerPlayerId);
+      const vb = getValue(b, sortKey, overrides, trainerPlayerId);
       const cmp =
         typeof va === "string" && typeof vb === "string" ? va.localeCompare(vb, "ru") : (va as number) - (vb as number);
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
-  }, [players, sortKey, sortDir, overrides]);
+  }, [players, sortKey, sortDir, overrides, trainerPlayerId]);
 
   function handleSort(key: SortKey) {
     if (key === sortKey) {
@@ -289,6 +302,9 @@ export default function LineupPlayerList({
               );
             })}
           </tbody>
+          <tfoot>
+            <AverageRow players={players} prevByPlayerId={resolvedPrevByPlayerId} hasLoyalty={hasLoyalty} hasRating={hasRating} />
+          </tfoot>
         </table>
       </div>
     </div>

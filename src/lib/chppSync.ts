@@ -1039,6 +1039,7 @@ export interface LineupPageData {
   players: SquadPlayer[] | null;
   error: string | null;
   opponentAnalysis: OpponentAnalysisResult;
+  trainerPlayerId: number | undefined;
 }
 
 export async function getStoredLineupData(hattrickUserId: string): Promise<LineupPageData> {
@@ -1050,11 +1051,19 @@ export async function getStoredLineupData(hattrickUserId: string): Promise<Lineu
     ...emptyOpponentAnalysis,
     error: opponentEntry?.error ?? null,
   };
+  const team = snapshots[DATA_KEYS.team]?.data as StoredTeamData | null;
+
+  let trainerPlayerId: number | undefined;
+  if (team?.trainerPlayerId) {
+    const id = Number(team.trainerPlayerId);
+    trainerPlayerId = Number.isNaN(id) || id === 0 ? undefined : id;
+  }
 
   return {
     players: playersData?.players ?? null,
     error: playersEntry?.error ?? null,
     opponentAnalysis,
+    trainerPlayerId,
   };
 }
 

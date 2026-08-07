@@ -25,7 +25,7 @@ export default async function LineupPage() {
     return <SyncFailedScreen lastError={syncStatus.lastError} />;
   }
 
-  const { players, error, opponentAnalysis } = hattrickUserId
+  const { players, error, opponentAnalysis, trainerPlayerId } = hattrickUserId
     ? await getStoredLineupData(hattrickUserId)
     : {
         players: null,
@@ -40,6 +40,7 @@ export default async function LineupPage() {
           zoneStrength: { ratings: {}, available: false, unavailableReason: null },
           error: null,
         },
+        trainerPlayerId: undefined,
       };
 
   const prevByPlayerId =
@@ -57,7 +58,12 @@ export default async function LineupPage() {
                 CHPP не сообщает, кто сейчас стоит в основе — расставьте игроков сами или нажмите
                 «Рекомендовать состав».
               </p>
-              <LineupBoard players={players} prevByPlayerId={prevByPlayerId} opponentAnalysis={opponentAnalysis} />
+              <LineupBoard
+                players={players}
+                prevByPlayerId={prevByPlayerId}
+                opponentAnalysis={opponentAnalysis}
+                trainerPlayerId={trainerPlayerId}
+              />
             </>
           )}
         </div>

@@ -87,10 +87,12 @@ export default function LineupBoard({
   players,
   prevByPlayerId,
   opponentAnalysis,
+  trainerPlayerId,
 }: {
   players: SquadPlayer[];
   prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
   opponentAnalysis: OpponentAnalysisResult;
+  trainerPlayerId?: number;
 }) {
   const roster = players;
   const playersById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
@@ -462,6 +464,7 @@ export default function LineupBoard({
           subIds={subIds}
           payloadForPlayer={payloadForPlayer}
           prevByPlayerId={resolvedPrevByPlayerId}
+          trainerPlayerId={trainerPlayerId}
         />
       </div>
 

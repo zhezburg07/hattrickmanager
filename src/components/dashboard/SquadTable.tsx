@@ -32,12 +32,14 @@ import {
   formatAge,
   effectiveAbbrev,
   effectiveAbbrevColor,
+  positionSortValue,
   AmpluaAccent,
   StatusRow,
   SkillNumberCell,
   LoyaltyCell,
   RatingCell,
   TrainerIcon,
+  AverageRow,
   type SkillKey,
 } from "./squadCells";
 import styles from "./SquadTable.module.css";
@@ -122,7 +124,12 @@ function naturalSelection(player: SquadPlayer): PositionOverrideValue {
   return abbrevToOverrideValue[effectiveAbbrev(player, {})];
 }
 
-function getValue(player: SquadPlayer, key: SortKey, overrides: PositionOverrides): string | number {
+function getValue(
+  player: SquadPlayer,
+  key: SortKey,
+  overrides: PositionOverrides,
+  trainerPlayerId: number | undefined,
+): string | number {
   switch (key) {
     case "flag":
       return player.nationality.name;
@@ -131,7 +138,7 @@ function getValue(player: SquadPlayer, key: SortKey, overrides: PositionOverride
     case "age":
       return player.age + player.ageDays / 112;
     case "positionGroup":
-      return effectiveAbbrev(player, overrides);
+      return positionSortValue(player, overrides, trainerPlayerId);
     case "form":
       return player.form;
     case "stamina":
@@ -212,7 +219,10 @@ export default function SquadTable({
 }) {
   const roster = players;
   const effectiveTrainerPlayerId = trainerPlayerId;
-  const [sortKey, setSortKey] = useState<SortKey>("status");
+  // По умолчанию — Вратарь → Защитник → Полузащитник → Вингер → Нападающий,
+  // тренер последним (см. positionSortValue), а не по статусу, как раньше.
+  // Столбец по-прежнему кликабелен для ручной пересортировки.
+  const [sortKey, setSortKey] = useState<SortKey>("positionGroup");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedPlayer, setSelectedPlayer] = useState<SquadPlayer | null>(null);
   const { overrides, setOverride } = usePositionOverrides();
@@ -230,8 +240,8 @@ export default function SquadTable({
   const sorted = useMemo(() => {
     const list = [...roster];
     list.sort((a, b) => {
-      const va = getValue(a, sortKey, overrides);
-      const vb = getValue(b, sortKey, overrides);
+      const va = getValue(a, sortKey, overrides, effectiveTrainerPlayerId);
+      const vb = getValue(b, sortKey, overrides, effectiveTrainerPlayerId);
       const cmp =
         typeof va === "string" && typeof vb === "string"
           ? va.localeCompare(vb, "ru")
@@ -239,7 +249,7 @@ export default function SquadTable({
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
-  }, [roster, sortKey, sortDir, overrides]);
+  }, [roster, sortKey, sortDir, overrides, effectiveTrainerPlayerId]);
 
   function handleSort(key: SortKey) {
     if (key === sortKey) {
@@ -340,6 +350,9 @@ export default function SquadTable({
               );
             })}
           </tbody>
+          <tfoot>
+            <AverageRow players={roster} prevByPlayerId={resolvedPrevByPlayerId} hasLoyalty={hasLoyalty} hasRating={hasRating} />
+          </tfoot>
         </table>
       </div>
 

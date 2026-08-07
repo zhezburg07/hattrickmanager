@@ -12,14 +12,17 @@ import {
   specialtyLabel,
   skillLabel,
   skillWord,
+  staminaToLevel,
+  estimatePotentialRating,
   type SquadPlayer,
   type PlayerStatus,
+  type PlayerStatSnapshot,
   type SquadSkills,
 } from "@/data/squad";
 import { effectivePositionGroup, type PositionOverrides } from "@/data/positionOverrides";
 import HeartIcon from "./HeartIcon";
 import { SpecialtyIcon, InjuryIcon, CardIcon } from "./StatusIcons";
-import { type DiffDirection } from "./playerStatChanges";
+import { diffDirection, diffTitle, type DiffDirection } from "./playerStatChanges";
 import styles from "./SquadTable.module.css";
 import diffStyles from "./StatDiff.module.css";
 
@@ -88,6 +91,22 @@ export function effectiveAbbrev(player: SquadPlayer, overrides: PositionOverride
 
 export function effectiveAbbrevColor(player: SquadPlayer, overrides: PositionOverrides): string {
   return positionAccentColorForAbbrev(effectiveAbbrev(player, overrides));
+}
+
+// Порядок позиций по умолчанию (сортировка "Поз." по возрастанию): Вратарь →
+// Защитник → Полузащитник → Вингер → Нападающий. Тренер команды получает
+// ранг ЗА пределами этой шкалы (5) — сортируется последним независимо от
+// его игровой позиции, как и попросили (см. чат "сортировка по умолчанию").
+const positionRank: Record<string, number> = { GK: 0, CD: 1, CM: 2, W: 3, ST: 4 };
+const TRAINER_RANK = 5;
+
+export function positionSortValue(
+  player: SquadPlayer,
+  overrides: PositionOverrides,
+  trainerPlayerId: number | undefined,
+): number {
+  if (trainerPlayerId !== undefined && player.id === trainerPlayerId) return TRAINER_RANK;
+  return positionRank[effectiveAbbrev(player, overrides)] ?? TRAINER_RANK;
 }
 
 // Цветовая метка амплуа перед именем игрока — та же акцентная полоска
@@ -250,6 +269,168 @@ export function TrainerIcon() {
         <path d="M18 9v6" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" />
       </svg>
     </span>
+  );
+}
+
+function average(values: number[]): number | undefined {
+  if (values.length === 0) return undefined;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+// Как diffTitle, но не считает подсказку вовсе, если самого текущего
+// среднего нет (пустой состав или ни у кого нет этого показателя) — иначе
+// diffTitle получил бы фиктивный 0 вместо реального "нечего показывать".
+function avgDiffTitle(
+  label: string,
+  prev: number | undefined,
+  curr: number | undefined,
+  format?: (n: number) => string,
+): string | undefined {
+  if (curr === undefined) return undefined;
+  return diffTitle(label, prev, curr, format);
+}
+
+function AverageDecimalCell({
+  value,
+  max = 20,
+  diff = "none",
+  hoverWord,
+}: {
+  value: number | undefined;
+  max?: number;
+  diff?: DiffDirection;
+  hoverWord?: string;
+}) {
+  if (value === undefined) {
+    return <td className={styles.skillCell}>—</td>;
+  }
+  const valueColorClass = diff !== "none" ? diffTextClass(diff) : tierFromRatio(value / max);
+  return (
+    <td className={`${styles.skillCell} ${diffClass(diff)}`} title={hoverWord}>
+      <span className={`${styles.skillWord} ${valueColorClass}`}>
+        {value.toFixed(1)}
+        <DiffArrow dir={diff} />
+      </span>
+    </td>
+  );
+}
+
+function AverageRatingCell({ value }: { value: number | undefined }) {
+  if (value === undefined) return <td className={styles.skillCell}>—</td>;
+  return (
+    <td className={styles.skillCell} title={`${value.toFixed(1)} из 10`}>
+      <span className={`${styles.skillWord} ${tierFromRatio(value / 10)}`}>★ {value.toFixed(1)}</span>
+    </td>
+  );
+}
+
+// Строка "Среднее" под таблицей (Состав/Расстановка — общая реализация, обе
+// таблицы делят один и тот же набор столбцов) — усреднённое значение по
+// каждому числовому столбцу текущего состава. Подсказка при наведении
+// сравнивает это среднее со средним на момент прошлого сохранённого
+// снимка — та же понедельная логика сравнения, что и у отдельных игроков
+// (playerStatChanges.ts), только "прошлое среднее" считается по подмножеству
+// игроков, у которых вообще есть сохранённый прошлый снимок (лучшее
+// доступное приближение к "средний показатель команды неделю назад", если
+// состав успел немного измениться — трансферы и т.п.). Столбцы без
+// исторического снимка (возраст, преданность, рейтинг матча, потенциал)
+// показывают среднее без стрелки — сравнивать не с чем.
+export function AverageRow({
+  players,
+  prevByPlayerId,
+  hasLoyalty,
+  hasRating,
+}: {
+  players: SquadPlayer[];
+  prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
+  hasLoyalty: boolean;
+  hasRating: boolean;
+}) {
+  if (players.length === 0) return null;
+
+  const fmt1 = (n: number) => n.toFixed(1);
+  const withPrev = players.filter((p) => prevByPlayerId[p.id] !== undefined);
+  const prevOf = (p: SquadPlayer) => prevByPlayerId[p.id] as PlayerStatSnapshot;
+
+  const avgAge = average(players.map((p) => p.age + p.ageDays / 112));
+
+  const avgTsi = average(players.map((p) => p.tsi));
+  const prevAvgTsi = average(withPrev.map((p) => prevOf(p).tsi));
+  const tsiDiff = avgTsi !== undefined ? diffDirection(avgTsi, prevAvgTsi) : "none";
+
+  const avgForm = average(players.map((p) => p.form));
+  const prevAvgForm = average(withPrev.map((p) => prevOf(p).form));
+  const formDiff = avgForm !== undefined ? diffDirection(avgForm, prevAvgForm) : "none";
+
+  const avgExperience = average(players.map((p) => p.experience));
+  const prevAvgExperience = average(withPrev.map((p) => prevOf(p).experience));
+  const experienceDiff = avgExperience !== undefined ? diffDirection(avgExperience, prevAvgExperience) : "none";
+
+  const avgStamina = average(players.map((p) => staminaToLevel(p.stamina)));
+  const prevAvgStamina = average(withPrev.map((p) => staminaToLevel(prevOf(p).stamina)));
+  const staminaDiff = avgStamina !== undefined ? diffDirection(avgStamina, prevAvgStamina) : "none";
+
+  const avgLoyalty = average(players.filter((p) => p.loyalty !== undefined).map((p) => p.loyalty as number));
+  const avgRating = average(
+    players.filter((p) => p.lastMatchRating !== undefined).map((p) => p.lastMatchRating as number),
+  );
+  const avgPotential = average(players.map((p) => estimatePotentialRating(p)));
+
+  return (
+    <tr className={styles.avgRow}>
+      <td colSpan={2} className={styles.avgLabel}>
+        Среднее
+      </td>
+      <td className={styles.numCell}>{avgAge !== undefined ? avgAge.toFixed(1) : "—"}</td>
+      <td className={styles.flagCell}>—</td>
+      <td>—</td>
+      <td
+        className={`${styles.moneyCell} ${diffClass(tsiDiff)}`}
+        title={avgDiffTitle("Средний TSI", prevAvgTsi, avgTsi, (n) => Math.round(n).toLocaleString("ru-RU"))}
+      >
+        {avgTsi !== undefined ? (
+          <>
+            <span className={diffTextClass(tsiDiff)}>{Math.round(avgTsi).toLocaleString("ru-RU")}</span>
+            <DiffArrow dir={tsiDiff} />
+          </>
+        ) : (
+          "—"
+        )}
+      </td>
+      <AverageDecimalCell
+        value={avgForm}
+        max={8}
+        diff={formDiff}
+        hoverWord={avgDiffTitle("Средняя форма", prevAvgForm, avgForm, fmt1)}
+      />
+      <AverageDecimalCell
+        value={avgExperience}
+        diff={experienceDiff}
+        hoverWord={avgDiffTitle("Средний опыт", prevAvgExperience, avgExperience, fmt1)}
+      />
+      <AverageDecimalCell
+        value={avgStamina}
+        max={8}
+        diff={staminaDiff}
+        hoverWord={avgDiffTitle("Средняя выносливость", prevAvgStamina, avgStamina, fmt1)}
+      />
+      {skillKeys.map((k) => {
+        const avgSkill = average(players.map((p) => p.skills[k]));
+        const prevAvgSkill = average(withPrev.map((p) => prevOf(p).skills[k]));
+        const skillDiff = avgSkill !== undefined ? diffDirection(avgSkill, prevAvgSkill) : "none";
+        return (
+          <AverageDecimalCell
+            key={k}
+            value={avgSkill}
+            diff={skillDiff}
+            hoverWord={avgDiffTitle(`Средний(ая) ${skillLabel[k]}`, prevAvgSkill, avgSkill, fmt1)}
+          />
+        );
+      })}
+      {hasLoyalty && <AverageDecimalCell value={avgLoyalty} />}
+      {hasRating && <AverageRatingCell value={avgRating} />}
+      <AverageRatingCell value={avgPotential} />
+    </tr>
   );
 }
 
