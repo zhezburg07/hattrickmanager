@@ -1328,30 +1328,61 @@ export async function getStoredMatchesCalendar(hattrickUserId: string): Promise<
   };
 }
 
+const emptyCupDebug: CupDebugInfo = {
+  teamId: null,
+  stillInCup: null,
+  teamDetailsCupId: null,
+  teamDetailsCupName: null,
+  clubCupId: null,
+  matchesCupId: null,
+  chosenCupId: null,
+  matchesRawSample: [],
+  pathDebug: [],
+  nextMatchFound: null,
+  pastCupIds: [],
+};
+
+// Нормализует то, что реально лежит в chpp_snapshots, под текущую форму
+// StoredCupInfo — НЕ доверяя слепо "as StoredCupInfo" (это только
+// подсказка компилятору, а не проверка в рантайме). До коммита "Кубки:
+// вернуть каскад кубков сезона" здесь был один cupPath (объект или null)
+// вместо массива cupPaths, а debug не знал про pastCupIds — у пользователей,
+// синхронизировавшихся ДО этого коммита, в базе всё ещё лежит именно такая
+// старая запись (следующая синхронизация перезапишет её как надо, но до
+// этого страница дальше читала бы cupPaths/debug.pastCupIds как undefined
+// и падала — см. TypeError "Cannot read properties of undefined (reading
+// 'length')" на dashboard/cup). Читаем defensively вместо того, чтобы
+// заставлять всех вручную жать "Обновить данные".
+export function normalizeStoredCupInfo(raw: Record<string, unknown> | undefined, fallbackError: string | null): StoredCupInfo {
+  if (!raw) {
+    return { cupPaths: [], nextMatch: null, errors: fallbackError ? [fallbackError] : [], debug: emptyCupDebug };
+  }
+
+  const cupPaths: OurCupPathResult[] = Array.isArray(raw.cupPaths)
+    ? (raw.cupPaths as OurCupPathResult[])
+    : raw.cupPath
+      ? [raw.cupPath as OurCupPathResult]
+      : [];
+
+  const rawDebug = (raw.debug as Partial<CupDebugInfo> | undefined) ?? {};
+  const debug: CupDebugInfo = {
+    ...emptyCupDebug,
+    ...rawDebug,
+    pastCupIds: Array.isArray(rawDebug.pastCupIds) ? rawDebug.pastCupIds : [],
+  };
+
+  return {
+    cupPaths,
+    nextMatch: (raw.nextMatch as UpcomingCupMatch | null | undefined) ?? null,
+    errors: Array.isArray(raw.errors) ? (raw.errors as string[]) : [],
+    debug,
+  };
+}
+
 export async function getStoredCupData(hattrickUserId: string): Promise<StoredCupInfo> {
   const snapshots = await getAllSnapshots(hattrickUserId);
   const entry = snapshots[DATA_KEYS.cupInfo];
-  const stored = entry?.data as StoredCupInfo | null;
-  return (
-    stored ?? {
-      cupPaths: [],
-      nextMatch: null,
-      errors: entry?.error ? [entry.error] : [],
-      debug: {
-        teamId: null,
-        stillInCup: null,
-        teamDetailsCupId: null,
-        teamDetailsCupName: null,
-        clubCupId: null,
-        matchesCupId: null,
-        chosenCupId: null,
-        matchesRawSample: [],
-        pathDebug: [],
-        nextMatchFound: null,
-        pastCupIds: [],
-      },
-    }
-  );
+  return normalizeStoredCupInfo(entry?.data as Record<string, unknown> | undefined, entry?.error ?? null);
 }
 
 export async function getStoredTransferHistory(
