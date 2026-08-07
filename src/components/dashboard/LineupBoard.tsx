@@ -453,7 +453,6 @@ export default function LineupBoard({
           formationLabel={formationLabel}
           experienceLevel={experienceLevel}
           onRecommend={handleRecommend}
-          prevByPlayerId={resolvedPrevByPlayerId}
         />
 
         <LineupPlayerList
@@ -520,15 +519,7 @@ export default function LineupBoard({
         </div>
       </div>
 
-      {/* Показатели игрока НА ПОЛЕ открываются тройным кликом — разворачивающейся
-          карточкой прямо в потоке страницы (см. LineupPlayerExpandedCard
-          внутри LineupField.tsx), а не здесь. Эта панель — только для
-          запасных и ещё не расставленных игроков, у которых нет позиции на
-          поле, к которой можно привязать разворот. */}
-      <LineupPlayerDetails
-        player={selectedPlayer && !assignedIds.has(selectedPlayer.id) ? selectedPlayer : null}
-        prev={selectedPlayer ? resolvedPrevByPlayerId[selectedPlayer.id] : undefined}
-      />
+      <LineupPlayerDetails player={selectedPlayer} prev={selectedPlayer ? resolvedPrevByPlayerId[selectedPlayer.id] : undefined} />
 
       <OpponentAnalysis
         analysis={opponentAnalysis}

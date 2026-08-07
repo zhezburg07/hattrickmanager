@@ -969,21 +969,26 @@
   }
 }
 
-/* Разворачивающаяся карточка показателей игрока по тройному клику на поле
-   (см. LineupPlayerExpandedCard.tsx) — блок в обычном потоке страницы, а не
-   всплывающее окно: раздвигает всё, что ниже (список игроков), тем же
-   приёмом, что и .matchExpanded в Matches.module.css. */
-.fieldExpandedCard {
-  position: relative;
-  margin-top: 14px;
-  padding: 18px 40px 4px 0;
-  border-top: 1px solid var(--color-border);
+/* Разворачивающаяся карточка показателей игрока по тройному клику на его
+   строке в общем списке (LineupPlayerList.tsx, см. LineupPlayerExpandedCard.tsx)
+   — блок в обычном потоке страницы прямо под строкой, а не всплывающее
+   окно: раздвигает остальные строки списка вниз, тем же приёмом, что и
+   .matchExpanded в Matches.module.css. Обычный клик по строке (выбор/
+   перетаскивание игрока на поле) не связан с этим разворотом никак. */
+.expandedPlayerCell {
+  padding: 0;
+  border-bottom: 1px solid rgba(44, 74, 64, 0.6);
 }
 
-.fieldExpandedClose {
+.expandedPlayerCard {
+  position: relative;
+  padding: 16px 40px 12px 12px;
+}
+
+.expandedPlayerClose {
   position: absolute;
-  top: 14px;
-  right: 0;
+  top: 12px;
+  right: 12px;
   width: 22px;
   height: 22px;
   display: flex;
@@ -998,7 +1003,7 @@
   transition: color 0.15s ease, border-color 0.15s ease;
 }
 
-.fieldExpandedClose:hover {
+.expandedPlayerClose:hover {
   color: var(--color-text);
   border-color: var(--color-accent);
 }

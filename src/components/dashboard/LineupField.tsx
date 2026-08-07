@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import type { Assignments, BoardSlot, RoleAccent } from "@/data/pitchBoard";
 import { roleAccent, roleFullLabel } from "@/data/pitchBoard";
 import {
@@ -10,7 +10,6 @@ import {
   skillWordWithLevel,
   type PositionGroup,
   type SquadPlayer,
-  type PlayerStatSnapshot,
 } from "@/data/squad";
 import { usePositionOverrides, effectivePositionGroup } from "@/data/positionOverrides";
 import { parsePayload, serializePayload, type DragPayload } from "./dragPayload";
@@ -18,7 +17,6 @@ import { computeZoneRatings, computeSlotRating, zoneLabel, type ZoneKey } from "
 import { applicableInstructions, instructionArrow, instructionLabel, type PlayerInstruction } from "@/data/playerInstructions";
 import { formationExperienceHint } from "./formationExperience";
 import LineupSubsRow from "./LineupSubsRow";
-import LineupPlayerExpandedCard from "./LineupPlayerExpandedCard";
 import styles from "./Lineup.module.css";
 
 type ViewMode = "squad" | "stats";
@@ -92,7 +90,6 @@ export default function LineupField({
   formationLabel,
   experienceLevel,
   onRecommend,
-  prevByPlayerId,
 }: {
   slots: BoardSlot[];
   getPlayer: (group: PositionGroup, index: number) => SquadPlayer | null;
@@ -112,68 +109,13 @@ export default function LineupField({
   formationLabel: string;
   experienceLevel: number | null;
   onRecommend: () => void;
-  prevByPlayerId?: Record<number, PlayerStatSnapshot | undefined>;
 }) {
   const [mode, setMode] = useState<ViewMode>("squad");
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const { overrides } = usePositionOverrides();
-  // Тройной клик по игроку на поле разворачивает его карточку показателей
-  // прямо в потоке страницы (см. LineupPlayerExpandedCard ниже) — тот же
-  // принцип, что уже используется в MatchesCalendar.tsx для разбора матча:
-  // не всплывающее окно поверх поля, а блок, раздвигающий остальной
-  // контент. Одинарный/двойной клик (выбор/снятие выбора) не меняются —
-  // см. обработчик клика на самом слоте ниже.
-  const [expandedPlayerId, setExpandedPlayerId] = useState<number | null>(null);
 
   const playersById = new Map(players.map((p) => [p.id, p]));
   const { ratings: zones, congestionNote } = computeZoneRatings(assignments, playersById);
-
-  const expandedSlot =
-    mode === "squad" && expandedPlayerId !== null
-      ? slots.find((s) => getPlayer(s.group, s.index)?.id === expandedPlayerId)
-      : undefined;
-  const expandedFieldPlayer = expandedSlot ? getPlayer(expandedSlot.group, expandedSlot.index) : null;
-
-  // Считаем тройной клик сами, а не через MouseEvent.detail — тот зависит от
-  // системного порога сдвига курсора между кликами (ОС считает клик "новым",
-  // если рука чуть дрогнула), из-за чего живой тройной клик мышью реально
-  // срабатывает намного реже, чем в синтетическом тесте с нулевым сдвигом.
-  // Здесь важно только время между кликами по ТОМУ ЖЕ слоту, а не точность
-  // курсора — таймер каждый раз продлевается, окно ~500мс между кликами
-  // (не суммарно на все три). 1-й и 2-й клики так и уходят в обычную логику
-  // onSlotClick (выбор/снятие выбора, без изменений) — 3-й её не запускает,
-  // а разворачивает карточку и сбрасывает счётчик.
-  const clickTrackerRef = useRef<{ key: string; count: number; timer: ReturnType<typeof setTimeout> | null }>({
-    key: "",
-    count: 0,
-    timer: null,
-  });
-  const MULTI_CLICK_WINDOW_MS = 500;
-
-  function handleSlotBadgeClick(slot: BoardSlot, player: SquadPlayer | null) {
-    const key = `${slot.group}-${slot.index}`;
-    const tracker = clickTrackerRef.current;
-    if (tracker.timer) clearTimeout(tracker.timer);
-
-    tracker.count = tracker.key === key ? tracker.count + 1 : 1;
-    tracker.key = key;
-
-    if (tracker.count >= 3) {
-      tracker.count = 0;
-      tracker.key = "";
-      tracker.timer = null;
-      if (player) setExpandedPlayerId((id) => (id === player.id ? null : player.id));
-      return;
-    }
-
-    tracker.timer = setTimeout(() => {
-      tracker.count = 0;
-      tracker.key = "";
-      tracker.timer = null;
-    }, MULTI_CLICK_WINDOW_MS);
-
-    onSlotClick(slot.group, slot.index);
-  }
 
   return (
     <div className={styles.card}>
@@ -298,7 +240,7 @@ export default function LineupField({
                       style={cardAccentStyle}
                       title={player ? `${player.name} — ${roleFullLabel[slot.role]}` : roleFullLabel[slot.role]}
                       draggable={Boolean(player)}
-                      onClick={() => handleSlotBadgeClick(slot, player)}
+                      onClick={() => onSlotClick(slot.group, slot.index)}
                       onDragStart={(e) => {
                         if (!player) return;
                         const payload: DragPayload = {
@@ -365,14 +307,6 @@ export default function LineupField({
         onSlotClick={onSubSlotClick}
       />
       </div>
-
-      {expandedFieldPlayer && (
-        <LineupPlayerExpandedCard
-          player={expandedFieldPlayer}
-          prev={prevByPlayerId?.[expandedFieldPlayer.id]}
-          onClose={() => setExpandedPlayerId(null)}
-        />
-      )}
     </div>
   );
 }

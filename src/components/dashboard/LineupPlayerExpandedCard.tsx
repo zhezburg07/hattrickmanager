@@ -44,10 +44,12 @@ function StatusTag({ status }: { status: SquadPlayer["status"] }) {
 }
 
 // Разворачивающаяся карточка показателей игрока — по тройному клику на его
-// слот на поле (см. LineupField.tsx). Рендерится прямо в потоке страницы,
-// раздвигая остальной контент вниз — тот же приём, что уже используется в
-// MatchesCalendar.tsx для разбора матча (клик по строке — разворот блока
-// под ней), а не всплывающее окно поверх поля.
+// строку в общем списке игроков (см. LineupPlayerList.tsx). Рендерится
+// прямо в потоке страницы (под строкой в таблице), раздвигая остальные
+// строки вниз — тот же приём, что уже используется в MatchesCalendar.tsx
+// для разбора матча (клик по строке — разворот блока под ней), а не
+// всплывающее окно. Обычный клик по строке списка выбирает игрока для
+// расстановки и не имеет отношения к этой карточке.
 export default function LineupPlayerExpandedCard({
   player,
   prev,
@@ -58,8 +60,8 @@ export default function LineupPlayerExpandedCard({
   onClose: () => void;
 }) {
   return (
-    <div className={styles.fieldExpandedCard}>
-      <button type="button" className={styles.fieldExpandedClose} onClick={onClose} aria-label="Свернуть">
+    <div className={styles.expandedPlayerCard}>
+      <button type="button" className={styles.expandedPlayerClose} onClick={onClose} aria-label="Свернуть">
         ×
       </button>
 

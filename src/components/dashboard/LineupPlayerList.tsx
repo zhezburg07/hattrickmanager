@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import {
   skillLabel,
   skillWord,
@@ -34,6 +34,7 @@ import {
   AverageRow,
   type SkillKey,
 } from "./squadCells";
+import LineupPlayerExpandedCard from "./LineupPlayerExpandedCard";
 import styles from "./SquadTable.module.css";
 import lineupStyles from "./Lineup.module.css";
 
@@ -144,6 +145,47 @@ export default function LineupPlayerList({
   const { overrides } = usePositionOverrides();
   const resolvedPrevByPlayerId = prevByPlayerId ?? {};
 
+  // Тройной клик по строке разворачивает карточку показателей игрока прямо
+  // под строкой (см. LineupPlayerExpandedCard) — новая, ДОПОЛНИТЕЛЬНАЯ
+  // возможность поверх обычного клика, а не замена ему: одинарный клик
+  // по-прежнему только выбирает игрока для расстановки (см. комментарий у
+  // baseColumns выше — это было отдельное осознанное решение при создании
+  // списка, открывать карточку по клику здесь не нужно). Считаем клики сами
+  // (таймстемпы в ref, окно ~500мс), а не через MouseEvent.detail — тот
+  // сбрасывается системным порогом сдвига курсора между кликами и ненадёжен
+  // для живого тройного клика мышью.
+  const [expandedPlayerId, setExpandedPlayerId] = useState<number | null>(null);
+  const clickTrackerRef = useRef<{ id: number | null; count: number; timer: ReturnType<typeof setTimeout> | null }>({
+    id: null,
+    count: 0,
+    timer: null,
+  });
+  const MULTI_CLICK_WINDOW_MS = 500;
+
+  function handleRowClick(playerId: number) {
+    const tracker = clickTrackerRef.current;
+    if (tracker.timer) clearTimeout(tracker.timer);
+
+    tracker.count = tracker.id === playerId ? tracker.count + 1 : 1;
+    tracker.id = playerId;
+
+    if (tracker.count >= 3) {
+      tracker.count = 0;
+      tracker.id = null;
+      tracker.timer = null;
+      setExpandedPlayerId((id) => (id === playerId ? null : playerId));
+      return;
+    }
+
+    tracker.timer = setTimeout(() => {
+      tracker.count = 0;
+      tracker.id = null;
+      tracker.timer = null;
+    }, MULTI_CLICK_WINDOW_MS);
+
+    onSelectPlayer(playerId);
+  }
+
   // Прячем столбцы целиком, если ни у одного игрока нет данных (см.
   // SquadTable.tsx, тот же принцип).
   const hasLoyalty = players.some((p) => p.loyalty !== undefined || p.isClubProduct);
@@ -232,11 +274,11 @@ export default function LineupPlayerList({
               const staminaDiff = diffDirection(staminaLevel, prevStaminaLevel);
 
               return (
+                <Fragment key={p.id}>
                 <tr
-                  key={p.id}
                   className={`${styles.rowClickable} ${statusClass} ${p.id === selectedPlayerId ? lineupStyles.gridRowSelected : ""}`}
                   draggable
-                  onClick={() => onSelectPlayer(p.id)}
+                  onClick={() => handleRowClick(p.id)}
                   onDragStart={(e) => {
                     const payload = payloadForPlayer(p.id);
                     e.dataTransfer.setData("text/plain", serializePayload(payload));
@@ -299,6 +341,14 @@ export default function LineupPlayerList({
                   {hasRating && <RatingCell rating={p.lastMatchRating} />}
                   <RatingCell rating={estimatePotentialRating(p)} />
                 </tr>
+                {expandedPlayerId === p.id && (
+                  <tr>
+                    <td colSpan={columns.length} className={lineupStyles.expandedPlayerCell}>
+                      <LineupPlayerExpandedCard player={p} prev={prev} onClose={() => setExpandedPlayerId(null)} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
