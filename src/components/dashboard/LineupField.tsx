@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Assignments, BoardSlot, RoleAccent } from "@/data/pitchBoard";
 import { roleAccent, roleFullLabel } from "@/data/pitchBoard";
 import {
@@ -134,6 +134,47 @@ export default function LineupField({
       : undefined;
   const expandedFieldPlayer = expandedSlot ? getPlayer(expandedSlot.group, expandedSlot.index) : null;
 
+  // Считаем тройной клик сами, а не через MouseEvent.detail — тот зависит от
+  // системного порога сдвига курсора между кликами (ОС считает клик "новым",
+  // если рука чуть дрогнула), из-за чего живой тройной клик мышью реально
+  // срабатывает намного реже, чем в синтетическом тесте с нулевым сдвигом.
+  // Здесь важно только время между кликами по ТОМУ ЖЕ слоту, а не точность
+  // курсора — таймер каждый раз продлевается, окно ~500мс между кликами
+  // (не суммарно на все три). 1-й и 2-й клики так и уходят в обычную логику
+  // onSlotClick (выбор/снятие выбора, без изменений) — 3-й её не запускает,
+  // а разворачивает карточку и сбрасывает счётчик.
+  const clickTrackerRef = useRef<{ key: string; count: number; timer: ReturnType<typeof setTimeout> | null }>({
+    key: "",
+    count: 0,
+    timer: null,
+  });
+  const MULTI_CLICK_WINDOW_MS = 500;
+
+  function handleSlotBadgeClick(slot: BoardSlot, player: SquadPlayer | null) {
+    const key = `${slot.group}-${slot.index}`;
+    const tracker = clickTrackerRef.current;
+    if (tracker.timer) clearTimeout(tracker.timer);
+
+    tracker.count = tracker.key === key ? tracker.count + 1 : 1;
+    tracker.key = key;
+
+    if (tracker.count >= 3) {
+      tracker.count = 0;
+      tracker.key = "";
+      tracker.timer = null;
+      if (player) setExpandedPlayerId((id) => (id === player.id ? null : player.id));
+      return;
+    }
+
+    tracker.timer = setTimeout(() => {
+      tracker.count = 0;
+      tracker.key = "";
+      tracker.timer = null;
+    }, MULTI_CLICK_WINDOW_MS);
+
+    onSlotClick(slot.group, slot.index);
+  }
+
   return (
     <div className={styles.card}>
       <div className={styles.fieldHeader}>
@@ -257,19 +298,7 @@ export default function LineupField({
                       style={cardAccentStyle}
                       title={player ? `${player.name} — ${roleFullLabel[slot.role]}` : roleFullLabel[slot.role]}
                       draggable={Boolean(player)}
-                      onClick={(e) => {
-                        // Тройной клик (браузер сам считает клики подряд по
-                        // одному элементу в e.detail) разворачивает карточку
-                        // показателей вместо обычной логики выбора/переноса —
-                        // 1-й и 2-й клики того же тройного клика уже успели
-                        // выполнить обычный select/deselect (см. комментарий
-                        // выше у expandedPlayerId), это ожидаемо и не мешает.
-                        if (e.detail >= 3) {
-                          if (player) setExpandedPlayerId((id) => (id === player.id ? null : player.id));
-                          return;
-                        }
-                        onSlotClick(slot.group, slot.index);
-                      }}
+                      onClick={() => handleSlotBadgeClick(slot, player)}
                       onDragStart={(e) => {
                         if (!player) return;
                         const payload: DragPayload = {
