@@ -250,7 +250,7 @@ export default function LineupPlayerList({
                   }}
                 >
                   <td>
-                    <PositionBadgeReadOnly player={p} overrides={overrides} />
+                    <PositionBadgeReadOnly player={p} overrides={overrides} trainerPlayerId={trainerPlayerId} />
                   </td>
                   <td className={styles.nameCell}>
                     <AmpluaAccent player={p} overrides={overrides} />
@@ -303,7 +303,13 @@ export default function LineupPlayerList({
             })}
           </tbody>
           <tfoot>
-            <AverageRow players={players} prevByPlayerId={resolvedPrevByPlayerId} hasLoyalty={hasLoyalty} hasRating={hasRating} />
+            <AverageRow
+              players={players}
+              prevByPlayerId={resolvedPrevByPlayerId}
+              hasLoyalty={hasLoyalty}
+              hasRating={hasRating}
+              trainerPlayerId={trainerPlayerId}
+            />
           </tfoot>
         </table>
       </div>

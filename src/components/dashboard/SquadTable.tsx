@@ -39,6 +39,7 @@ import {
   LoyaltyCell,
   RatingCell,
   TrainerIcon,
+  TrainerPositionBadge,
   AverageRow,
   type SkillKey,
 } from "./squadCells";
@@ -170,11 +171,16 @@ function PositionBadge({
   player,
   overrides,
   onChange,
+  trainerPlayerId,
 }: {
   player: SquadPlayer;
   overrides: PositionOverrides;
   onChange: (playerId: number, value: PositionOverrideValue | null) => void;
+  trainerPlayerId?: number;
 }) {
+  if (trainerPlayerId !== undefined && player.id === trainerPlayerId) {
+    return <TrainerPositionBadge />;
+  }
   const selection = currentSelection(player, overrides);
   const natural = naturalSelection(player);
   const isOverridden = selection !== natural;
@@ -297,7 +303,7 @@ export default function SquadTable({
               return (
               <tr key={p.id} className={styles.rowClickable} onClick={() => setSelectedPlayer(p)}>
                 <td>
-                  <PositionBadge player={p} overrides={overrides} onChange={setOverride} />
+                  <PositionBadge player={p} overrides={overrides} onChange={setOverride} trainerPlayerId={effectiveTrainerPlayerId} />
                 </td>
                 <td className={styles.nameCell}>
                   <AmpluaAccent player={p} overrides={overrides} />
@@ -351,7 +357,13 @@ export default function SquadTable({
             })}
           </tbody>
           <tfoot>
-            <AverageRow players={roster} prevByPlayerId={resolvedPrevByPlayerId} hasLoyalty={hasLoyalty} hasRating={hasRating} />
+            <AverageRow
+              players={roster}
+              prevByPlayerId={resolvedPrevByPlayerId}
+              hasLoyalty={hasLoyalty}
+              hasRating={hasRating}
+              trainerPlayerId={effectiveTrainerPlayerId}
+            />
           </tfoot>
         </table>
       </div>

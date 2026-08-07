@@ -22,6 +22,7 @@ import {
 import { effectivePositionGroup, type PositionOverrides } from "@/data/positionOverrides";
 import HeartIcon from "./HeartIcon";
 import { SpecialtyIcon, InjuryIcon, CardIcon } from "./StatusIcons";
+import { GoalBallIcon } from "./TimelineIcons";
 import { diffDirection, diffTitle, type DiffDirection } from "./playerStatChanges";
 import styles from "./SquadTable.module.css";
 import diffStyles from "./StatDiff.module.css";
@@ -109,6 +110,26 @@ export function positionSortValue(
   return positionRank[effectiveAbbrev(player, overrides)] ?? TRAINER_RANK;
 }
 
+// Обозначение тренера в столбце "Поз." — "Т" вместо его игровой позиции: у
+// тренера нет настоящего амплуа в смысле навыков/расстановки, и он не
+// участвует в подсчёте средних (см. AverageRow), так что показывать его
+// GK/CD/CM/W/ST было бы вводящим в заблуждение. Бейдж не кликабелен (даже
+// в "Составе", где остальные позиции можно менять вручную) — амплуа менять
+// нечему.
+const TRAINER_ABBREV = "Т";
+
+export function TrainerPositionBadge() {
+  return (
+    <span
+      className={styles.positionBadge}
+      style={{ "--position-accent": "var(--color-accent)", cursor: "default" } as React.CSSProperties}
+      title="Тренер команды"
+    >
+      {TRAINER_ABBREV}
+    </span>
+  );
+}
+
 // Цветовая метка амплуа перед именем игрока — та же акцентная полоска
 // везде, где показывается список игроков (Состав, Расстановка, карточки на
 // поле). Цвет всегда берётся из эффективного амплуа (ручное переопределение,
@@ -121,7 +142,18 @@ export function AmpluaAccent({ player, overrides }: { player: SquadPlayer; overr
 // Амплуа игрока — цветной бейдж, БЕЗ возможности изменить (в отличие от
 // PositionBadge в SquadTable.tsx, который рендерит редактируемый select) —
 // используется в списке игроков на "Расстановке", где менять амплуа нельзя.
-export function PositionBadgeReadOnly({ player, overrides }: { player: SquadPlayer; overrides: PositionOverrides }) {
+export function PositionBadgeReadOnly({
+  player,
+  overrides,
+  trainerPlayerId,
+}: {
+  player: SquadPlayer;
+  overrides: PositionOverrides;
+  trainerPlayerId?: number;
+}) {
+  if (trainerPlayerId !== undefined && player.id === trainerPlayerId) {
+    return <TrainerPositionBadge />;
+  }
   const abbrev = effectiveAbbrev(player, overrides);
   const color = positionAccentColorForAbbrev(abbrev);
   return (
@@ -326,60 +358,65 @@ function AverageRatingCell({ value }: { value: number | undefined }) {
 
 // Строка "Среднее" под таблицей (Состав/Расстановка — общая реализация, обе
 // таблицы делят один и тот же набор столбцов) — усреднённое значение по
-// каждому числовому столбцу текущего состава. Подсказка при наведении
-// сравнивает это среднее со средним на момент прошлого сохранённого
-// снимка — та же понедельная логика сравнения, что и у отдельных игроков
-// (playerStatChanges.ts), только "прошлое среднее" считается по подмножеству
-// игроков, у которых вообще есть сохранённый прошлый снимок (лучшее
-// доступное приближение к "средний показатель команды неделю назад", если
-// состав успел немного измениться — трансферы и т.п.). Столбцы без
-// исторического снимка (возраст, преданность, рейтинг матча, потенциал)
-// показывают среднее без стрелки — сравнивать не с чем.
+// каждому числовому столбцу текущего состава. Тренер исключён из подсчёта
+// (см. trainerPlayerId) — его показатели не сопоставимы с показателями
+// игроков. Подсказка при наведении сравнивает это среднее со средним на
+// момент прошлого сохранённого снимка — та же понедельная логика сравнения,
+// что и у отдельных игроков (playerStatChanges.ts), только "прошлое
+// среднее" считается по подмножеству игроков, у которых вообще есть
+// сохранённый прошлый снимок (лучшее доступное приближение к "средний
+// показатель команды неделю назад", если состав успел немного измениться —
+// трансферы и т.п.). Столбцы без исторического снимка (возраст,
+// преданность, рейтинг матча, потенциал) показывают среднее без стрелки —
+// сравнивать не с чем.
 export function AverageRow({
   players,
   prevByPlayerId,
   hasLoyalty,
   hasRating,
+  trainerPlayerId,
 }: {
   players: SquadPlayer[];
   prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
   hasLoyalty: boolean;
   hasRating: boolean;
+  trainerPlayerId?: number;
 }) {
-  if (players.length === 0) return null;
+  const squad = trainerPlayerId !== undefined ? players.filter((p) => p.id !== trainerPlayerId) : players;
+  if (squad.length === 0) return null;
 
   const fmt1 = (n: number) => n.toFixed(1);
-  const withPrev = players.filter((p) => prevByPlayerId[p.id] !== undefined);
+  const withPrev = squad.filter((p) => prevByPlayerId[p.id] !== undefined);
   const prevOf = (p: SquadPlayer) => prevByPlayerId[p.id] as PlayerStatSnapshot;
 
-  const avgAge = average(players.map((p) => p.age + p.ageDays / 112));
+  const avgAge = average(squad.map((p) => p.age + p.ageDays / 112));
 
-  const avgTsi = average(players.map((p) => p.tsi));
+  const avgTsi = average(squad.map((p) => p.tsi));
   const prevAvgTsi = average(withPrev.map((p) => prevOf(p).tsi));
   const tsiDiff = avgTsi !== undefined ? diffDirection(avgTsi, prevAvgTsi) : "none";
 
-  const avgForm = average(players.map((p) => p.form));
+  const avgForm = average(squad.map((p) => p.form));
   const prevAvgForm = average(withPrev.map((p) => prevOf(p).form));
   const formDiff = avgForm !== undefined ? diffDirection(avgForm, prevAvgForm) : "none";
 
-  const avgExperience = average(players.map((p) => p.experience));
+  const avgExperience = average(squad.map((p) => p.experience));
   const prevAvgExperience = average(withPrev.map((p) => prevOf(p).experience));
   const experienceDiff = avgExperience !== undefined ? diffDirection(avgExperience, prevAvgExperience) : "none";
 
-  const avgStamina = average(players.map((p) => staminaToLevel(p.stamina)));
+  const avgStamina = average(squad.map((p) => staminaToLevel(p.stamina)));
   const prevAvgStamina = average(withPrev.map((p) => staminaToLevel(prevOf(p).stamina)));
   const staminaDiff = avgStamina !== undefined ? diffDirection(avgStamina, prevAvgStamina) : "none";
 
-  const avgLoyalty = average(players.filter((p) => p.loyalty !== undefined).map((p) => p.loyalty as number));
+  const avgLoyalty = average(squad.filter((p) => p.loyalty !== undefined).map((p) => p.loyalty as number));
   const avgRating = average(
-    players.filter((p) => p.lastMatchRating !== undefined).map((p) => p.lastMatchRating as number),
+    squad.filter((p) => p.lastMatchRating !== undefined).map((p) => p.lastMatchRating as number),
   );
-  const avgPotential = average(players.map((p) => estimatePotentialRating(p)));
+  const avgPotential = average(squad.map((p) => estimatePotentialRating(p)));
 
   return (
     <tr className={styles.avgRow}>
-      <td colSpan={2} className={styles.avgLabel}>
-        Среднее
+      <td colSpan={2} className={styles.avgLabel} title="Среднее по составу (без учёта тренера)">
+        <GoalBallIcon size={16} />
       </td>
       <td className={styles.numCell}>{avgAge !== undefined ? avgAge.toFixed(1) : "—"}</td>
       <td className={styles.flagCell}>—</td>
@@ -415,7 +452,7 @@ export function AverageRow({
         hoverWord={avgDiffTitle("Средняя выносливость", prevAvgStamina, avgStamina, fmt1)}
       />
       {skillKeys.map((k) => {
-        const avgSkill = average(players.map((p) => p.skills[k]));
+        const avgSkill = average(squad.map((p) => p.skills[k]));
         const prevAvgSkill = average(withPrev.map((p) => prevOf(p).skills[k]));
         const skillDiff = avgSkill !== undefined ? diffDirection(avgSkill, prevAvgSkill) : "none";
         return (
