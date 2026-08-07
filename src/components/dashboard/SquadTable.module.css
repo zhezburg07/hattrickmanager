@@ -222,6 +222,23 @@
   filter: brightness(1.15);
 }
 
+/* Для <select> (амплуа в "Составе") min-width уже работает как надо — select
+   по умолчанию display:inline-block, к нему min-width применяется браузером
+   штатно. Но НЕЯВНЫЕ бейджи-<span> (PositionBadgeReadOnly в "Расстановке",
+   TrainerPositionBadge) по умолчанию display:inline — а min-width НЕ
+   действует на строчные (не заменяемые) элементы по спецификации CSS,
+   поэтому однобуквенные метки ("W", "Т") у них были у́же двухбуквенных
+   ("CD"/"CM"/"ST"), несмотря на тот же min-width в .positionBadge.
+   inline-flex здесь эквивалентен inline-block по способу применения
+   min-width, но ещё и центрирует содержимое по обеим осям без завязки на
+   text-align (которая для одиночного inline-элемента без контекста строки
+   ничего не центрирует). */
+.positionBadgeStatic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .overrideMark {
   font-size: 12px;
   color: var(--color-accent);

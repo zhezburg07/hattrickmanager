@@ -968,3 +968,47 @@
     display: none;
   }
 }
+
+/* Всплывающая карточка показателей игрока у его позиции на поле (см.
+   LineupPlayerStatsPopup.tsx) — прозрачный клик-перехватчик на весь экран
+   (не затемняет игру, в отличие от .overlay у полноэкранных модалок) плюс
+   сама карточка, обе через portal в document.body, z-index на том же
+   уровне, что и у PlayerDetailModal (500), т.к. это тоже "поверх всего". */
+.statsPopupBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+}
+
+.statsPopupCard {
+  position: fixed;
+  z-index: 501;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 14px 14px 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.statsPopupClose {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-bg-darker);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 15px;
+  line-height: 1;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.statsPopupClose:hover {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}

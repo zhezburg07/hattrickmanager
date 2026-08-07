@@ -121,7 +121,7 @@ const TRAINER_ABBREV = "Т";
 export function TrainerPositionBadge() {
   return (
     <span
-      className={styles.positionBadge}
+      className={`${styles.positionBadge} ${styles.positionBadgeStatic}`}
       style={{ "--position-accent": "var(--color-accent)", cursor: "default" } as React.CSSProperties}
       title="Тренер команды"
     >
@@ -158,7 +158,7 @@ export function PositionBadgeReadOnly({
   const color = positionAccentColorForAbbrev(abbrev);
   return (
     <span
-      className={styles.positionBadge}
+      className={`${styles.positionBadge} ${styles.positionBadgeStatic}`}
       style={{ "--position-accent": color, cursor: "default" } as React.CSSProperties}
     >
       {abbrev}
