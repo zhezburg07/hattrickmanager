@@ -18,7 +18,7 @@ import { computeZoneRatings, computeSlotRating, zoneLabel, type ZoneKey } from "
 import { applicableInstructions, instructionArrow, instructionLabel, type PlayerInstruction } from "@/data/playerInstructions";
 import { formationExperienceHint } from "./formationExperience";
 import LineupSubsRow from "./LineupSubsRow";
-import LineupPlayerStatsPopup from "./LineupPlayerStatsPopup";
+import LineupPlayerExpandedCard from "./LineupPlayerExpandedCard";
 import styles from "./Lineup.module.css";
 
 type ViewMode = "squad" | "stats";
@@ -93,7 +93,6 @@ export default function LineupField({
   experienceLevel,
   onRecommend,
   prevByPlayerId,
-  onDeselect,
 }: {
   slots: BoardSlot[];
   getPlayer: (group: PositionGroup, index: number) => SquadPlayer | null;
@@ -114,31 +113,26 @@ export default function LineupField({
   experienceLevel: number | null;
   onRecommend: () => void;
   prevByPlayerId?: Record<number, PlayerStatSnapshot | undefined>;
-  onDeselect: () => void;
 }) {
   const [mode, setMode] = useState<ViewMode>("squad");
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const { overrides } = usePositionOverrides();
-  // Ref-ы DOM-элементов слотов (не React state — карточка позиций сама по
-  // себе не влияет на разметку) — нужны, чтобы привязать всплывающую
-  // карточку показателей (LineupPlayerStatsPopup) к настоящему положению
-  // игрока на экране, а не пересчитывать его из % координат слота вручную.
-  const slotElsRef = useState(() => new Map<string, HTMLElement>())[0];
+  // Тройной клик по игроку на поле разворачивает его карточку показателей
+  // прямо в потоке страницы (см. LineupPlayerExpandedCard ниже) — тот же
+  // принцип, что уже используется в MatchesCalendar.tsx для разбора матча:
+  // не всплывающее окно поверх поля, а блок, раздвигающий остальной
+  // контент. Одинарный/двойной клик (выбор/снятие выбора) не меняются —
+  // см. обработчик клика на самом слоте ниже.
+  const [expandedPlayerId, setExpandedPlayerId] = useState<number | null>(null);
 
   const playersById = new Map(players.map((p) => [p.id, p]));
   const { ratings: zones, congestionNote } = computeZoneRatings(assignments, playersById);
 
-  // Выбранный игрок показывает всплывающую карточку показателей прямо у
-  // своего слота, только если он реально на поле (режим "Состав" — в
-  // режиме "Показатели" слотов игроков нет вовсе) — для запасных и ещё не
-  // расставленных игроков показатели по-прежнему в боковой панели
-  // (LineupPlayerDetails, см. LineupBoard.tsx).
-  const selectedSlot =
-    mode === "squad" && selectedPlayerId !== null
-      ? slots.find((s) => getPlayer(s.group, s.index)?.id === selectedPlayerId)
+  const expandedSlot =
+    mode === "squad" && expandedPlayerId !== null
+      ? slots.find((s) => getPlayer(s.group, s.index)?.id === expandedPlayerId)
       : undefined;
-  const selectedFieldPlayer = selectedSlot ? getPlayer(selectedSlot.group, selectedSlot.index) : null;
-  const selectedAnchorEl = selectedSlot ? (slotElsRef.get(selectedSlot.id) ?? null) : null;
+  const expandedFieldPlayer = expandedSlot ? getPlayer(expandedSlot.group, expandedSlot.index) : null;
 
   return (
     <div className={styles.card}>
@@ -259,15 +253,23 @@ export default function LineupField({
                 >
                   <div className={styles.badgeWrap}>
                     <span
-                      ref={(el) => {
-                        if (el) slotElsRef.set(slot.id, el);
-                        else slotElsRef.delete(slot.id);
-                      }}
                       className={`${styles.slotCard} ${cardAccentClass} ${player ? styles.slotBadgeFilled : styles.slotBadgeEmpty} ${isSelected ? styles.slotBadgeSelected : ""}`}
                       style={cardAccentStyle}
                       title={player ? `${player.name} — ${roleFullLabel[slot.role]}` : roleFullLabel[slot.role]}
                       draggable={Boolean(player)}
-                      onClick={() => onSlotClick(slot.group, slot.index)}
+                      onClick={(e) => {
+                        // Тройной клик (браузер сам считает клики подряд по
+                        // одному элементу в e.detail) разворачивает карточку
+                        // показателей вместо обычной логики выбора/переноса —
+                        // 1-й и 2-й клики того же тройного клика уже успели
+                        // выполнить обычный select/deselect (см. комментарий
+                        // выше у expandedPlayerId), это ожидаемо и не мешает.
+                        if (e.detail >= 3) {
+                          if (player) setExpandedPlayerId((id) => (id === player.id ? null : player.id));
+                          return;
+                        }
+                        onSlotClick(slot.group, slot.index);
+                      }}
                       onDragStart={(e) => {
                         if (!player) return;
                         const payload: DragPayload = {
@@ -335,12 +337,11 @@ export default function LineupField({
       />
       </div>
 
-      {selectedFieldPlayer && (
-        <LineupPlayerStatsPopup
-          player={selectedFieldPlayer}
-          prev={prevByPlayerId?.[selectedFieldPlayer.id]}
-          anchorEl={selectedAnchorEl}
-          onClose={onDeselect}
+      {expandedFieldPlayer && (
+        <LineupPlayerExpandedCard
+          player={expandedFieldPlayer}
+          prev={prevByPlayerId?.[expandedFieldPlayer.id]}
+          onClose={() => setExpandedPlayerId(null)}
         />
       )}
     </div>

@@ -117,12 +117,18 @@ export function positionSortValue(
 // в "Составе", где остальные позиции можно менять вручную) — амплуа менять
 // нечему.
 const TRAINER_ABBREV = "Т";
+// Отдельный синий — не пересекается ни с одним амплуа (GK зелёный, DEF
+// оранжевый, MID жёлтый, WING бирюзовый, FWD красный, см.
+// positionGroupAccentColor/positionAbbrevAccentColor в data/squad.ts) — по
+// запросу цвет бейджа тренера сделан однозначно отличимым от игровых
+// позиций.
+const TRAINER_ACCENT_COLOR = "#4a90d9";
 
 export function TrainerPositionBadge() {
   return (
     <span
       className={`${styles.positionBadge} ${styles.positionBadgeStatic}`}
-      style={{ "--position-accent": "var(--color-accent)", cursor: "default" } as React.CSSProperties}
+      style={{ "--position-accent": TRAINER_ACCENT_COLOR, cursor: "default" } as React.CSSProperties}
       title="Тренер команды"
     >
       {TRAINER_ABBREV}
