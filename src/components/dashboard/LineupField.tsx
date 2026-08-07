@@ -291,7 +291,7 @@ export default function LineupField({
                           onSetInstruction(player.id, next);
                         }}
                       >
-                        {instructionArrow(getInstruction(player.id), slot.y) || "▾"}
+                        {instructionArrow(getInstruction(player.id), slot.y) || "✪"}
                       </button>
                     )}
                   </div>

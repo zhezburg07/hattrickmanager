@@ -43,13 +43,13 @@ export function applicableInstructions(role: SlotRole): PlayerInstruction[] {
 export function instructionArrow(instruction: PlayerInstruction, slotY: number): string {
   switch (instruction) {
     case "attacking":
-      return "→";
+      return "▶";
     case "defensive":
-      return "←";
+      return "◀";
     case "toCenter":
-      return slotY > 50 ? "↑" : "↓";
+      return slotY > 50 ? "▲" : "▼";
     case "toWing":
-      return slotY > 50 ? "↓" : "↑";
+      return slotY > 50 ? "▼" : "▲";
     default:
       return "";
   }
