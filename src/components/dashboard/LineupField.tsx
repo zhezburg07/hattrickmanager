@@ -291,7 +291,9 @@ export default function LineupField({
                           onSetInstruction(player.id, next);
                         }}
                       >
-                        {instructionArrow(getInstruction(player.id), slot.y) || "✪"}
+                        <span className={styles.instructionIconGlyph}>
+                          {instructionArrow(getInstruction(player.id), slot.y) || "✪"}
+                        </span>
                       </button>
                     )}
                   </div>
