@@ -129,6 +129,14 @@ export interface StoredYouthPlayersData {
   // чтобы отличать "запрос упал" от "запрос успешен, но разбор дал пусто".
   httpStatus: number | null;
   rawPlayerCount: number;
+  // Диагностика запроса youthplayerdetails.xml НА КАЖДОГО игрока (см. чат
+  // "Юношеская команда: навыки всё ещё не отображаются") — по скольким
+  // игрокам реально удалось получить настоящие навыки, и по какой причине
+  // не удалось для остальных (HTTP-статус конкретного запроса или ошибка
+  // разбора) — без этого не отличить "снимок ещё старый, до этой фичи" от
+  // "запросы реально падают на живых данных".
+  detailsSucceeded: number;
+  detailsFailed: string[];
 }
 
 export interface StoredMatchesCalendar {
@@ -598,6 +606,8 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     let youthError: string | null = null;
     let youthHttpStatus: number | null = null;
     let youthRawCount = 0;
+    let detailsSucceeded = 0;
+    const detailsFailed: string[] = [];
     try {
       youthHttpStatus = raw.youthplayerlist?.httpStatus ?? null;
       youthRawCount = raw.youthplayerlist ? debugYouthPlayerListRawCount(raw.youthplayerlist.rawXml) : 0;
@@ -617,11 +627,20 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         );
         youthPlayers = youthPlayers.map((p, i) => {
           const r = detailResults[i];
-          if (r.status !== "fulfilled" || r.value.httpStatus < 200 || r.value.httpStatus >= 300) return p;
+          if (r.status !== "fulfilled") {
+            detailsFailed.push(`#${p.id} ${p.name}: запрос не выполнился — ${errorMessage(r.reason)}`);
+            return p;
+          }
+          if (r.value.httpStatus < 200 || r.value.httpStatus >= 300) {
+            detailsFailed.push(`#${p.id} ${p.name}: HTTP ${r.value.httpStatus} — ${r.value.rawXml.slice(0, 150)}`);
+            return p;
+          }
           try {
             const details = parseYouthPlayerDetailsXml(r.value.rawXml);
+            detailsSucceeded += 1;
             return { ...p, skills: details.skills, details };
-          } catch {
+          } catch (err) {
+            detailsFailed.push(`#${p.id} ${p.name}: ошибка разбора youthplayerdetails — ${errorMessage(err)}`);
             return p;
           }
         });
@@ -635,6 +654,8 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       error: youthError,
       httpStatus: youthHttpStatus,
       rawPlayerCount: youthRawCount,
+      detailsSucceeded,
+      detailsFailed,
     };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.youthPlayers, stored);
   }
@@ -655,8 +676,8 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     anyFailed = true;
   }
 
-  // -- transferHistory (Трансферы — только историческая часть; живой поиск
-  // остаётся on-demand, см. /api/dashboard/transfer-search) --
+  // -- transferHistory (Трансферы — история сделок команды; живой поиск по
+  // рынку убран целиком, см. чат "Трансферы: убрать поиск") --
   try {
     assertOkStatus(raw.transfersteam);
     const transferHistory: TransferHistoryResult = parseTransfersTeamXml(raw.transfersteam.rawXml);
@@ -1276,6 +1297,8 @@ export interface YouthPageData {
   playersError: string | null;
   playersHttpStatus: number | null;
   rawPlayerCount: number;
+  detailsSucceeded: number;
+  detailsFailed: string[];
 }
 
 export async function getStoredYouthData(hattrickUserId: string): Promise<YouthPageData> {
@@ -1292,6 +1315,12 @@ export async function getStoredYouthData(hattrickUserId: string): Promise<YouthP
     playersError: youth?.error ?? null,
     playersHttpStatus: youth?.httpStatus ?? null,
     rawPlayerCount: youth?.rawPlayerCount ?? 0,
+    // ?? [] здесь же защищает от старого снимка (сохранённого до этой
+    // диагностики) — те же undefined-поля, что и раньше приходилось
+    // нормализовать для "Кубков" (см. normalizeStoredCupInfo), просто здесь
+    // хватает обычного fallback: новые поля добавились, а не заменили старые.
+    detailsSucceeded: youth?.detailsSucceeded ?? 0,
+    detailsFailed: youth?.detailsFailed ?? [],
   };
 }
 

@@ -23,9 +23,19 @@ export default async function YouthPage() {
     return <SyncFailedScreen lastError={syncStatus.lastError} />;
   }
 
-  const { youthLevel, levelError, players, playersError, playersHttpStatus, rawPlayerCount } = hattrickUserId
-    ? await getStoredYouthData(hattrickUserId)
-    : { youthLevel: null, levelError: null, players: null, playersError: null, playersHttpStatus: null, rawPlayerCount: 0 };
+  const { youthLevel, levelError, players, playersError, playersHttpStatus, rawPlayerCount, detailsSucceeded, detailsFailed } =
+    hattrickUserId
+      ? await getStoredYouthData(hattrickUserId)
+      : {
+          youthLevel: null,
+          levelError: null,
+          players: null,
+          playersError: null,
+          playersHttpStatus: null,
+          rawPlayerCount: 0,
+          detailsSucceeded: 0,
+          detailsFailed: [] as string[],
+        };
   const errors = [levelError, playersError].filter((e): e is string => e !== null);
 
   return (
@@ -44,6 +54,19 @@ export default async function YouthPage() {
                 <div>HTTP-статус: {playersHttpStatus ?? "запрос не выполнен (см. ошибку ниже)"}</div>
                 <div>Игроков в ответе (реально разобрано из &lt;PlayerList&gt;&lt;YouthPlayer&gt;): {rawPlayerCount}</div>
                 {playersError && <div style={{ color: "#c0503f" }}>Ошибка: {playersError}</div>}
+                <div style={{ marginTop: 6 }}>
+                  Реальные навыки получены (youthplayerdetails): {detailsSucceeded} из {rawPlayerCount}
+                </div>
+                {detailsFailed.length > 0 && (
+                  <div style={{ color: "#c0503f" }}>
+                    Не удалось получить навыки для {detailsFailed.length} игрок(ов):
+                    <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                      {detailsFailed.map((line, i) => (
+                        <li key={i}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
           )}

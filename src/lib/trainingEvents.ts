@@ -14,8 +14,7 @@ import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
 // замена собственной БД-истории.
 const TRAINING_EVENTS_VERSION = "1.3";
 
-// SkillID — тот же официальный список CHPP, что и в transfersearch.xml
-// (см. src/components/dashboard/TransferSearchPanel.tsx).
+// SkillID — тот же официальный список CHPP, что и в transfersearch.xml.
 const skillIdLabels: Record<number, string> = {
   1: "Вратарь",
   2: "Выносливость",

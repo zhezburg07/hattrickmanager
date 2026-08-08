@@ -6,9 +6,10 @@ import styles from "@/components/dashboard/Dashboard.module.css";
 import { getRequiredHattrickTokens, getStoredHattrickUserId } from "@/lib/hattrickApi";
 import { ensureSynced, getStoredTransferHistory } from "@/lib/chppSync";
 
-// Только историческая часть (transfersteam) читает сохранённый снимок —
-// живой поиск по рынку (transfersearch, TransferSearchPanel.tsx) остаётся
-// on-demand, без изменений.
+// История трансферов (transfersteam) читает сохранённый снимок. Живой
+// поиск по рынку (transfersearch) убран целиком — вкладка показывает только
+// последние сделки самой команды с фильтром Все/Купленные/Проданные (см.
+// TransfersSection.tsx, чат "Трансферы: убрать поиск").
 export default async function TransfersPage() {
   const tokens = await getRequiredHattrickTokens();
   const hattrickUserId = await getStoredHattrickUserId();

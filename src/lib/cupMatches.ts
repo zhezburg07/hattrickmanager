@@ -85,6 +85,12 @@ interface FetchedRound {
   round: number;
   ourMatch: RealCupMatch | null;
   rawMatchCount: number;
+  // Диагностика "раунд 0" (см. чат "Кубки: странность с раунд 0") — CupName
+  // подтверждённо приходит верно, а CupRound почему-то читается как 0 на
+  // реальных данных; чтобы не гадать дальше вслепую про точное название
+  // поля, сохраняем ВСЕ поля <Cup> как есть (кроме MatchList — там сотни
+  // матчей раунда) прямо в debug, видно на самой странице "Кубки".
+  rawMetaKeys: Record<string, unknown>;
 }
 
 // Запрашивает ОДИН раунд кубка (без seasonRound — CHPP сам отдаёт ПОСЛЕДНИЙ/
@@ -156,8 +162,9 @@ async function fetchCupRound(
   const season = Number(cupMeta.CupSeason ?? 0);
   const cupName = String(cupMeta.CupName ?? "");
   const ourMatch = ourMatchRaw ? toRealCupMatch(ourMatchRaw, ourTeamId, round) : null;
+  const { MatchList: _matchList, ...rawMetaKeys } = cupMeta;
 
-  return { result: { cupName, season, round, ourMatch, rawMatchCount: totalSeen }, error: null };
+  return { result: { cupName, season, round, ourMatch, rawMatchCount: totalSeen, rawMetaKeys }, error: null };
 }
 
 // Строит РЕАЛЬНЫЙ путь нашей команды по раундам конкретного кубка: сначала
@@ -191,6 +198,7 @@ export async function resolveOurCupPath(
     `Текущий/последний раунд "${current.cupName}": раунд ${current.round}, сезон ${current.season}, ` +
       `матчей в раунде=${current.rawMatchCount}, наш матч ${current.ourMatch ? "найден" : "НЕ найден"}.`,
   );
+  debug.push(`Сырые поля <Cup> из cupmatches.xml (диагностика "раунд 0"): ${JSON.stringify(current.rawMetaKeys)}`);
 
   const path: RealCupMatch[] = [];
   if (current.ourMatch) path.push(current.ourMatch);
