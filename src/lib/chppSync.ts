@@ -730,11 +730,27 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
 
   // -- transferHistory (Трансферы — история сделок команды; живой поиск по
   // рынку убран целиком, см. чат "Трансферы: убрать поиск") --
+  // ДИАГНОСТИКА (см. чат "Трансферы: список всё ещё пуст после Обновить
+  // данные") — пользователь сообщает, что на "Трансферы" по-прежнему
+  // показывается "Данные ещё не загружены" (TransfersSection.tsx рисует это
+  // ТОЛЬКО когда снимка transferHistory нет вообще — ни data, ни error,
+  // см. getStoredTransferHistory), а не сообщение об ошибке и не "история
+  // пуста". Этот блок безусловно завершается либо saveSnapshotSuccess, либо
+  // saveSnapshotError при КАЖДОМ запуске syncTeamData — то есть строка в
+  // chpp_snapshots должна появляться в любом случае, если этот код вообще
+  // выполнился. Пишем результат явно в sectionErrors (видно на
+  // "Обновления" сразу после синхронизации), чтобы увидеть по факту: дошёл
+  // ли код сюда вообще, какой HTTP-статус у transfersteam.xml, и сколько
+  // сделок реально разобралось — вместо того чтобы гадать заново.
   try {
+    const httpStatus = raw.transfersteam?.httpStatus ?? null;
     assertOkStatus(raw.transfersteam);
     const transferHistory: TransferHistoryResult = parseTransfersTeamXml(raw.transfersteam.rawXml);
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.transferHistory, transferHistory);
     anySucceeded = true;
+    sectionErrors.push(
+      `Трансферы (диагностика): HTTP ${httpStatus}, команда "${transferHistory.teamName || "?"}", разобрано сделок ${transferHistory.transfers.length} (куплено ${transferHistory.numberOfBuys}, продано ${transferHistory.numberOfSales}), страница ${transferHistory.pageIndex}/${transferHistory.pages} — снимок сохранён.`,
+    );
   } catch (err) {
     const message = `История трансферов (transfersteam): ${errorMessage(err)}`;
     await saveSnapshotError(hattrickUserId, DATA_KEYS.transferHistory, message);
