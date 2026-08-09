@@ -52,7 +52,14 @@ import {
   CUP_MATCH_TYPE,
 } from "./matches";
 import type { SeasonMatch } from "@/data/matches";
-import { resolveOurCupPath, fetchCupMeta, type OurCupPathResult, type RealCupMatch, type UnresolvedCupMatch } from "./cupMatches";
+import {
+  resolveOurCupPath,
+  resolvePastCupPath,
+  fetchCupMeta,
+  type OurCupPathResult,
+  type RealCupMatch,
+  type UnresolvedCupMatch,
+} from "./cupMatches";
 import type { UpcomingCupMatch } from "@/components/dashboard/CupSection";
 import { parseTransfersTeamXml, TRANSFERS_TEAM_VERSION, type TransferHistoryResult } from "./transferMarket";
 import {
@@ -1149,6 +1156,28 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
                 `а текущий сезон=${currentSeason} (данные из прошлого сезона).`,
             );
             return null;
+          }
+          // ИСПРАВЛЕНО (см. чат "Кубки: карточка Kazakhstan Cup всё ещё
+          // показывает старые данные"): предпочитаем обход раундов
+          // cupmatches.xml (resolvePastCupPath) — тот же надёжный механизм,
+          // что уже доказанно работает для АКТИВНОГО кубка, не зависящий от
+          // того, проставил ли matches.xml/matchesarchive.xml CupID
+          // конкретному матчу. pastCupPathFromMatches (сборка из уже
+          // известных матчей) остаётся только запасным вариантом — если
+          // обход раундов не смог найти вообще ни одного нашего матча
+          // (например, временный сбой самого cupmatches.xml).
+          const walkSeason = meta?.season ?? currentSeason;
+          if (walkSeason !== null) {
+            const walked = await resolvePastCupPath(tokens, id, teamId, walkSeason, ourTeamName);
+            if (!walked.error && walked.path.length > 0) {
+              sectionErrors.push(
+                `Кубки: CupID ${id} ("${walked.cupName}") построен обходом раундов cupmatches.xml — ${walked.path.length} раунд(ов).`,
+              );
+              return walked;
+            }
+            sectionErrors.push(
+              `Кубки: CupID ${id} — обход раундов не дал результата (${walked.error ?? "путь пуст"}), используем запасной способ (matches/matchesarchive).`,
+            );
           }
           return pastCupPathFromMatches(id, matchesForCup, meta, teamId, ourTeamName);
         }),

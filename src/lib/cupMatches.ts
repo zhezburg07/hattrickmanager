@@ -277,6 +277,78 @@ export async function resolveOurCupPath(
   };
 }
 
+// Максимум раундов, которые проходит вперёд resolvePastCupPath — реальные
+// кубки Hattrick не длиннее 8 раундов (см. официальные правила: National/
+// Divisional cup — 8 раундов), запас на всякий случай.
+const MAX_PAST_CUP_ROUNDS = 10;
+
+// Строит путь по КУБКУ, ИЗ КОТОРОГО КОМАНДА УЖЕ ВЫБЫЛА, — тем же самым
+// обходом раундов cupmatches.xml, что уже доказанно надёжно работает для
+// текущего активного кубка (resolveOurCupPath выше), а НЕ сборкой из уже
+// известных matches.xml/matchesarchive.xml (см. pastCupPathFromMatches в
+// chppSync.ts). Причина (см. чат "Кубки: карточка Kazakhstan Cup всё ещё
+// показывает старые данные"): matches.xml/matchesarchive.xml подтверждённо
+// НЕ ВСЕГДА проставляют CupID реальным сыгранным матчам (та же задержка на
+// стороне Hattrick, что уже видели в нескольких местах) — тогда
+// pastCupPathFromMatches либо вообще не находит эти матчи (они остаются в
+// "без определённого турнира"), либо, что хуже, находит ТОЛЬКО старые
+// архивные матчи под тем же CupID из другого периода и строит карточку из
+// них. Обход раундов cupmatches.xml НЕ зависит от CupID на отдельном матче
+// вообще — ищет наш матч среди ВСЕХ матчей раунда напрямую по TeamID, тем
+// же способом, что и для текущего кубка.
+//
+// В отличие от resolveOurCupPath (который сначала узнаёт "последний раунд
+// ВСЕЙ турнирной сетки" и идёт от него назад — оправдано для активного
+// кубка, где неизвестно заранее, на каком раунде мы сейчас), здесь сезон
+// уже известен заранее (тот же currentSeason, что подтвердил фильтр по
+// сезону в chppSync.ts) — поэтому идём ВПЕРЁД от раунда 1, пока не
+// перестанем находить свой матч (это и есть раунд вылета). Для кубка, из
+// которого мы уже выбыли, "последний раунд всей сетки" мог давно уйти
+// далеко вперёд для других команд — идти от него назад было бы намного
+// дороже (лишние запросы за раунды, где нас уже нет), чем от раунда 1.
+export async function resolvePastCupPath(
+  tokens: StoredHattrickTokens,
+  cupId: string,
+  ourTeamId: string,
+  season: number,
+  ourTeamName = "",
+): Promise<OurCupPathResult> {
+  const debug: string[] = [
+    `Путь построен обходом раундов cupmatches.xml вперёд от раунда 1 (сезон ${season}), а не из matches/matchesarchive.`,
+  ];
+  const path: RealCupMatch[] = [];
+  let cupName = "";
+
+  for (let round = 1; round <= MAX_PAST_CUP_ROUNDS; round++) {
+    const { result, error } = await fetchCupRound(tokens, cupId, ourTeamId, { season, round });
+    if (error) {
+      debug.push(`Раунд ${round}: ошибка запроса — ${error}`);
+      break;
+    }
+    if (!result) break;
+    if (result.cupName) cupName = result.cupName;
+    if (result.ourMatch) {
+      path.push(result.ourMatch);
+      debug.push(`Раунд ${round}: наш матч найден (дата ${result.ourMatch.date}, соперник «${result.ourMatch.opponent}»).`);
+    } else {
+      debug.push(`Раунд ${round}: нашего матча нет — считаем это концом участия команды в этом кубке.`);
+      break;
+    }
+  }
+
+  return {
+    cupId,
+    cupName,
+    season,
+    currentRound: path.length,
+    path,
+    debug,
+    error: path.length === 0 ? "Обход раундов не нашёл ни одного нашего матча в этом кубке." : null,
+    ourTeamId,
+    ourTeamName,
+  };
+}
+
 // Только название и сезон турнира по CupID, без прохода по раундам — для
 // кубков, из которых команда уже выбыла в этом сезоне (см. чат "Кубки:
 // вернуть историю"). Полный resolveOurCupPath здесь не подходит: его первый
