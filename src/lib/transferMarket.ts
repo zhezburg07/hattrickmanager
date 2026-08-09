@@ -101,11 +101,17 @@ export function parseTransfersTeamXml(xml: string): TransferHistoryResult {
   };
 }
 
-// Дозапрашивает более старые страницы transfersteam.xml (номер меньше),
-// пока не наберётся options.minTransfers сделок или не кончатся страницы —
-// см. чат "Трансферы: пагинация не накапливается" (pageIndex=0 отдаёт только
-// ПОСЛЕДНЮЮ страницу истории, которая может оказаться частичной на границе
-// карьеры команды). Принимает fetchPage как параметр (а не сам делает
+// Дозапрашивает ВСЕ более старые страницы transfersteam.xml (номер меньше),
+// пока не дойдёт до страницы 1 (вся карьерная история собрана) или не
+// упрётся в защитный лимит options.maxExtraFetches — см. чат "Трансферы:
+// покажи все сделки за карьеру" (раньше здесь была ранняя остановка после
+// первых ~25 набранных сделок, теперь по явному запросу пользователя — вся
+// история). pageIndex=0 отдаёт только ПОСЛЕДНЮЮ страницу истории (самую
+// новую), которая может оказаться частичной на границе карьеры команды —
+// отсюда и нужен обход остальных страниц. Итоговый список явно
+// сортируется по Deadline (по убыванию — новые сверху), а не полагается на
+// порядок страниц/записей внутри страницы, который CHPP нигде не
+// документирует. Принимает fetchPage как параметр (а не сам делает
 // HTTP-запрос) специально для тестируемости — вызывающая сторона
 // (chppSync.ts) передаёт настоящий requestChppXmlRaw, а проверка на mock-
 // данных передаёт свою функцию.
@@ -117,18 +123,14 @@ export interface TransferPageFetchResult {
 export async function accumulateTransferHistory(
   firstPage: TransferHistoryResult,
   fetchPage: (pageIndex: number) => Promise<TransferPageFetchResult>,
-  options: { minTransfers: number; maxExtraFetches: number },
+  options: { maxExtraFetches: number },
 ): Promise<{ result: TransferHistoryResult; pageLog: string[] }> {
   let result = firstPage;
   const pageLog: string[] = [`стр.${result.pageIndex}/${result.pages}: ${result.transfers.length} сделок`];
   let currentPage = result.pageIndex;
   let extraFetches = 0;
 
-  while (
-    result.transfers.length < options.minTransfers &&
-    currentPage > 1 &&
-    extraFetches < options.maxExtraFetches
-  ) {
+  while (currentPage > 1 && extraFetches < options.maxExtraFetches) {
     currentPage -= 1;
     extraFetches += 1;
     const pageRaw = await fetchPage(currentPage);
@@ -147,6 +149,7 @@ export async function accumulateTransferHistory(
     }
   }
 
+  result = { ...result, transfers: [...result.transfers].sort((a, b) => b.deadline.localeCompare(a.deadline)) };
   return { result, pageLog };
 }
 

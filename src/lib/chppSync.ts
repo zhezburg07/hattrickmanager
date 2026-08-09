@@ -61,13 +61,15 @@ import {
   type TransferHistoryResult,
 } from "./transferMarket";
 
-// Сколько сделок минимум нужно набрать для показа на "Трансферы" (столько
-// же, сколько там реально показывается — MAX_TRANSFERS_SHOWN в
-// TransfersSection.tsx) — и сколько ДОПОЛНИТЕЛЬНЫХ страниц transfersteam.xml
-// максимум можно дозапросить сверх первой, если последняя страница истории
-// частичная (см. секцию "transferHistory" в syncTeamData ниже).
-const MIN_TRANSFERS_TO_ACCUMULATE = 25;
-const MAX_EXTRA_TRANSFER_PAGE_FETCHES = 5;
+// Сколько ДОПОЛНИТЕЛЬНЫХ страниц transfersteam.xml максимум можно
+// дозапросить сверх первой, чтобы собрать ВСЮ карьерную историю сделок
+// команды (см. чат "Трансферы: покажи все сделки за карьеру") — обычный
+// обход и так упирается в страницу 1 сам по себе (currentPage > 1 в
+// accumulateTransferHistory), это чисто защитный предел на случай, если
+// сервер вернёт некорректно большое число страниц или обход зациклится по
+// другой причине. С запасом на рост истории команды за пределы уже
+// известных 28 страниц (322+356=678 сделок на момент написания).
+const MAX_EXTRA_TRANSFER_PAGE_FETCHES = 100;
 import {
   saveSnapshotSuccess,
   saveSnapshotError,
@@ -752,11 +754,12 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // пустым (в диагностике: 1 сделка), хотя за карьеру их могло быть сотни
   // (NumberOfBuys/NumberOfSales в <Stats> — это ВСЕГО за карьеру, отдельно
   // от постраничного <Transfers>, не число на текущей странице — тоже
-  // подтверждено диагностикой: 322+356=678 при 28 страницах). Теперь
-  // дозапрашиваем более старые страницы (номер меньше) по одной, пока не
-  // наберётся хотя бы MIN_TRANSFERS_TO_ACCUMULATE записей для показа или не
-  // кончатся страницы — с защитным лимитом на число доп. запросов, чтобы не
-  // заваливать CHPP при очень длинной истории.
+  // подтверждено диагностикой: 322+356=678 при 28 страницах). По явному
+  // запросу пользователя (см. чат "Трансферы: покажи все сделки за
+  // карьеру") дозапрашиваем ВСЕ более старые страницы (номер меньше) до
+  // самой первой — не только до какого-то минимума для показа — с защитным
+  // лимитом MAX_EXTRA_TRANSFER_PAGE_FETCHES на число доп. запросов, чтобы
+  // не зациклиться, если сервер вернёт некорректно большое Pages.
   try {
     const httpStatus = raw.transfersteam?.httpStatus ?? null;
     assertOkStatus(raw.transfersteam);
@@ -765,7 +768,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     const { result: transferHistory, pageLog } = await accumulateTransferHistory(
       firstPage,
       (pageIndex) => requestChppXmlRaw("transfersteam", { pageIndex: String(pageIndex), version: TRANSFERS_TEAM_VERSION }, tokens),
-      { minTransfers: MIN_TRANSFERS_TO_ACCUMULATE, maxExtraFetches: MAX_EXTRA_TRANSFER_PAGE_FETCHES },
+      { maxExtraFetches: MAX_EXTRA_TRANSFER_PAGE_FETCHES },
     );
 
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.transferHistory, transferHistory);

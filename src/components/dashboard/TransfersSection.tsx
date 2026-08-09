@@ -5,8 +5,6 @@ import type { TransferHistoryResult, TransferHistoryEntry } from "@/lib/transfer
 import { defaultCurrency } from "@/data/dashboard";
 import styles from "./Transfers.module.css";
 
-const MAX_TRANSFERS_SHOWN = 25;
-
 type FilterType = "all" | "sale" | "buy";
 
 const filterOptions: { key: FilterType; label: string }[] = [
@@ -31,8 +29,10 @@ function formatSek(value: number): string {
 // CHPP не даёт отдельного файла "что сейчас выставлено этой командой на
 // продажу" — только завершённую историю. Живой поиск по рынку (transfersearch,
 // раньше TransferSearchPanel.tsx) убран целиком (см. чат "Трансферы: убрать
-// поиск") — вместо него показываем последние MAX_TRANSFERS_SHOWN сделок самой
-// команды, отсортированные по дате (от новых к старым), с фильтром по типу.
+// поиск") — вместо него показываем ВСЮ карьерную историю сделок команды (см.
+// чат "Трансферы: покажи все сделки за карьеру" — синхронизация теперь
+// дозапрашивает все страницы transfersteam.xml, а не только последнюю),
+// отсортированную по дате (от новых к старым), с фильтром по типу.
 export default function TransfersSection({
   history,
   historyError,
@@ -48,9 +48,11 @@ export default function TransfersSection({
 
   const shown: TransferHistoryEntry[] = useMemo(() => {
     if (!history) return [];
+    // Снимок из chppSync.ts уже приходит отсортированным по Deadline (по
+    // убыванию) — сортируем здесь ещё раз на всякий случай (дёшево, а
+    // защищает от старых снимков, сохранённых до этого исправления).
     const sorted = [...history.transfers].sort((a, b) => b.deadline.localeCompare(a.deadline));
-    const filtered = filter === "all" ? sorted : sorted.filter((t) => t.transferType === filter);
-    return filtered.slice(0, MAX_TRANSFERS_SHOWN);
+    return filter === "all" ? sorted : sorted.filter((t) => t.transferType === filter);
   }, [history, filter]);
 
   return (
@@ -58,6 +60,7 @@ export default function TransfersSection({
       <div className={styles.cardHeadRow}>
         <div className={styles.cardTitle} style={{ margin: 0 }}>
           История трансферов{history?.teamName ? ` — ${history.teamName}` : ""}
+          {history && history.transfers.length > 0 ? ` (${shown.length} из ${history.transfers.length})` : ""}
         </div>
       </div>
 
