@@ -59,6 +59,7 @@ import {
   saveSnapshotSuccess,
   saveSnapshotError,
   getAllSnapshots,
+  getSnapshot,
   setSyncInProgress,
   finishSync,
   getSyncStatus,
@@ -199,6 +200,18 @@ export interface StoredCupInfo {
   // того чтобы гадать, к какому кубку они относятся, показываем их честно
   // отдельным блоком (см. CupSection.tsx).
   unresolvedMatches: UnresolvedCupMatch[];
+  // "Прилипчивый" запасной CupID для определения ТЕКУЩЕГО кубка (см. чат
+  // "Кубки: не откатываться на уже проигранный кубок, не закрепляться на
+  // уже неверном значении") — обновляется ТОЛЬКО когда teamDetailsCupId
+  // или clubCupId реально пришли непустыми в ЭТУ синхронизацию (то есть
+  // только из надёжных источников, никогда из шаткого matchesCupId) — иначе
+  // переносится из прошлого снимка как есть. Используется как последний,
+  // 4-й по приоритету запасной вариант, только когда все остальные (включая
+  // проверенный на "не выбыли ли" matchesCupId) не дали ответа — специально
+  // НЕ через поле chosenCupId, чтобы уже один раз ошибочно определённый
+  // (через matchesCupId) chosenCupId не мог сам себя закрепить как "надёжный"
+  // на будущее.
+  lastReliableCupId: string | null;
 }
 
 const emptyOpponentAnalysis: OpponentAnalysisResult = {
@@ -997,16 +1010,89 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     };
     const errors: string[] = [];
 
-    let cupId = cupIdFromTeamDetails;
+    // 4-уровневая схема определения ТЕКУЩЕГО CupID (см. чат "Кубки: не
+    // откатываться на уже проигранный кубок, не закрепляться на уже
+    // неверном значении"):
+    //   1) teamDetailsCupId — самый надёжный источник (Team.Cup в
+    //      teamdetails.xml, CHPP всегда держит его равным ровно одному
+    //      активному кубку команды).
+    //   2) clubCupId — тот же смысл, из club.xml, если teamDetails пуст.
+    //   3) matchesCupId — первый попавшийся CupID среди matchesForCup, НО
+    //      только если по нашим же данным команда из этого кубка ещё НЕ
+    //      выбыла (последний матч под этим CupID — не проигрыш). Раньше
+    //      этой проверки не было: как только Hattrick проставлял CupID уже
+    //      сыгранным матчам прошлого (проигранного) кубка раньше, чем ещё
+    //      не сыгранным матчам нового текущего, matchesCupId гарантированно
+    //      находил именно прошлый, уже пройденный кубок.
+    //   4) lastReliableCupId — CupID из ПРЕДЫДУЩЕЙ синхронизации, но только
+    //      тот, что там был получен через уровень 1 или 2 (никогда через
+    //      matchesCupId) — на случай, если teamDetailsCupId/clubCupId сейчас
+    //      временно пусты (задержка на стороне Hattrick, см. managercompendium)
+    //      и уровень 3 не дал уверенного кандидата.
     const matchesForCup = mergedSeasonMatches ?? parsedMatches ?? [];
+    let cupId: string | null = null;
+    let cupIdSource = "";
+
     if (teamId) {
       debug.matchesCupId = matchesForCup.find((m) => m.cupId !== null)?.cupId ?? null;
       debug.matchesRawSample = raw.matches ? debugRawMatchFields(raw.matches.rawXml, 10) : [];
-      if (!cupId) cupId = debug.clubCupId ?? debug.matchesCupId;
+
+      if (cupIdFromTeamDetails) {
+        cupId = cupIdFromTeamDetails;
+        cupIdSource = "teamDetailsCupId";
+      } else if (debug.clubCupId) {
+        cupId = debug.clubCupId;
+        cupIdSource = "clubCupId";
+      } else if (debug.matchesCupId) {
+        const candidateMatches = matchesForCup
+          .filter((m) => m.cupId === debug.matchesCupId)
+          .sort((a, b) => b.date.localeCompare(a.date));
+        const lastCandidateMatch = candidateMatches[0];
+        const eliminated =
+          !!lastCandidateMatch &&
+          lastCandidateMatch.status === "FINISHED" &&
+          lastCandidateMatch.ourScore !== null &&
+          lastCandidateMatch.oppScore !== null &&
+          lastCandidateMatch.ourScore < lastCandidateMatch.oppScore;
+        if (eliminated) {
+          sectionErrors.push(
+            `Кубки: CupID ${debug.matchesCupId} отклонён как "текущий" через matchesCupId — последний матч ` +
+              `под этим CupID (MatchID ${lastCandidateMatch.matchId}, ${lastCandidateMatch.date}) проигран ` +
+              `${lastCandidateMatch.ourScore}:${lastCandidateMatch.oppScore}, команда уже выбыла из этого кубка.`,
+          );
+        } else {
+          cupId = debug.matchesCupId;
+          cupIdSource = "matchesCupId (проверен — не выбыли)";
+        }
+      }
     } else {
       errors.push("Кубки (teamdetails): не удалось определить нашу команду.");
     }
+
+    // Уровень 4 — читаем ПРОШЛЫЙ снимок ДО того, как этот же цикл его
+    // перезапишет ниже (saveSnapshotSuccess). lastReliableCupId в прошлом
+    // снимке уже гарантированно НЕ из matchesCupId (см. комментарий у поля
+    // в StoredCupInfo) — не рискуем закрепить уже ошибочное значение.
+    const previousCupSnapshot = await getSnapshot<Record<string, unknown>>(hattrickUserId, DATA_KEYS.cupInfo);
+    const previousLastReliableCupId = (previousCupSnapshot?.data?.lastReliableCupId as string | null | undefined) ?? null;
+
+    if (!cupId && previousLastReliableCupId) {
+      cupId = previousLastReliableCupId;
+      cupIdSource = "lastReliableCupId (запасной из прошлой синхронизации)";
+      sectionErrors.push(
+        `Кубки: teamDetailsCupId/clubCupId пусты, matchesCupId не прошёл проверку — используем последний ` +
+          `надёжный CupID из прошлой синхронизации: ${previousLastReliableCupId}.`,
+      );
+    }
+
+    // Новый lastReliableCupId — только из уровня 1/2 этой синхронизации;
+    // если оба пусты сейчас, переносим прошлое значение без изменений (а
+    // НЕ то, что выбрал уровень 3/4 сейчас) — иначе поле само себя
+    // "заразило" бы шатким источником.
+    const lastReliableCupId = cupIdFromTeamDetails || debug.clubCupId || previousLastReliableCupId;
+
     debug.chosenCupId = cupId;
+    sectionErrors.push(`Кубки (источник chosenCupId): ${cupIdSource || "(не найден ни один уровень)"}.`);
 
     let currentCupPath: OurCupPathResult | null = null;
     if (cupId && teamId) {
@@ -1100,7 +1186,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         oppScore: m.oppScore,
       }));
 
-    const stored: StoredCupInfo = { cupPaths, nextMatch, errors, debug, unresolvedMatches };
+    const stored: StoredCupInfo = { cupPaths, nextMatch, errors, debug, unresolvedMatches, lastReliableCupId };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.cupInfo, stored);
     if (errors.length === 0) anySucceeded = true;
     else anyFailed = true;
@@ -1554,6 +1640,7 @@ export function normalizeStoredCupInfo(raw: Record<string, unknown> | undefined,
       errors: fallbackError ? [fallbackError] : [],
       debug: emptyCupDebug,
       unresolvedMatches: [],
+      lastReliableCupId: null,
     };
   }
 
@@ -1578,6 +1665,7 @@ export function normalizeStoredCupInfo(raw: Record<string, unknown> | undefined,
     // ?? [] — старый снимок (сохранённый до этого поля) просто не покажет
     // блок "без турнира", а не упадёт.
     unresolvedMatches: Array.isArray(raw.unresolvedMatches) ? (raw.unresolvedMatches as UnresolvedCupMatch[]) : [],
+    lastReliableCupId: (raw.lastReliableCupId as string | null | undefined) ?? null,
   };
 }
 
