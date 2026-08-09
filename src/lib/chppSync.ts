@@ -655,7 +655,22 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
           try {
             const details = parseYouthPlayerDetailsXml(r.value.rawXml);
             detailsSucceeded += 1;
-            return { ...p, skills: details.skills, details };
+            // ПОДКЛЮЧЕНО (см. чат "Юношеская команда: реальный Age/
+            // NativeCountryID подтверждённо появились в
+            // youthplayerdetails.xml") — раньше details.age/nativeCountryId
+            // парсились только для диагностики (debugYouthPlayerDetailsRawFields
+            // выше), в финальный объект игрока не попадали, поэтому таблица
+            // всё ещё показывала "—"/домашнюю страну по умолчанию, даже
+            // когда реальные данные уже пришли. Реальные данные — В
+            // ПРИОРИТЕТЕ, допущение по умолчанию (см. parseYouthPlayerListXml
+            // в youthPlayers.ts) остаётся запасным вариантом на случай,
+            // если конкретно у этого игрока запрос не удался или поле
+            // снова пропадёт.
+            const age = details.age ?? p.age;
+            const nationality = details.nativeCountryId
+              ? (countryIdLookupResult.lookup?.[details.nativeCountryId] ?? p.nationality)
+              : p.nationality;
+            return { ...p, age, nationality, skills: details.skills, details };
           } catch (err) {
             detailsFailed.push(`#${p.id} ${p.name}: ошибка разбора youthplayerdetails — ${errorMessage(err)}`);
             return p;

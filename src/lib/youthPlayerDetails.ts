@@ -18,6 +18,13 @@ export interface YouthPlayerDetailsResult {
   // конкретному игроку отдельным запросом — источник настоящих навыков
   // (см. чат "Юношеская команда: подключить реальные навыки").
   skills: SquadSkills;
+  // ПОДКЛЮЧЕНО (см. чат "Юношеская команда: реальный Age/NativeCountryID
+  // подтверждённо появились в youthplayerdetails.xml") — то же поле CHPP,
+  // что youthplayerlist.xml так и не прислал ни разу; здесь оно реально
+  // приходит. null, если поля вдруг снова нет в конкретном ответе (тот же
+  // защитный принцип, что и у остальных полей ниже).
+  age: number | null;
+  nativeCountryId: string | null;
   arrivalDate: string;
   canBePromotedIn: number;
   careerGoals: number;
@@ -57,6 +64,8 @@ export function parseYouthPlayerDetailsXml(xml: string): YouthPlayerDetailsResul
 
   return {
     skills,
+    age: player.Age !== undefined ? Number(player.Age) : null,
+    nativeCountryId: player.NativeCountryID !== undefined ? String(player.NativeCountryID) : null,
     arrivalDate: String(player.ArrivalDate ?? ""),
     canBePromotedIn: Number(player.CanBePromotedIn ?? 0),
     careerGoals: Number(player.CareerGoals ?? 0),
