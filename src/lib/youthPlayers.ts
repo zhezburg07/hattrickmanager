@@ -130,7 +130,7 @@ export interface DebugYouthPlayerRaw {
   countryLikeFields: string;
 }
 
-export function debugRawYouthPlayerFields(xml: string, limit = 3): DebugYouthPlayerRaw[] {
+export function debugRawYouthPlayerFields(xml: string, limit = 5): DebugYouthPlayerRaw[] {
   const parser = new XMLParser();
   const data = parser.parse(xml);
   const root = data?.HattrickData;

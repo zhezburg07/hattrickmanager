@@ -654,6 +654,18 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     }
     if (youthError) sectionErrors.push(youthError);
     else if (youthRawCount === 0) sectionErrors.push(`Юношеская команда: youthplayerlist.xml успешно ответил, но игроков академии в нём 0.`);
+    // ДИАГНОСТИКА (см. чат "Юношеская команда: национальность и возраст
+    // всё ещё не отображаются") — та же диагностика уже была на debug-
+    // панели /dashboard/youth, дублируем в sectionErrors, чтобы она была
+    // видна на "Обновления" сразу после синхронизации, без отдельного
+    // захода на вкладку "Юношеская команда" — тем же способом, что уже
+    // используется для Кубков.
+    if (rawFieldsSample.length > 0) {
+      const dump = rawFieldsSample
+        .map((p) => `${p.name}: ${p.ageLikeFields}; ${p.countryLikeFields}`)
+        .join(" || ");
+      sectionErrors.push(`Юношеская команда (сырые поля Age*/Country*/Nation* из youthplayerlist.xml): ${dump}`);
+    }
     const stored: StoredYouthPlayersData = {
       players: youthPlayers,
       error: youthError,
