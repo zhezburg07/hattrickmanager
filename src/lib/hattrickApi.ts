@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { buildAuthorizationHeader, buildOAuthParams, HATTRICK_OAUTH_URLS } from "./hattrickOAuth";
 import { SESSION_COOKIE, verifySessionCookieValue } from "./siteSession";
 import { getHattrickConnectionForAccount, getHattrickUserIdForAccount } from "./accountsDb";
+import { resolveManagerUserId } from "./manager";
 
 export interface StoredHattrickTokens {
   accessToken: string;
@@ -81,12 +82,37 @@ export async function getRequiredHattrickTokens(): Promise<StoredHattrickTokens>
 // прямо в cookie).
 export async function getStoredHattrickUserId(): Promise<string | null> {
   const accountId = getStoredAccountId();
-  if (!accountId) return null;
-  try {
-    return await getHattrickUserIdForAccount(accountId);
-  } catch {
-    return null;
+  if (accountId) {
+    try {
+      const userId = await getHattrickUserIdForAccount(accountId);
+      if (userId) return userId;
+    } catch {
+      // база недоступна — попробуем запасной путь ниже
+    }
   }
+
+  // ИСПРАВЛЕНО (срочный баг — реальный пользователь не мог синхронизировать
+  // только что подключённую команду, см. чат "Срочно: реальный пользователь
+  // не может подключиться"): "мягкий" вход (см. /api/auth/callback —
+  // managercompendium.xml не ответил на шаге OAuth) кладёт токены прямо в
+  // обычную cookie БЕЗ hm_session — getStoredHattrickTokens() выше уже знает
+  // про эту запасную cookie и прекрасно работает, а эта функция раньше
+  // просто возвращала null, если hm_session нет, — из-за чего /api/dashboard/
+  // sync считал только что подключённую команду "не привязанной", хотя сами
+  // токены были рабочими. Пробуем получить UserID здесь и сейчас (лишняя
+  // попытка managercompendium.xml, если предыдущая была лишь временным
+  // сбоем) — сама долгоживущая cookie сессии сайта всё равно "дозаписывается"
+  // отдельно и асинхронно через /api/auth/session-upgrade (см.
+  // SessionUpgrader.tsx) — здесь мы её не трогаем (из обычного серверного
+  // компонента cookie в любом случае поставить нельзя), только читаем
+  // UserID для ТЕКУЩЕГО запроса.
+  const cookieStore = cookies();
+  const legacyToken = cookieStore.get("hattrick_access_token")?.value;
+  const legacyTokenSecret = cookieStore.get("hattrick_access_token_secret")?.value;
+  if (!legacyToken || !legacyTokenSecret) return null;
+
+  const { userId } = await resolveManagerUserId({ accessToken: legacyToken, accessTokenSecret: legacyTokenSecret }, 1);
+  return userId;
 }
 
 export interface ChppRawResponse {
