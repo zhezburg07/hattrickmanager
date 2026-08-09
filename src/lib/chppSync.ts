@@ -1024,12 +1024,36 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     });
     debug.pastCupIds = pastCupIds;
 
-    const pastCupPaths = await Promise.all(
-      pastCupIds.map(async (id) => {
-        const meta = await fetchCupMeta(tokens, id);
-        return pastCupPathFromMatches(id, matchesForCup, meta, teamId, ourTeamName);
-      }),
-    );
+    // ИСПРАВЛЕНО (подтверждённый баг — см. чат "Кубки: разобрались, откуда
+    // лишние кубки"): matchesarchive.xml документированно может вернуть
+    // матчи вплоть до 2 сезонов назад (см. комментарий у dedupeMatches в
+    // matches.ts), а RealMatch нигде не хранит номер сезона — только дату и
+    // CupID. Раньше pastCupIds включал ЛЮБОЙ CupID, когда-либо встретившийся
+    // среди кубковых матчей команды, вне зависимости от сезона — так в
+    // каскад попадали кубки прошлых сезонов (например, Ruby Challenger Cup/
+    // Consolation Cup сезона 70), даже когда команда в ТЕКУЩЕМ сезоне играла
+    // только Kazakhstan Cup → Sapphire Challenger Cup. Текущий сезон надёжно
+    // известен из уже отдельно подтверждённого currentCupPath.season (прямой
+    // ответ cupmatches.xml по АКТИВНОМУ кубку) — отбрасываем кандидата, если
+    // последняя известная активность по его CupID (fetchCupMeta) относится к
+    // другому сезону.
+    const currentSeason = currentCupPath?.season ?? null;
+
+    const pastCupPaths = (
+      await Promise.all(
+        pastCupIds.map(async (id) => {
+          const meta = await fetchCupMeta(tokens, id);
+          if (currentSeason !== null && meta && meta.season !== currentSeason) {
+            sectionErrors.push(
+              `Кубки: CupID ${id} ("${meta.cupName}") исключён из каскада — его сезон=${meta.season}, ` +
+                `а текущий сезон=${currentSeason} (данные из прошлого сезона).`,
+            );
+            return null;
+          }
+          return pastCupPathFromMatches(id, matchesForCup, meta, teamId, ourTeamName);
+        }),
+      )
+    ).filter((p): p is OurCupPathResult => p !== null);
 
     const cupPaths: OurCupPathResult[] = [...pastCupPaths, ...(currentCupPath ? [currentCupPath] : [])];
 
