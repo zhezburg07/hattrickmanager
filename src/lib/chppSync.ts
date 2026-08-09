@@ -40,7 +40,7 @@ import {
   type RealYouthPlayer,
   type DebugYouthPlayerRaw,
 } from "./youthPlayers";
-import { parseYouthPlayerDetailsXml, YOUTH_PLAYER_DETAILS_VERSION } from "./youthPlayerDetails";
+import { parseYouthPlayerDetailsXml, debugYouthPlayerDetailsRawFields, YOUTH_PLAYER_DETAILS_VERSION } from "./youthPlayerDetails";
 import { parseChallengesXml, type ArenaChallengesResult } from "./hattrickArena";
 import {
   toSeasonMatches,
@@ -610,6 +610,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     let detailsSucceeded = 0;
     const detailsFailed: string[] = [];
     let rawFieldsSample: DebugYouthPlayerRaw[] = [];
+    const detailsRawFieldsSample: string[] = [];
     try {
       youthHttpStatus = raw.youthplayerlist?.httpStatus ?? null;
       youthRawCount = raw.youthplayerlist ? debugYouthPlayerListRawCount(raw.youthplayerlist.rawXml) : 0;
@@ -628,6 +629,19 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
             ),
           ),
         );
+        // ДИАГНОСТИКА (см. чат "Юношеская команда: проверь альтернативные
+        // источники, как делали с кубками") — раз youthplayerlist.xml не
+        // присылает Age*/Country*/Nation* вовсе, проверяем те же поля в
+        // youthplayerdetails.xml — БЕЗ лишних запросов, используя тот же
+        // detailResults, что уже запрашивается для навыков. Первые 5 игроков.
+        detailResults.slice(0, 5).forEach((r, i) => {
+          const p = youthPlayers![i];
+          if (r.status === "fulfilled" && r.value.httpStatus >= 200 && r.value.httpStatus < 300) {
+            detailsRawFieldsSample.push(`${p.name}: ${debugYouthPlayerDetailsRawFields(r.value.rawXml)}`);
+          } else {
+            detailsRawFieldsSample.push(`${p.name}: (запрос не выполнился/не 200 — см. detailsFailed)`);
+          }
+        });
         youthPlayers = youthPlayers.map((p, i) => {
           const r = detailResults[i];
           if (r.status !== "fulfilled") {
@@ -665,6 +679,11 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         .map((p) => `${p.name}: ${p.ageLikeFields}; ${p.countryLikeFields}`)
         .join(" || ");
       sectionErrors.push(`Юношеская команда (сырые поля Age*/Country*/Nation* из youthplayerlist.xml): ${dump}`);
+    }
+    if (detailsRawFieldsSample.length > 0) {
+      sectionErrors.push(
+        `Юношеская команда (те же поля из youthplayerdetails.xml — альтернативный источник): ${detailsRawFieldsSample.join(" || ")}`,
+      );
     }
     const stored: StoredYouthPlayersData = {
       players: youthPlayers,

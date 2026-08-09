@@ -71,6 +71,32 @@ export function parseYouthPlayerDetailsXml(xml: string): YouthPlayerDetailsResul
   };
 }
 
+// ВРЕМЕННАЯ диагностика (см. чат "Юношеская команда: проверь альтернативные
+// источники, как делали с кубками") — youthplayerlist.xml подтверждённо не
+// присылает вообще никаких Age*/Country*/Nation*-полей на реальных данных
+// (тот же класс проблемы, что был с CupID в matches.xml). По независимому
+// CHPP-клиенту (chpp/file_youthplayerdetails.go) youthplayerdetails.xml
+// официально переиспользует ТОТ ЖЕ struct YouthPlayerDetail (Age/AgeDays/
+// NativeCountryID/NativeCountryName) — но раз документация уже разошлась с
+// реальностью для youthplayerlist.xml (тот же struct), не доверяем ей
+// вслепую и для этого файла — печатаем ВСЕ поля с age/country/nation в
+// имени, как они реально пришли, без предположений.
+export function debugYouthPlayerDetailsRawFields(xml: string): string {
+  try {
+    const parser = new XMLParser();
+    const data = parser.parse(xml);
+    const root = data?.HattrickData;
+    const player = root?.YouthPlayer as Record<string, unknown> | undefined;
+    if (!player) return "(нет <YouthPlayer> в ответе)";
+    const keys = Object.keys(player).filter((k) => /age|country|nation/i.test(k));
+    return keys.length
+      ? keys.map((k) => `${k}=${JSON.stringify(player[k])}`).join(", ")
+      : "(полей с age/country/nation в имени не найдено)";
+  } catch (err) {
+    return `ошибка разбора — ${err instanceof Error ? err.message : "неизвестная ошибка"}`;
+  }
+}
+
 export async function resolveYouthPlayerDetails(
   tokens: StoredHattrickTokens,
   youthPlayerId: string,
