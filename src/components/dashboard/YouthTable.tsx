@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { positionAbbrev, positionAccentColorForAbbrev, skillLabel, skillWord, type SquadSkills } from "@/data/squad";
+import { skillLabel, skillWord, type SquadSkills } from "@/data/squad";
+import { usePositionOverrides, type PositionOverrideValue } from "@/data/positionOverrides";
+import { EditablePositionBadge, currentSelection, naturalSelection } from "./squadCells";
 import type { RealYouthPlayer } from "@/lib/youthPlayers";
 import NationalityTag from "./NationalityTag";
 import YouthPlayerDetailModal from "./YouthPlayerDetailModal";
@@ -28,32 +30,41 @@ function tierFromRatio(ratio: number): string {
   return styles.skillTierLow;
 }
 
-// Предполагаемая позиция юниора — по запросу пользователя (см. чат
-// "Юношеская команда: автоматическое определение позиции"). У юношеских
-// игроков нет сыгранных матчей основной команды, поэтому позицию нельзя
-// определить так, как для основного состава (там тоже эвристика по
-// навыкам, но она хотя бы допускает ручное переопределение тренером) —
-// здесь только сильнейший навык. positionAbbrev (data/squad.ts) уже даёт
-// ровно нужное разбиение на 5 амплуа (GK/CD/CM/W/ST) по тому же принципу
-// "чей скилл выше" — переиспользуем его, не изобретая заново. Значок "?"
-// с подсказкой — чтобы не путать с точной позицией основного состава.
-function YouthPositionBadge({ player }: { player: RealYouthPlayer }) {
-  const abbrev = positionAbbrev(player.positionGroup, player.skills);
-  const color = positionAccentColorForAbbrev(abbrev);
+// 19 лет — последний игровой год юношеской лиги Hattrick (игроки уходят из
+// академии в 20) — по запросу подсвечиваем таких игроков красным как сигнал
+// "скоро перевести в основной состав или потеряется" (см. чат "Юношеская
+// команда: подсветка возраста 19+").
+const OLD_AGE_THRESHOLD = 19;
+
+// Позиция юниора — та же редактируемая позиция-бейдж, что уже работает на
+// "Составе" (EditablePositionBadge, squadCells.tsx) — по запросу пользователя
+// ("ручной выбор позиции — так же, как для основного состава"). Значок "?" с
+// подсказкой показывается, только пока позиция ЕЩЁ не переопределена вручную
+// (то есть остаётся чистым предположением по сильнейшему навыку — у юниоров
+// нет сыгранных матчей основной команды, откуда её можно было бы взять
+// иначе); как только тренер сам её задал, "?" уступает место обычному "✎" от
+// EditablePositionBadge — предположение больше не нужно объяснять.
+function YouthPositionCell({
+  player,
+  overrides,
+  onChange,
+}: {
+  player: RealYouthPlayer;
+  overrides: Record<number, PositionOverrideValue>;
+  onChange: (playerId: number, value: PositionOverrideValue | null) => void;
+}) {
+  const isOverridden = currentSelection(player, overrides) !== naturalSelection(player);
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-      <span
-        className={`${styles.positionBadge} ${styles.positionBadgeStatic}`}
-        style={{ "--position-accent": color, cursor: "default" } as React.CSSProperties}
-      >
-        {abbrev}
-      </span>
-      <span
-        className={styles.overrideMark}
-        title="Предполагаемая позиция — определена по сильнейшему навыку игрока, а не по реальным сыгранным матчам (у юниоров их нет)."
-      >
-        ?
-      </span>
+      <EditablePositionBadge player={player} overrides={overrides} onChange={onChange} />
+      {!isOverridden && (
+        <span
+          className={styles.overrideMark}
+          title="Предполагаемая позиция — определена по сильнейшему навыку игрока, а не по реальным сыгранным матчам (у юниоров их нет). Можно поменять вручную."
+        >
+          ?
+        </span>
+      )}
     </span>
   );
 }
@@ -67,6 +78,7 @@ export default function YouthTable({
 }) {
   const roster = players ?? [];
   const [selectedPlayer, setSelectedPlayer] = useState<RealYouthPlayer | null>(null);
+  const { overrides, setOverride } = usePositionOverrides();
 
   return (
     <>
@@ -99,6 +111,11 @@ export default function YouthTable({
               <tr>
                 <th>
                   <span className={styles.th} style={{ cursor: "default" }}>
+                    Позиция
+                  </span>
+                </th>
+                <th>
+                  <span className={styles.th} style={{ cursor: "default" }}>
                     Имя
                   </span>
                 </th>
@@ -112,11 +129,6 @@ export default function YouthTable({
                     Возраст
                   </span>
                 </th>
-                <th>
-                  <span className={styles.th} style={{ cursor: "default" }}>
-                    Позиция
-                  </span>
-                </th>
                 {skillKeys.map((k) => (
                   <th key={k} title={skillLabel[k]}>
                     <span className={styles.th} style={{ cursor: "default" }}>
@@ -127,55 +139,78 @@ export default function YouthTable({
               </tr>
             </thead>
             <tbody>
-              {roster.map((p) => (
-                <tr key={p.id} onClick={() => setSelectedPlayer(p)} style={{ cursor: "pointer" }}>
-                  <td className={styles.nameCell}>{p.name}</td>
-                  <td>
-                    <NationalityTag nationality={p.nationality} />
-                  </td>
-                  <td className={styles.numCell}>{p.age ?? "—"}</td>
-                  <td>
-                    <YouthPositionBadge player={p} />
-                  </td>
-                  {skillKeys.map((k) => (
-                    <td className={styles.skillCell} key={k}>
-                      <span className={`${styles.skillWord} ${tierFromRatio(p.skills[k] / 20)}`}>
-                        {skillWord(p.skills[k])}
-                      </span>
+              {roster.map((p) => {
+                const isOld = p.age !== null && p.age >= OLD_AGE_THRESHOLD;
+                return (
+                  <tr
+                    key={p.id}
+                    onClick={() => setSelectedPlayer(p)}
+                    style={{
+                      cursor: "pointer",
+                      ...(isOld ? { background: "color-mix(in srgb, var(--color-bad) 12%, transparent)" } : {}),
+                    }}
+                  >
+                    <td>
+                      <YouthPositionCell player={p} overrides={overrides} onChange={setOverride} />
                     </td>
-                  ))}
-                </tr>
-              ))}
+                    <td className={styles.nameCell}>{p.name}</td>
+                    <td>
+                      <NationalityTag nationality={p.nationality} showLabel={false} />
+                    </td>
+                    <td className={styles.numCell} style={isOld ? { color: "var(--color-bad)", fontWeight: 700 } : undefined}>
+                      {p.age ?? "—"}
+                    </td>
+                    {skillKeys.map((k) => (
+                      <td className={styles.skillCell} key={k}>
+                        <span className={`${styles.skillWord} ${tierFromRatio(p.skills[k] / 20)}`}>
+                          {skillWord(p.skills[k])}
+                        </span>
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
         <div className={styles.cardList}>
-          {roster.map((p) => (
-            <div className={styles.playerCard} key={p.id} onClick={() => setSelectedPlayer(p)} style={{ cursor: "pointer" }}>
-              <div className={styles.playerCardHead}>
-                <span className={styles.playerCardName}>{p.name}</span>
-              </div>
+          {roster.map((p) => {
+            const isOld = p.age !== null && p.age >= OLD_AGE_THRESHOLD;
+            return (
+              <div
+                className={styles.playerCard}
+                key={p.id}
+                onClick={() => setSelectedPlayer(p)}
+                style={{
+                  cursor: "pointer",
+                  ...(isOld ? { background: "color-mix(in srgb, var(--color-bad) 12%, transparent)" } : {}),
+                }}
+              >
+                <div className={styles.playerCardHead}>
+                  <YouthPositionCell player={p} overrides={overrides} onChange={setOverride} />
+                  <span className={styles.playerCardName}>{p.name}</span>
+                </div>
 
-              <div className={styles.playerCardMeta}>
-                <NationalityTag nationality={p.nationality} />
-                <span>
-                  <b>{p.age ?? "—"}</b>
-                  {p.age !== null && " лет"}
-                </span>
-                <YouthPositionBadge player={p} />
-              </div>
+                <div className={styles.playerCardMeta}>
+                  <NationalityTag nationality={p.nationality} showLabel={false} />
+                  <span style={isOld ? { color: "var(--color-bad)", fontWeight: 700 } : undefined}>
+                    <b>{p.age ?? "—"}</b>
+                    {p.age !== null && " лет"}
+                  </span>
+                </div>
 
-              <div className={styles.playerCardSkills}>
-                {skillKeys.map((k) => (
-                  <div className={styles.playerCardSkillRow} key={k}>
-                    <span className={styles.playerCardSkillLabel}>{skillLabel[k]}</span>
-                    <span className={styles.playerCardSkillValue}>{skillWord(p.skills[k])}</span>
-                  </div>
-                ))}
+                <div className={styles.playerCardSkills}>
+                  {skillKeys.map((k) => (
+                    <div className={styles.playerCardSkillRow} key={k}>
+                      <span className={styles.playerCardSkillLabel}>{skillLabel[k]}</span>
+                      <span className={styles.playerCardSkillValue}>{skillWord(p.skills[k])}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

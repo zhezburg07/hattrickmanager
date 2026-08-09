@@ -8,6 +8,7 @@
 import {
   positionAbbrev,
   positionAccentColorForAbbrev,
+  positionGroupLabel,
   statusLabel,
   specialtyLabel,
   skillLabel,
@@ -18,8 +19,13 @@ import {
   type PlayerStatus,
   type PlayerStatSnapshot,
   type SquadSkills,
+  type PositionGroup,
 } from "@/data/squad";
-import { effectivePositionGroup, type PositionOverrides } from "@/data/positionOverrides";
+import {
+  effectivePositionGroup,
+  type PositionOverrides,
+  type PositionOverrideValue,
+} from "@/data/positionOverrides";
 import HeartIcon from "./HeartIcon";
 import { SpecialtyIcon, InjuryIcon, CardIcon } from "./StatusIcons";
 import { GoalBallIcon } from "./TimelineIcons";
@@ -78,20 +84,120 @@ export function formatAge(age: number, ageDays: number): string {
   return (age + tenths / 10).toFixed(1);
 }
 
+// Минимальная форма игрока, которой достаточно для расчёта амплуа/выбора в
+// select'е — специально ýже, чем SquadPlayer, чтобы теми же функциями (и
+// тем же редактируемым бейджем EditablePositionBadge ниже) могла
+// пользоваться и "Юношеская команда" (RealYouthPlayer из youthPlayers.ts),
+// у которой нет большинства остальных полей SquadPlayer (форма, TSI и
+// т.п.) — см. чат "Юношеская команда: ручной выбор позиции".
+export interface AmpluaSource {
+  id: number;
+  positionGroup: PositionGroup;
+  skills: SquadSkills;
+}
+
 // Итоговая подпись амплуа с учётом ручного переопределения: если оно явно
 // задаёт "MID" или "WING", берём соответствующую подпись напрямую (CM/W), а
 // не пересчитываем по навыкам заново — иначе выбор "CM" для игрока с
 // доминирующим флангом (или наоборот) сразу же откатился бы обратно.
 // Без переопределения — обычная positionAbbrev по навыкам игрока.
-export function effectiveAbbrev(player: SquadPlayer, overrides: PositionOverrides): string {
+export function effectiveAbbrev(player: AmpluaSource, overrides: PositionOverrides): string {
   const override = overrides[player.id];
   if (override === "WING") return "W";
   if (override === "MID") return "CM";
   return positionAbbrev(effectivePositionGroup(player, overrides), player.skills);
 }
 
-export function effectiveAbbrevColor(player: SquadPlayer, overrides: PositionOverrides): string {
+export function effectiveAbbrevColor(player: AmpluaSource, overrides: PositionOverrides): string {
   return positionAccentColorForAbbrev(effectiveAbbrev(player, overrides));
+}
+
+// 5 явно выбираемых вариантов вместо 4 — полузащита разделена на "MID"
+// (центральный, CM) и "WING" (фланговый, W), чтобы оба были доступны для
+// ручного выбора наравне с GK/DEF/FWD, а не только тот, что подсказывают
+// навыки игрока (см. PositionOverrideValue в data/positionOverrides.ts).
+export const positionOptions: PositionOverrideValue[] = ["GK", "DEF", "MID", "WING", "FWD"];
+
+export const overrideAbbrevLabel: Record<PositionOverrideValue, string> = {
+  GK: "GK",
+  DEF: "CD",
+  MID: "CM",
+  WING: "W",
+  FWD: "ST",
+};
+
+export const abbrevToOverrideValue: Record<string, PositionOverrideValue> = {
+  GK: "GK",
+  CD: "DEF",
+  CM: "MID",
+  W: "WING",
+  ST: "FWD",
+};
+
+// Что сейчас выбрано в select'е (см. EditablePositionBadge) — ручное
+// переопределение, если задано, иначе то же значение, что вывела бы
+// effectiveAbbrev, только в словаре PositionOverrideValue (GK/DEF/MID/
+// WING/FWD), а не готовых подписях.
+export function currentSelection(player: AmpluaSource, overrides: PositionOverrides): PositionOverrideValue {
+  return abbrevToOverrideValue[effectiveAbbrev(player, overrides)];
+}
+
+// Природное значение без учёта переопределений — нужно, чтобы понять,
+// вернул ли выбор в select'е игрока к его естественному амплуа (тогда
+// переопределение снимается целиком, onChange получает null) или задаёт
+// настоящее ручное исключение.
+export function naturalSelection(player: AmpluaSource): PositionOverrideValue {
+  return abbrevToOverrideValue[effectiveAbbrev(player, {})];
+}
+
+// Амплуа игрока — цветной бейдж-селект (акцент по эффективной подписи:
+// ручное переопределение, если оно задано, иначе естественная позиция/
+// навыки игрока). Клик открывает нативный выбор из 5 вариантов (GK/CD/CM/
+// W/ST); при выборе значения, отличного от естественного, рядом
+// появляется значок "✎" с подсказкой. Общий для "Состава" (SquadTable.tsx
+// оборачивает его своей проверкой на тренера — у него амплуа менять
+// нечему, см. TrainerPositionBadge) и "Юношеской команды" (YouthTable.tsx,
+// тренера там нет вовсе).
+export function EditablePositionBadge<T extends AmpluaSource>({
+  player,
+  overrides,
+  onChange,
+}: {
+  player: T;
+  overrides: PositionOverrides;
+  onChange: (playerId: number, value: PositionOverrideValue | null) => void;
+}) {
+  const selection = currentSelection(player, overrides);
+  const natural = naturalSelection(player);
+  const isOverridden = selection !== natural;
+  const naturalAbbrev = effectiveAbbrev(player, {});
+  const overrideTitle = `Амплуа изменено вручную — естественная позиция: ${naturalAbbrev} (${positionGroupLabel[player.positionGroup]})`;
+
+  return (
+    <span className={styles.positionWrap} onClick={(e) => e.stopPropagation()}>
+      <select
+        className={styles.positionBadge}
+        style={{ "--position-accent": effectiveAbbrevColor(player, overrides) } as React.CSSProperties}
+        value={selection}
+        title={isOverridden ? overrideTitle : undefined}
+        onChange={(e) => {
+          const next = e.target.value as PositionOverrideValue;
+          onChange(player.id, next === natural ? null : next);
+        }}
+      >
+        {positionOptions.map((v) => (
+          <option key={v} value={v}>
+            {overrideAbbrevLabel[v]}
+          </option>
+        ))}
+      </select>
+      {isOverridden && (
+        <span className={styles.overrideMark} title={overrideTitle}>
+          ✎
+        </span>
+      )}
+    </span>
+  );
 }
 
 // Порядок позиций по умолчанию (сортировка "Поз." по возрастанию): Вратарь →

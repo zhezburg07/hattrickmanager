@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import {
-  positionGroupLabel,
   statusLabel,
   skillLabel,
   skillWord,
@@ -30,8 +29,6 @@ import {
   diffTextClass,
   DiffArrow,
   formatAge,
-  effectiveAbbrev,
-  effectiveAbbrevColor,
   positionSortValue,
   AmpluaAccent,
   StatusRow,
@@ -40,6 +37,7 @@ import {
   RatingCell,
   TrainerIcon,
   TrainerPositionBadge,
+  EditablePositionBadge,
   AverageRow,
   type SkillKey,
 } from "./squadCells";
@@ -87,43 +85,6 @@ const baseColumns: { key: SortKey; label: string; title?: string }[] = [
 const textColumns = new Set<SortKey>(["flag", "name", "positionGroup", "status"]);
 
 const statusRank: Record<PlayerStatus, number> = { starting: 0, bench: 1, squad: 1, injured: 2 };
-
-// 5 явно выбираемых вариантов вместо 4 — полузащита разделена на "MID"
-// (центральный, CM) и "WING" (фланговый, W), чтобы оба были доступны для
-// ручного выбора наравне с GK/DEF/FWD, а не только тот, что подсказывают
-// навыки игрока (см. PositionOverrideValue в data/positionOverrides.ts).
-const positionOptions: PositionOverrideValue[] = ["GK", "DEF", "MID", "WING", "FWD"];
-
-const overrideAbbrevLabel: Record<PositionOverrideValue, string> = {
-  GK: "GK",
-  DEF: "CD",
-  MID: "CM",
-  WING: "W",
-  FWD: "ST",
-};
-
-const abbrevToOverrideValue: Record<string, PositionOverrideValue> = {
-  GK: "GK",
-  CD: "DEF",
-  CM: "MID",
-  W: "WING",
-  ST: "FWD",
-};
-
-// Что сейчас выбрано в select'е (см. PositionBadge) — ручное переопределение,
-// если задано, иначе то же значение, что вывела бы effectiveAbbrev, только в
-// словаре PositionOverrideValue (GK/DEF/MID/WING/FWD), а не готовых подписях.
-function currentSelection(player: SquadPlayer, overrides: PositionOverrides): PositionOverrideValue {
-  return abbrevToOverrideValue[effectiveAbbrev(player, overrides)];
-}
-
-// Природное значение без учёта переопределений — нужно, чтобы понять, вернул
-// ли выбор в select'е игрока к его естественному амплуа (тогда переопределение
-// снимается целиком, onChange получает null) или задаёт настоящее ручное
-// исключение.
-function naturalSelection(player: SquadPlayer): PositionOverrideValue {
-  return abbrevToOverrideValue[effectiveAbbrev(player, {})];
-}
 
 function getValue(
   player: SquadPlayer,
@@ -181,37 +142,7 @@ function PositionBadge({
   if (trainerPlayerId !== undefined && player.id === trainerPlayerId) {
     return <TrainerPositionBadge />;
   }
-  const selection = currentSelection(player, overrides);
-  const natural = naturalSelection(player);
-  const isOverridden = selection !== natural;
-  const naturalAbbrev = effectiveAbbrev(player, {});
-  const overrideTitle = `Амплуа изменено вручную — естественная позиция: ${naturalAbbrev} (${positionGroupLabel[player.positionGroup]})`;
-
-  return (
-    <span className={styles.positionWrap} onClick={(e) => e.stopPropagation()}>
-      <select
-        className={styles.positionBadge}
-        style={{ "--position-accent": effectiveAbbrevColor(player, overrides) } as React.CSSProperties}
-        value={selection}
-        title={isOverridden ? overrideTitle : undefined}
-        onChange={(e) => {
-          const next = e.target.value as PositionOverrideValue;
-          onChange(player.id, next === natural ? null : next);
-        }}
-      >
-        {positionOptions.map((v) => (
-          <option key={v} value={v}>
-            {overrideAbbrevLabel[v]}
-          </option>
-        ))}
-      </select>
-      {isOverridden && (
-        <span className={styles.overrideMark} title={overrideTitle}>
-          ✎
-        </span>
-      )}
-    </span>
-  );
+  return <EditablePositionBadge player={player} overrides={overrides} onChange={onChange} />;
 }
 
 export default function SquadTable({
