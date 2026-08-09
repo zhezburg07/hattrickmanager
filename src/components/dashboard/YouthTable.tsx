@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { positionGroupLabel, skillLabel, skillWord, type SquadSkills } from "@/data/squad";
+import { positionAbbrev, positionAccentColorForAbbrev, skillLabel, skillWord, type SquadSkills } from "@/data/squad";
 import type { RealYouthPlayer } from "@/lib/youthPlayers";
 import NationalityTag from "./NationalityTag";
 import YouthPlayerDetailModal from "./YouthPlayerDetailModal";
@@ -26,6 +26,36 @@ function tierFromRatio(ratio: number): string {
   if (ratio >= 0.65) return styles.skillTierHigh;
   if (ratio >= 0.3) return styles.skillTierMid;
   return styles.skillTierLow;
+}
+
+// Предполагаемая позиция юниора — по запросу пользователя (см. чат
+// "Юношеская команда: автоматическое определение позиции"). У юношеских
+// игроков нет сыгранных матчей основной команды, поэтому позицию нельзя
+// определить так, как для основного состава (там тоже эвристика по
+// навыкам, но она хотя бы допускает ручное переопределение тренером) —
+// здесь только сильнейший навык. positionAbbrev (data/squad.ts) уже даёт
+// ровно нужное разбиение на 5 амплуа (GK/CD/CM/W/ST) по тому же принципу
+// "чей скилл выше" — переиспользуем его, не изобретая заново. Значок "?"
+// с подсказкой — чтобы не путать с точной позицией основного состава.
+function YouthPositionBadge({ player }: { player: RealYouthPlayer }) {
+  const abbrev = positionAbbrev(player.positionGroup, player.skills);
+  const color = positionAccentColorForAbbrev(abbrev);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <span
+        className={`${styles.positionBadge} ${styles.positionBadgeStatic}`}
+        style={{ "--position-accent": color, cursor: "default" } as React.CSSProperties}
+      >
+        {abbrev}
+      </span>
+      <span
+        className={styles.overrideMark}
+        title="Предполагаемая позиция — определена по сильнейшему навыку игрока, а не по реальным сыгранным матчам (у юниоров их нет)."
+      >
+        ?
+      </span>
+    </span>
+  );
 }
 
 export default function YouthTable({
@@ -104,7 +134,9 @@ export default function YouthTable({
                     <NationalityTag nationality={p.nationality} />
                   </td>
                   <td className={styles.numCell}>{p.age}</td>
-                  <td>{positionGroupLabel[p.positionGroup]}</td>
+                  <td>
+                    <YouthPositionBadge player={p} />
+                  </td>
                   {skillKeys.map((k) => (
                     <td className={styles.skillCell} key={k}>
                       <span className={`${styles.skillWord} ${tierFromRatio(p.skills[k] / 20)}`}>
@@ -130,7 +162,7 @@ export default function YouthTable({
                 <span>
                   <b>{p.age}</b> лет
                 </span>
-                <span>{positionGroupLabel[p.positionGroup]}</span>
+                <YouthPositionBadge player={p} />
               </div>
 
               <div className={styles.playerCardSkills}>
