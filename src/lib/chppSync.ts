@@ -999,6 +999,11 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       currentCupPath = await resolveOurCupPath(tokens, cupId, teamId, ourTeamName);
       debug.pathDebug = currentCupPath.debug;
       if (currentCupPath.error) errors.push(currentCupPath.error);
+      // Раунды/даты текущего кубка по cupmatches.xml — та же диагностика,
+      // что и debug.pathDebug выше (скрытая панель /dashboard/cup сейчас
+      // выключена, см. чат "Кубки: лишняя информация"), но нужна видимой
+      // именно сейчас — сверить даты и раунды АКТИВНОГО кубка с hattrick.org.
+      sectionErrors.push(`Кубки (текущий кубок CupID=${cupId}, проход по раундам cupmatches.xml): ${currentCupPath.debug.join(" | ")}`);
     }
 
     // Другие CupID среди сыгранных кубковых матчей сезона — кубки, из
@@ -1051,6 +1056,39 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         `teamName="${ourTeamName || "(пусто!)"}", итоговый CupID="${cupId ?? "(не найден)"}", ` +
         `кубков в каскаде=${cupPaths.length}.`,
     );
+
+    // ВРЕМЕННАЯ диагностика (см. чат "Кубки: реально другие/устаревшие
+    // данные, не совпадающие с hattrick.org по датам") — проверяем гипотезу
+    // "matchesarchive.xml подмешивает матчи ПРОШЛОГО сезона с тем же самым
+    // CupID" (у отдельного матча нигде не сохраняется номер сезона — только
+    // дата и CupID, см. RealMatch в matches.ts — поэтому раньше эту гипотезу
+    // нечем было проверить). Группируем ВЕСЬ сырой пул кубковых матчей нашей
+    // же команды (matches.xml+matchesarchive.xml, MatchType=3) по CupID и
+    // печатаем все даты подряд — если под одним и тем же CupID окажутся
+    // даты из разных сезонов (например, и декабрь/апрель, и июль/август),
+    // это будет видно сразу, без сравнения с hattrick.org вручную.
+    const cupTypeMatches = matchesForCup.filter((m) => Number(m.matchType) === CUP_MATCH_TYPE);
+    const byCupId = new Map<string, { date: string; opponent: string }[]>();
+    for (const m of cupTypeMatches) {
+      const key = m.cupId ?? "(без CupID)";
+      if (!byCupId.has(key)) byCupId.set(key, []);
+      byCupId.get(key)!.push({ date: m.date, opponent: m.opponent });
+    }
+    const candidatePoolDump = [...byCupId.entries()]
+      .map(([id, ms]) => {
+        const sorted = [...ms].sort((a, b) => a.date.localeCompare(b.date));
+        const dates = sorted.map((m) => `${m.date} (@${m.opponent})`).join("; ");
+        return `CupID ${id}: ${ms.length} матч(ей) — ${dates}`;
+      })
+      .join(" || ");
+    sectionErrors.push(
+      `Кубки (сырой пул кандидатов, MatchType=3, из matches+matchesarchive нашей команды): ${candidatePoolDump || "(пусто)"}`,
+    );
+    const cupIdToName = [
+      ...pastCupPaths.map((p) => `CupID ${p.cupId} = "${p.cupName || "(имя не определено)"}"`),
+      currentCupPath ? `CupID ${currentCupPath.cupId} = "${currentCupPath.cupName || "(имя не определено)"}" (текущий)` : null,
+    ].filter((x): x is string => x !== null);
+    sectionErrors.push(`Кубки (соответствие CupID → название): ${cupIdToName.join("; ") || "(нет данных)"}`);
   }
 
   const finalStatus: SyncResult["status"] = anyFailed && !anySucceeded ? "failed" : anyFailed ? "partial" : "ok";

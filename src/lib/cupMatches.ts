@@ -215,7 +215,7 @@ export async function resolveOurCupPath(
   }
   debug.push(
     `Текущий/последний раунд "${current.cupName}": раунд ${current.round}, сезон ${current.season}, ` +
-      `матчей в раунде=${current.rawMatchCount}, наш матч ${current.ourMatch ? "найден" : "НЕ найден"}.`,
+      `матчей в раунде=${current.rawMatchCount}, наш матч ${current.ourMatch ? `найден (дата ${current.ourMatch.date}, соперник «${current.ourMatch.opponent}»)` : "НЕ найден"}.`,
   );
   debug.push(`Сырые поля <Cup> из cupmatches.xml (диагностика "раунд 0"): ${JSON.stringify(current.rawMetaKeys)}`);
 
@@ -233,7 +233,9 @@ export async function resolveOurCupPath(
     }
     if (past?.ourMatch) {
       path.unshift(past.ourMatch);
-      debug.push(`Раунд ${round}: наш матч найден (соперник «${past.ourMatch.opponent}», матчей в раунде=${past.rawMatchCount}).`);
+      debug.push(
+        `Раунд ${round}: наш матч найден (дата ${past.ourMatch.date}, соперник «${past.ourMatch.opponent}», матчей в раунде=${past.rawMatchCount}).`,
+      );
     } else {
       debug.push(
         `Раунд ${round}: нашего матча нет среди ${past?.rawMatchCount ?? "—"} матчей этого раунда — либо мы ещё не участвовали в этом кубке на этом этапе, либо не найден за ${MAX_PAGES_PER_ROUND} страниц.`,
