@@ -48,6 +48,7 @@ import {
   filterTrainingRelevantMatches,
   debugRawMatchFields,
   debugRawCupTypeMatchFields,
+  debugMatchDetailsCupFields,
   parseArchiveEchoedRange,
   CUP_MATCH_TYPE,
 } from "./matches";
@@ -1130,6 +1131,26 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     sectionErrors.push(
       `Кубки (сырые Cup*/Context* поля каждого кубкового матча из matches.xml — не matchesarchive): ${rawCupFieldsDump || "(кубковых матчей в matches.xml не найдено)"}`,
     );
+
+    // ЭТАП 1 диагностики (см. чат "Кубки: matches.xml не может быть
+    // источником CupID — предложи альтернативу"): для каждого сыгранного
+    // кубкового матча, у которого cupId не определился ни через
+    // matches.xml, ни через matchesarchive.xml, запрашиваем matchdetails.xml
+    // ПО ЭТОМУ MatchID и печатаем сырые Cup*/Context* поля — ТОЛЬКО
+    // диагностика, ничего постоянно не меняет (cupId матчей не
+    // перезаписывается, pastCupIds/pastCupPathFromMatches работают как
+    // раньше). Лимит 10 матчей — защита от лишних запросов, если фильтр
+    // вдруг зацепит намного больше, чем несколько кубковых раундов сезона.
+    const unresolvedCupMatchIds = matchesForCup
+      .filter((m) => Number(m.matchType) === CUP_MATCH_TYPE && m.status === "FINISHED" && m.cupId === null)
+      .map((m) => m.matchId)
+      .slice(0, 10);
+    if (unresolvedCupMatchIds.length > 0) {
+      const matchDetailsDump = await Promise.all(
+        unresolvedCupMatchIds.map((id) => debugMatchDetailsCupFields(tokens, id)),
+      );
+      sectionErrors.push(`Кубки (ЭТАП 1: сырые Cup*/Context* поля из matchdetails.xml для матчей без CupID): ${matchDetailsDump.join(" || ")}`);
+    }
   }
 
   const finalStatus: SyncResult["status"] = anyFailed && !anySucceeded ? "failed" : anyFailed ? "partial" : "ok";
