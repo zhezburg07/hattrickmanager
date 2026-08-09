@@ -1,7 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import { assertNoChppError } from "./chppError";
-import { inferPositionGroup } from "./squadPlayers";
-import { resolveCountryByEnglishName, unknownCountry, type Country, type PositionGroup, type SquadSkills } from "@/data/squad";
+import { inferPositionGroup, type HomeCountryInfo } from "./squadPlayers";
+import { unknownCountry, type Country, type PositionGroup, type SquadSkills } from "@/data/squad";
 import type { YouthPlayerDetailsResult } from "./youthPlayerDetails";
 
 export interface RealYouthPlayer {
@@ -58,9 +58,20 @@ export function parseYouthSkillsRaw(skillsRaw: Record<string, unknown> | undefin
 //    KeeperSkill/DefenderSkill/PlaymakerSkill/WingerSkill/PassingSkill/
 //    ScorerSkill/SetPiecesSkill, что и в players.xml, но не плоско на самом
 //    игроке, а внутри <PlayerSkills>).
-// 4) Национальность — плоское поле <NativeCountryName>, а не вложенный
-//    контейнер <Country><CountryName>, как в players.xml.
-export function parseYouthPlayerListXml(xml: string): RealYouthPlayer[] {
+// 4) ИСПРАВЛЕНО ЕЩЁ РАЗ (национальность/возраст пустые на реальных данных,
+//    см. чат "Кубки/Юношеская команда/Трансферы: диагностика"): прежнее
+//    предположение "плоское поле <NativeCountryName>" никогда не было
+//    проверено на живом ответе и, судя по всему, было неверным — во ВСЁМ
+//    остальном проекте (players.xml, см. squadPlayers.ts) CHPP отдаёт
+//    национальность ТОЛЬКО как числовой <CountryID> + отдельный справочник
+//    ID→страна (worldCountries.ts), никогда как готовую строку. Приводим
+//    youthplayerlist.xml к тому же, уже подтверждённому механизму, вместо
+//    гадания нового имени поля.
+export function parseYouthPlayerListXml(
+  xml: string,
+  homeCountry?: HomeCountryInfo | null,
+  countryIdLookup?: Record<string, Country>,
+): RealYouthPlayer[] {
   const parser = new XMLParser();
   const data = parser.parse(xml);
 
@@ -75,8 +86,11 @@ export function parseYouthPlayerListXml(xml: string): RealYouthPlayer[] {
 
     const firstName = String(p.FirstName ?? "").trim();
     const lastName = String(p.LastName ?? "").trim();
-    const nativeCountryName = p.NativeCountryName;
-    const nationality = nativeCountryName ? resolveCountryByEnglishName(String(nativeCountryName)) : unknownCountry;
+
+    const countryId = String(p.CountryID ?? p.NativeCountryID ?? "");
+    const isHomeMatch = homeCountry ? countryId === homeCountry.countryId : undefined;
+    const nationality: Country =
+      countryIdLookup?.[countryId] ?? (isHomeMatch ? homeCountry!.country : undefined) ?? unknownCountry;
 
     return {
       id: Number(p.YouthPlayerID ?? 0),
@@ -104,4 +118,38 @@ export function debugYouthPlayerListRawCount(xml: string): number {
   } catch {
     return 0;
   }
+}
+
+// ВРЕМЕННАЯ диагностика — сырые поля возраста/национальности первых
+// нескольких игроков академии, как они реально приходят от CHPP, без какой-
+// либо обработки (тот же приём, что и debugRawPlayerCountryIds в
+// squadPlayers.ts, которым уже нашли аналогичный баг у основного состава).
+export interface DebugYouthPlayerRaw {
+  name: string;
+  ageLikeFields: string;
+  countryLikeFields: string;
+}
+
+export function debugRawYouthPlayerFields(xml: string, limit = 3): DebugYouthPlayerRaw[] {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  const rawPlayers = root?.PlayerList?.YouthPlayer ?? root?.Team?.PlayerList?.YouthPlayer;
+  const players: Record<string, unknown>[] = Array.isArray(rawPlayers) ? rawPlayers : rawPlayers ? [rawPlayers] : [];
+
+  return players.slice(0, limit).map((p) => {
+    const firstName = String(p.FirstName ?? "").trim();
+    const lastName = String(p.LastName ?? "").trim();
+    const ageLikeKeys = Object.keys(p).filter((k) => /age/i.test(k));
+    const countryLikeKeys = Object.keys(p).filter((k) => /country|nation/i.test(k));
+    return {
+      name: [firstName, lastName].filter(Boolean).join(" ") || "Без имени",
+      ageLikeFields: ageLikeKeys.length
+        ? ageLikeKeys.map((k) => `${k}=${JSON.stringify(p[k])}`).join(", ")
+        : "(полей с age в имени не найдено)",
+      countryLikeFields: countryLikeKeys.length
+        ? countryLikeKeys.map((k) => `${k}=${JSON.stringify(p[k])}`).join(", ")
+        : "(полей с country/nation в имени не найдено)",
+    };
+  });
 }

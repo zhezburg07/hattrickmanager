@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { TransferHistoryResult, TransferHistoryEntry } from "@/lib/transferMarket";
+import { defaultCurrency } from "@/data/dashboard";
 import styles from "./Transfers.module.css";
 
 const MAX_TRANSFERS_SHOWN = 25;
@@ -14,10 +15,13 @@ const filterOptions: { key: FilterType; label: string }[] = [
   { key: "sale", label: "Проданные" },
 ];
 
-function formatLocal(value: number): string {
-  return `${value.toLocaleString("ru-RU")} ₸`;
-}
-
+// Итоговые суммы (TotalSumOfBuys/TotalSumOfSales) CHPP всегда отдаёт в
+// шведских кронах независимо от валюты команды (см. transferMarket.ts) —
+// это единственное такое исключение, отдельная функция намеренно НЕ
+// принимает currencyLabel. Цена конкретного трансфера — обычная локальная
+// валюта команды, та же currencyLabel, что уже используют Финансы/Стадион
+// (см. чат "Кубки/Юношеская команда/Трансферы: диагностика" — раньше здесь
+// был захардкожен символ ₸ вместо реальной синхронизированной валюты).
 function formatSek(value: number): string {
   return `${value.toLocaleString("ru-RU")} kr`;
 }
@@ -32,11 +36,15 @@ function formatSek(value: number): string {
 export default function TransfersSection({
   history,
   historyError,
+  currencyLabel,
 }: {
   history: TransferHistoryResult | null;
   historyError: string | null;
+  currencyLabel?: string;
 }) {
   const [filter, setFilter] = useState<FilterType>("all");
+  const currency = currencyLabel ?? defaultCurrency.label;
+  const formatLocal = (value: number) => `${value.toLocaleString("ru-RU")} ${currency}`;
 
   const shown: TransferHistoryEntry[] = useMemo(() => {
     if (!history) return [];
@@ -56,6 +64,17 @@ export default function TransfersSection({
       {historyError ? (
         <p className={styles.hint} style={{ marginBottom: 0 }}>
           {historyError}
+        </p>
+      ) : !history ? (
+        // Ни данных, ни ошибки — снимок transferHistory ещё ни разу не
+        // создавался для этого аккаунта (например, аккаунт подключён до
+        // того, как появился этот раздел синхронизации), а не "трансферов
+        // действительно нет" (то отдельное сообщение — ниже, когда history
+        // есть, но history.transfers пуст). Раньше здесь молча не
+        // рендерилось вообще ничего (см. чат "Кубки/Юношеская команда/
+        // Трансферы: диагностика").
+        <p className={styles.hint} style={{ marginBottom: 0 }}>
+          Данные ещё не загружены — нажмите «Обновить данные» на странице «Обновления».
         </p>
       ) : (
         history && (

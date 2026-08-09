@@ -19,16 +19,16 @@ export default async function TransfersPage() {
     return <SyncFailedScreen lastError={syncStatus.lastError} />;
   }
 
-  const { data: history, error } = hattrickUserId
+  const { data: history, error, currencyLabel } = hattrickUserId
     ? await getStoredTransferHistory(hattrickUserId)
-    : { data: null, error: null };
+    : { data: null, error: null, currencyLabel: undefined };
 
   return (
     <>
       <Header />
       <main className={styles.page}>
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
-          <TransfersSection history={history} historyError={error} />
+          <TransfersSection history={history} historyError={error} currencyLabel={currencyLabel} />
         </div>
       </main>
       <Footer />

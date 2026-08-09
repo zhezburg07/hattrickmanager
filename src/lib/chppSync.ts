@@ -33,7 +33,13 @@ import {
 import { trainingWeekKey, saveCurrentWeekSnapshot, saveWeeklyTsiSnapshot } from "./playerHistoryDb";
 import { parseArenaDetailsXml, type RealArenaCapacity } from "./arena";
 import { parseTrainingXml, type RealTraining } from "./training";
-import { parseYouthPlayerListXml, debugYouthPlayerListRawCount, type RealYouthPlayer } from "./youthPlayers";
+import {
+  parseYouthPlayerListXml,
+  debugYouthPlayerListRawCount,
+  debugRawYouthPlayerFields,
+  type RealYouthPlayer,
+  type DebugYouthPlayerRaw,
+} from "./youthPlayers";
 import { parseYouthPlayerDetailsXml, YOUTH_PLAYER_DETAILS_VERSION } from "./youthPlayerDetails";
 import { parseChallengesXml, type ArenaChallengesResult } from "./hattrickArena";
 import {
@@ -137,6 +143,10 @@ export interface StoredYouthPlayersData {
   // "запросы реально падают на живых данных".
   detailsSucceeded: number;
   detailsFailed: string[];
+  // Диагностика "возраст/национальность не отображаются" (см. чат "Кубки/
+  // Юношеская команда/Трансферы: диагностика") — сырые поля Age*/Country*/
+  // Nation* первых нескольких игроков ИЗ youthplayerlist.xml как есть.
+  rawFieldsSample: DebugYouthPlayerRaw[];
 }
 
 export interface StoredMatchesCalendar {
@@ -608,11 +618,13 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     let youthRawCount = 0;
     let detailsSucceeded = 0;
     const detailsFailed: string[] = [];
+    let rawFieldsSample: DebugYouthPlayerRaw[] = [];
     try {
       youthHttpStatus = raw.youthplayerlist?.httpStatus ?? null;
       youthRawCount = raw.youthplayerlist ? debugYouthPlayerListRawCount(raw.youthplayerlist.rawXml) : 0;
+      rawFieldsSample = raw.youthplayerlist ? debugRawYouthPlayerFields(raw.youthplayerlist.rawXml) : [];
       assertOkStatus(raw.youthplayerlist);
-      youthPlayers = parseYouthPlayerListXml(raw.youthplayerlist.rawXml);
+      youthPlayers = parseYouthPlayerListXml(raw.youthplayerlist.rawXml, homeCountry, countryIdLookupResult.lookup ?? undefined);
       anySucceeded = true;
 
       if (youthPlayers.length > 0) {
@@ -656,6 +668,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       rawPlayerCount: youthRawCount,
       detailsSucceeded,
       detailsFailed,
+      rawFieldsSample,
     };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.youthPlayers, stored);
   }
@@ -1299,6 +1312,7 @@ export interface YouthPageData {
   rawPlayerCount: number;
   detailsSucceeded: number;
   detailsFailed: string[];
+  rawFieldsSample: DebugYouthPlayerRaw[];
 }
 
 export async function getStoredYouthData(hattrickUserId: string): Promise<YouthPageData> {
@@ -1321,6 +1335,7 @@ export async function getStoredYouthData(hattrickUserId: string): Promise<YouthP
     // хватает обычного fallback: новые поля добавились, а не заменили старые.
     detailsSucceeded: youth?.detailsSucceeded ?? 0,
     detailsFailed: youth?.detailsFailed ?? [],
+    rawFieldsSample: youth?.rawFieldsSample ?? [],
   };
 }
 
@@ -1416,10 +1431,15 @@ export async function getStoredCupData(hattrickUserId: string): Promise<StoredCu
 
 export async function getStoredTransferHistory(
   hattrickUserId: string,
-): Promise<{ data: TransferHistoryResult | null; error: string | null }> {
+): Promise<{ data: TransferHistoryResult | null; error: string | null; currencyLabel: string | undefined }> {
   const snapshots = await getAllSnapshots(hattrickUserId);
   const entry = snapshots[DATA_KEYS.transferHistory];
-  return { data: (entry?.data as TransferHistoryResult | null) ?? null, error: entry?.error ?? null };
+  const worldCurrency = snapshots[DATA_KEYS.worldCurrency]?.data as WorldLeagueInfo | null;
+  return {
+    data: (entry?.data as TransferHistoryResult | null) ?? null,
+    error: entry?.error ?? null,
+    currencyLabel: worldCurrency?.currencyLabel,
+  };
 }
 
 // Общая точка входа для любой мигрированной страницы (Обзор, Состав,

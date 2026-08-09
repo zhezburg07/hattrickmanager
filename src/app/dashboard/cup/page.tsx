@@ -11,7 +11,11 @@ import { ensureSynced, getStoredCupData, type StoredCupInfo } from "@/lib/chppSy
 // нашёлся CupID (teamdetails/club/matches) и что вернул проход по раундам
 // cupmatches, снятые во время синхронизации. Уберите, когда поведение
 // стабильно подтвердится на реальных данных.
-const SHOW_CUP_DEBUG_PANEL = true;
+// ВЫКЛЮЧЕНО (см. чат "Кубки/Юношеская команда/Трансферы: диагностика") —
+// именно эта техническая панель (TeamID/CupID/сырые JSON-поля) читалась
+// пользователем как "лишняя информация, не связанная с моей командой" на
+// живой странице "Кубки", не сама история кубков.
+const SHOW_CUP_DEBUG_PANEL = false;
 
 export default async function CupPage() {
   const tokens = await getRequiredHattrickTokens();

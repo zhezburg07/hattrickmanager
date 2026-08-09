@@ -23,19 +23,29 @@ export default async function YouthPage() {
     return <SyncFailedScreen lastError={syncStatus.lastError} />;
   }
 
-  const { youthLevel, levelError, players, playersError, playersHttpStatus, rawPlayerCount, detailsSucceeded, detailsFailed } =
-    hattrickUserId
-      ? await getStoredYouthData(hattrickUserId)
-      : {
-          youthLevel: null,
-          levelError: null,
-          players: null,
-          playersError: null,
-          playersHttpStatus: null,
-          rawPlayerCount: 0,
-          detailsSucceeded: 0,
-          detailsFailed: [] as string[],
-        };
+  const {
+    youthLevel,
+    levelError,
+    players,
+    playersError,
+    playersHttpStatus,
+    rawPlayerCount,
+    detailsSucceeded,
+    detailsFailed,
+    rawFieldsSample,
+  } = hattrickUserId
+    ? await getStoredYouthData(hattrickUserId)
+    : {
+        youthLevel: null,
+        levelError: null,
+        players: null,
+        playersError: null,
+        playersHttpStatus: null,
+        rawPlayerCount: 0,
+        detailsSucceeded: 0,
+        detailsFailed: [] as string[],
+        rawFieldsSample: [] as { name: string; ageLikeFields: string; countryLikeFields: string }[],
+      };
   const errors = [levelError, playersError].filter((e): e is string => e !== null);
 
   return (
@@ -63,6 +73,18 @@ export default async function YouthPage() {
                     <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
                       {detailsFailed.map((line, i) => (
                         <li key={i}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {rawFieldsSample.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    Сырые поля возраста/национальности (диагностика "не отображаются"):
+                    <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                      {rawFieldsSample.map((p, i) => (
+                        <li key={i}>
+                          {p.name}: {p.ageLikeFields}; {p.countryLikeFields}
+                        </li>
                       ))}
                     </ul>
                   </div>
