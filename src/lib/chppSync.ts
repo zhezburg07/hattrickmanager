@@ -52,14 +52,7 @@ import {
   CUP_MATCH_TYPE,
 } from "./matches";
 import type { SeasonMatch } from "@/data/matches";
-import {
-  resolveOurCupPath,
-  resolvePastCupPath,
-  fetchCupMeta,
-  type OurCupPathResult,
-  type RealCupMatch,
-  type UnresolvedCupMatch,
-} from "./cupMatches";
+import { resolveOurCupPath, resolvePastCupPath, fetchCupMeta, type OurCupPathResult } from "./cupMatches";
 import type { UpcomingCupMatch } from "@/components/dashboard/CupSection";
 import { parseTransfersTeamXml, TRANSFERS_TEAM_VERSION, type TransferHistoryResult } from "./transferMarket";
 import {
@@ -200,13 +193,6 @@ export interface StoredCupInfo {
   nextMatch: UpcomingCupMatch | null;
   errors: string[];
   debug: CupDebugInfo;
-  // Сыгранные кубковые матчи, для которых CHPP не прислал данных о турнире
-  // ни в одном из проверенных источников (matches.xml/matchesarchive.xml/
-  // matchdetails.xml/matchlineup.xml — см. чат "Кубки: matches.xml не может
-  // быть источником CupID" и "Этап 1 дал отрицательный результат") — вместо
-  // того чтобы гадать, к какому кубку они относятся, показываем их честно
-  // отдельным блоком (см. CupSection.tsx).
-  unresolvedMatches: UnresolvedCupMatch[];
   // "Прилипчивый" запасной CupID для определения ТЕКУЩЕГО кубка (см. чат
   // "Кубки: не откатываться на уже проигранный кубок, не закрепляться на
   // уже неверном значении") — обновляется ТОЛЬКО когда teamDetailsCupId
@@ -234,50 +220,6 @@ const emptyOpponentAnalysis: OpponentAnalysisResult = {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "неизвестная ошибка";
-}
-
-// Путь по кубку, из которого команда уже выбыла в этом сезоне — строится
-// напрямую из уже известных матчей (matches.xml/matchesarchive.xml, см.
-// mergedSeasonMatches), без единого запроса к cupmatches.xml за раунды: они
-// уже все сыграны и уже есть в списке матчей команды. Раунд — это просто
-// порядковый номер среди своих матчей этого CupID по дате (CHPP не
-// присылает номер раунда в matches.xml, но реальный порядок раундов кубка
-// всегда совпадает с порядком дат матчей). Название/сезон турнира — из
-// fetchCupMeta (один лёгкий запрос, см. cupMatches.ts), может быть
-// недоступно (null) — тогда путь всё равно строится, просто с пустым
-// названием (UI покажет "Кубок").
-function pastCupPathFromMatches(
-  cupId: string,
-  matches: RealMatch[],
-  meta: { cupName: string; season: number } | null,
-  ourTeamId: string,
-  ourTeamName: string,
-): OurCupPathResult {
-  const ourMatches = matches
-    .filter((m) => m.cupId === cupId)
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const path: RealCupMatch[] = ourMatches.map((m, i) => ({
-    matchId: m.matchId,
-    date: m.date,
-    home: m.home,
-    opponent: m.opponent,
-    opponentTeamId: m.opponentTeamId,
-    status: m.status,
-    ourScore: m.ourScore,
-    oppScore: m.oppScore,
-    round: i + 1,
-  }));
-  return {
-    cupId,
-    cupName: meta?.cupName ?? "",
-    season: meta?.season ?? 0,
-    currentRound: path.length,
-    path,
-    debug: [`Путь построен из уже известных матчей (matches/matchesarchive), без прохода по раундам cupmatches: ${path.length} матч(ей).`],
-    error: null,
-    ourTeamId,
-    ourTeamName,
-  };
 }
 
 async function requestAllRaw(
@@ -1157,29 +1099,35 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
             );
             return null;
           }
-          // ИСПРАВЛЕНО (см. чат "Кубки: карточка Kazakhstan Cup всё ещё
-          // показывает старые данные"): предпочитаем обход раундов
-          // cupmatches.xml (resolvePastCupPath) — тот же надёжный механизм,
-          // что уже доказанно работает для АКТИВНОГО кубка, не зависящий от
-          // того, проставил ли matches.xml/matchesarchive.xml CupID
-          // конкретному матчу. pastCupPathFromMatches (сборка из уже
-          // известных матчей) остаётся только запасным вариантом — если
-          // обход раундов не смог найти вообще ни одного нашего матча
-          // (например, временный сбой самого cupmatches.xml).
+          // ИСПРАВЛЕНО (см. чат "Кубки: упрощаем и делаем надёжнее"): любая
+          // карточка кубка этого сезона (текущая или уже пройденная)
+          // строится ИСКЛЮЧИТЕЛЬНО обходом раундов cupmatches.xml
+          // (resolvePastCupPath — тот же приём, что уже доказанно надёжно
+          // работает для АКТИВНОГО кубка, resolveOurCupPath) — ищет наш
+          // матч среди всех матчей раунда напрямую по TeamID, вообще не
+          // завися от того, проставил ли matches.xml/matchesarchive.xml
+          // CupID конкретному матчу. Сборка из уже известных матчей
+          // (pastCupPathFromMatches) — тот самый способ, который путал
+          // сезоны/раунды, — больше не используется вовсе, даже как
+          // запасной вариант: если обход раундов не нашёл ни одного нашего
+          // матча, кандидат просто не попадает в каскад (с диагностикой), а
+          // не рискует подсунуть перепутанные данные.
           const walkSeason = meta?.season ?? currentSeason;
-          if (walkSeason !== null) {
-            const walked = await resolvePastCupPath(tokens, id, teamId, walkSeason, ourTeamName);
-            if (!walked.error && walked.path.length > 0) {
-              sectionErrors.push(
-                `Кубки: CupID ${id} ("${walked.cupName}") построен обходом раундов cupmatches.xml — ${walked.path.length} раунд(ов).`,
-              );
-              return walked;
-            }
-            sectionErrors.push(
-              `Кубки: CupID ${id} — обход раундов не дал результата (${walked.error ?? "путь пуст"}), используем запасной способ (matches/matchesarchive).`,
-            );
+          if (walkSeason === null) {
+            sectionErrors.push(`Кубки: CupID ${id} пропущен — не удалось определить сезон для обхода раундов.`);
+            return null;
           }
-          return pastCupPathFromMatches(id, matchesForCup, meta, teamId, ourTeamName);
+          const walked = await resolvePastCupPath(tokens, id, teamId, walkSeason, ourTeamName);
+          if (!walked.error && walked.path.length > 0) {
+            sectionErrors.push(
+              `Кубки: CupID ${id} ("${walked.cupName}") построен обходом раундов cupmatches.xml — ${walked.path.length} раунд(ов).`,
+            );
+            return walked;
+          }
+          sectionErrors.push(
+            `Кубки: CupID ${id} — обход раундов не нашёл ни одного нашего матча (${walked.error ?? "путь пуст"}), кубок пропущен в этой синхронизации.`,
+          );
+          return null;
         }),
       )
     ).filter((p): p is OurCupPathResult => p !== null);
@@ -1199,23 +1147,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         ? { matchId: rawNextMatch.matchId, date: rawNextMatch.date, home: rawNextMatch.home, opponent: rawNextMatch.opponent }
         : null;
 
-    // Сыгранные кубковые матчи, которым не удалось сопоставить ни один
-    // CupID — CHPP честно не прислал данных о турнире (проверено по трём
-    // независимым файлам, см. UnresolvedCupMatch в cupMatches.ts). Не
-    // пытаемся угадать кубок — показываем отдельным честным блоком.
-    const unresolvedMatches: UnresolvedCupMatch[] = matchesForCup
-      .filter((m) => Number(m.matchType) === CUP_MATCH_TYPE && m.status === "FINISHED" && m.cupId === null)
-      .map((m) => ({
-        matchId: m.matchId,
-        date: m.date,
-        home: m.home,
-        opponent: m.opponent,
-        opponentTeamId: m.opponentTeamId,
-        ourScore: m.ourScore,
-        oppScore: m.oppScore,
-      }));
-
-    const stored: StoredCupInfo = { cupPaths, nextMatch, errors, debug, unresolvedMatches, lastReliableCupId };
+    const stored: StoredCupInfo = { cupPaths, nextMatch, errors, debug, lastReliableCupId };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.cupInfo, stored);
     if (errors.length === 0) anySucceeded = true;
     else anyFailed = true;
@@ -1668,7 +1600,6 @@ export function normalizeStoredCupInfo(raw: Record<string, unknown> | undefined,
       nextMatch: null,
       errors: fallbackError ? [fallbackError] : [],
       debug: emptyCupDebug,
-      unresolvedMatches: [],
       lastReliableCupId: null,
     };
   }
@@ -1691,9 +1622,6 @@ export function normalizeStoredCupInfo(raw: Record<string, unknown> | undefined,
     nextMatch: (raw.nextMatch as UpcomingCupMatch | null | undefined) ?? null,
     errors: Array.isArray(raw.errors) ? (raw.errors as string[]) : [],
     debug,
-    // ?? [] — старый снимок (сохранённый до этого поля) просто не покажет
-    // блок "без турнира", а не упадёт.
-    unresolvedMatches: Array.isArray(raw.unresolvedMatches) ? (raw.unresolvedMatches as UnresolvedCupMatch[]) : [],
     lastReliableCupId: (raw.lastReliableCupId as string | null | undefined) ?? null,
   };
 }

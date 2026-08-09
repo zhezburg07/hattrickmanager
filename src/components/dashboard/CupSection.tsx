@@ -1,5 +1,5 @@
 import { formatMatchDateTime } from "@/data/dashboard";
-import type { OurCupPathResult, RealCupMatch, UnresolvedCupMatch } from "@/lib/cupMatches";
+import type { OurCupPathResult, RealCupMatch } from "@/lib/cupMatches";
 import styles from "./Cup.module.css";
 
 // Полностью на реальных данных cupmatches.xml (см. resolveOurCupPath в
@@ -166,56 +166,6 @@ function CupCard({ cupPath, nextMatch }: { cupPath: OurCupPathResult; nextMatch?
   );
 }
 
-// Сыгранные кубковые матчи, для которых CHPP не прислал никаких данных о
-// турнире (см. UnresolvedCupMatch в src/lib/cupMatches.ts) — проверено по
-// трём независимым файлам (matches.xml, matchdetails.xml, и по документации
-// matchlineup.xml), не переименованное поле, а честный пробел в данных
-// Hattrick именно для этих матчей (см. чат "Кубки: matches.xml не может
-// быть источником CupID" → "Этап 1 дал отрицательный результат"). Вместо
-// того чтобы гадать, к какому кубку они относятся, или молча их не
-// показывать, — отдельный честный блок.
-function UnresolvedCupMatchesCard({ matches }: { matches: UnresolvedCupMatch[] }) {
-  if (matches.length === 0) return null;
-  return (
-    <div className={styles.card}>
-      <div className={styles.cardTitle}>Кубковые матчи без определённого турнира</div>
-      <p className={styles.prizeNote} style={{ marginTop: 4 }}>
-        Hattrick не прислал данные о турнире для {matches.length === 1 ? "этого матча" : "этих матчей"} — не можем
-        точно сказать, к какому кубку {matches.length === 1 ? "он относится" : "они относятся"}, поэтому не пытаемся
-        угадать и не встраиваем {matches.length === 1 ? "его" : "их"} в один из кубков выше.
-      </p>
-      <div className={styles.timeline} style={{ marginTop: 12 }}>
-        {matches.map((m) => {
-          const { shortDate, time } = formatMatchDateTime(m.date);
-          const played = m.ourScore !== null && m.oppScore !== null;
-          return (
-            <div key={m.matchId} className={styles.timelineItem}>
-              <div className={styles.timelineLine} />
-              <div className={`${styles.timelineDot} ${styles.timelineDotCurrent}`}>?</div>
-              <div className={styles.timelineBody}>
-                <div className={styles.timelineRound}>
-                  {played && (
-                    <span className={styles.timelineScore}>
-                      {m.ourScore}:{m.oppScore}
-                    </span>
-                  )}
-                </div>
-                <div className={styles.timelineDetail}>
-                  {m.home ? "vs" : "@"} {m.opponent} · {shortDate}
-                  {time ? ` · ${time}` : ""}
-                </div>
-                <div style={{ fontSize: 11, color: "var(--color-muted, #888)", marginTop: 2 }}>
-                  MatchID {m.matchId} · TeamID соперника {m.opponentTeamId || "(пусто!)"}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // Команда за один сезон может успеть сыграть в НЕСКОЛЬКИХ кубках подряд —
 // после вылета из Национального Кубка Hattrick переводит команду в Кубок
 // Вызова, затем (при повторном вылете) в Кубок Надежды. cupPaths — уже
@@ -226,11 +176,9 @@ function UnresolvedCupMatchesCard({ matches }: { matches: UnresolvedCupMatch[] }
 export default function CupSection({
   cupPaths,
   nextMatch,
-  unresolvedMatches = [],
 }: {
   cupPaths: OurCupPathResult[];
   nextMatch?: UpcomingCupMatch | null;
-  unresolvedMatches?: UnresolvedCupMatch[];
 }) {
   const validPaths = cupPaths.filter((c) => !c.error);
 
@@ -250,7 +198,6 @@ export default function CupSection({
               "Не удалось определить, в каком кубке участвует команда, — либо сезон/кубок ещё не начался, либо CHPP пока не отдаёт эти данные."}
           </p>
         </div>
-        <UnresolvedCupMatchesCard matches={unresolvedMatches} />
       </div>
     );
   }
@@ -260,7 +207,6 @@ export default function CupSection({
       {validPaths.map((cupPath, i) => (
         <CupCard key={cupPath.cupId} cupPath={cupPath} nextMatch={i === validPaths.length - 1 ? nextMatch : null} />
       ))}
-      <UnresolvedCupMatchesCard matches={unresolvedMatches} />
     </div>
   );
 }
