@@ -133,7 +133,7 @@ export default function YouthTable({
                   <td>
                     <NationalityTag nationality={p.nationality} />
                   </td>
-                  <td className={styles.numCell}>{p.age}</td>
+                  <td className={styles.numCell}>{p.age ?? "—"}</td>
                   <td>
                     <YouthPositionBadge player={p} />
                   </td>
@@ -160,7 +160,8 @@ export default function YouthTable({
               <div className={styles.playerCardMeta}>
                 <NationalityTag nationality={p.nationality} />
                 <span>
-                  <b>{p.age}</b> лет
+                  <b>{p.age ?? "—"}</b>
+                  {p.age !== null && " лет"}
                 </span>
                 <YouthPositionBadge player={p} />
               </div>

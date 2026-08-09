@@ -67,7 +67,7 @@ export default function YouthPlayerDetailModal({
             </div>
             <div className={styles.headMeta}>
               <NationalityTag nationality={player.nationality} />
-              <span>{player.age} лет</span>
+              <span>{player.age !== null ? `${player.age} лет` : "Возраст неизвестен"}</span>
               <span>{positionGroupLabel[player.positionGroup]}</span>
             </div>
           </div>

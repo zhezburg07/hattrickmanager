@@ -7,7 +7,13 @@ import type { YouthPlayerDetailsResult } from "./youthPlayerDetails";
 export interface RealYouthPlayer {
   id: number;
   name: string;
-  age: number;
+  // null — CHPP подтверждённо не присылает возраст юниоров ни в
+  // youthplayerlist.xml, ни в youthplayerdetails.xml (см. чат "Юношеская
+  // команда: разумное допущение по умолчанию") — в отличие от
+  // национальности ниже, для возраста нет осмысленного значения по
+  // умолчанию (нельзя "предположить" возраст игрока), поэтому честно null,
+  // а не 0 (0 выглядел бы как настоящий возраст, а не как "нет данных").
+  age: number | null;
   nationality: Country;
   positionGroup: PositionGroup;
   // Из youthplayerlist.xml — запасной вариант, если запрос подробностей
@@ -67,6 +73,19 @@ export function parseYouthSkillsRaw(skillsRaw: Record<string, unknown> | undefin
 //    ID→страна (worldCountries.ts), никогда как готовую строку. Приводим
 //    youthplayerlist.xml к тому же, уже подтверждённому механизму, вместо
 //    гадания нового имени поля.
+// 5) ПОДТВЕРЖДЁННОЕ ОГРАНИЧЕНИЕ CHPP (см. чат "Юношеская команда: разумное
+//    допущение по умолчанию") — проверено дважды на реальных данных (и в
+//    youthplayerlist.xml, и в youthplayerdetails.xml, тот же общий struct
+//    YouthPlayerDetail): полей с "age"/"country"/"nation" в имени НЕТ
+//    вообще, не только под другим названием. Дальше гадать новое имя поля
+//    бессмысленно. Вместо пустого/неизвестного значения — разумное
+//    допущение: раз юниоры академии физически базируются в родном городе
+//    клуба, считаем их из домашней страны клуба (тот же homeCountry, что
+//    уже используется для основного состава, см. squadPlayers.ts), пока
+//    CHPP не начнёт присылать реальные данные. Порядок ниже НАРОЧНО ставит
+//    настоящие источники (countryIdLookup/прямое совпадение по ID) ПЕРЕД
+//    этим допущением — если Hattrick когда-нибудь всё же пришлёт CountryID,
+//    код автоматически переключится на него без переделки.
 export function parseYouthPlayerListXml(
   xml: string,
   homeCountry?: HomeCountryInfo | null,
@@ -90,12 +109,18 @@ export function parseYouthPlayerListXml(
     const countryId = String(p.CountryID ?? p.NativeCountryID ?? "");
     const isHomeMatch = homeCountry ? countryId === homeCountry.countryId : undefined;
     const nationality: Country =
-      countryIdLookup?.[countryId] ?? (isHomeMatch ? homeCountry!.country : undefined) ?? unknownCountry;
+      countryIdLookup?.[countryId] ??
+      (isHomeMatch ? homeCountry!.country : undefined) ??
+      // Допущение по умолчанию (см. пункт 5 в комментарии выше) — сработает
+      // практически всегда прямо сейчас, раз countryId выше пустой ни у
+      // одного юниора.
+      homeCountry?.country ??
+      unknownCountry;
 
     return {
       id: Number(p.YouthPlayerID ?? 0),
       name: [firstName, lastName].filter(Boolean).join(" ") || "Без имени",
-      age: Number(p.Age ?? 0),
+      age: p.Age !== undefined ? Number(p.Age) : null,
       nationality,
       positionGroup: inferPositionGroup(skills),
       skills,
