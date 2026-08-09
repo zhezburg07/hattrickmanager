@@ -101,6 +101,55 @@ export function parseTransfersTeamXml(xml: string): TransferHistoryResult {
   };
 }
 
+// Дозапрашивает более старые страницы transfersteam.xml (номер меньше),
+// пока не наберётся options.minTransfers сделок или не кончатся страницы —
+// см. чат "Трансферы: пагинация не накапливается" (pageIndex=0 отдаёт только
+// ПОСЛЕДНЮЮ страницу истории, которая может оказаться частичной на границе
+// карьеры команды). Принимает fetchPage как параметр (а не сам делает
+// HTTP-запрос) специально для тестируемости — вызывающая сторона
+// (chppSync.ts) передаёт настоящий requestChppXmlRaw, а проверка на mock-
+// данных передаёт свою функцию.
+export interface TransferPageFetchResult {
+  httpStatus: number;
+  rawXml: string;
+}
+
+export async function accumulateTransferHistory(
+  firstPage: TransferHistoryResult,
+  fetchPage: (pageIndex: number) => Promise<TransferPageFetchResult>,
+  options: { minTransfers: number; maxExtraFetches: number },
+): Promise<{ result: TransferHistoryResult; pageLog: string[] }> {
+  let result = firstPage;
+  const pageLog: string[] = [`стр.${result.pageIndex}/${result.pages}: ${result.transfers.length} сделок`];
+  let currentPage = result.pageIndex;
+  let extraFetches = 0;
+
+  while (
+    result.transfers.length < options.minTransfers &&
+    currentPage > 1 &&
+    extraFetches < options.maxExtraFetches
+  ) {
+    currentPage -= 1;
+    extraFetches += 1;
+    const pageRaw = await fetchPage(currentPage);
+    if (pageRaw.httpStatus < 200 || pageRaw.httpStatus >= 300) {
+      pageLog.push(`стр.${currentPage}: HTTP ${pageRaw.httpStatus}`);
+      break;
+    }
+    try {
+      const page = parseTransfersTeamXml(pageRaw.rawXml);
+      pageLog.push(`стр.${page.pageIndex}/${page.pages}: ${page.transfers.length} сделок`);
+      result = { ...result, transfers: [...result.transfers, ...page.transfers] };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "неизвестная ошибка";
+      pageLog.push(`стр.${currentPage}: ошибка разбора — ${message}`);
+      break;
+    }
+  }
+
+  return { result, pageLog };
+}
+
 export async function resolveTransferHistory(
   tokens: StoredHattrickTokens,
 ): Promise<{ data: TransferHistoryResult | null; error: string | null }> {

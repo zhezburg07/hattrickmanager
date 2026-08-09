@@ -54,7 +54,20 @@ import {
 import type { SeasonMatch } from "@/data/matches";
 import { resolveOurCupPath, resolvePastCupPath, fetchCupMeta, type OurCupPathResult } from "./cupMatches";
 import type { UpcomingCupMatch } from "@/components/dashboard/CupSection";
-import { parseTransfersTeamXml, TRANSFERS_TEAM_VERSION, type TransferHistoryResult } from "./transferMarket";
+import {
+  parseTransfersTeamXml,
+  accumulateTransferHistory,
+  TRANSFERS_TEAM_VERSION,
+  type TransferHistoryResult,
+} from "./transferMarket";
+
+// Сколько сделок минимум нужно набрать для показа на "Трансферы" (столько
+// же, сколько там реально показывается — MAX_TRANSFERS_SHOWN в
+// TransfersSection.tsx) — и сколько ДОПОЛНИТЕЛЬНЫХ страниц transfersteam.xml
+// максимум можно дозапросить сверх первой, если последняя страница истории
+// частичная (см. секцию "transferHistory" в syncTeamData ниже).
+const MIN_TRANSFERS_TO_ACCUMULATE = 25;
+const MAX_EXTRA_TRANSFER_PAGE_FETCHES = 5;
 import {
   saveSnapshotSuccess,
   saveSnapshotError,
@@ -730,26 +743,35 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
 
   // -- transferHistory (Трансферы — история сделок команды; живой поиск по
   // рынку убран целиком, см. чат "Трансферы: убрать поиск") --
-  // ДИАГНОСТИКА (см. чат "Трансферы: список всё ещё пуст после Обновить
-  // данные") — пользователь сообщает, что на "Трансферы" по-прежнему
-  // показывается "Данные ещё не загружены" (TransfersSection.tsx рисует это
-  // ТОЛЬКО когда снимка transferHistory нет вообще — ни data, ни error,
-  // см. getStoredTransferHistory), а не сообщение об ошибке и не "история
-  // пуста". Этот блок безусловно завершается либо saveSnapshotSuccess, либо
-  // saveSnapshotError при КАЖДОМ запуске syncTeamData — то есть строка в
-  // chpp_snapshots должна появляться в любом случае, если этот код вообще
-  // выполнился. Пишем результат явно в sectionErrors (видно на
-  // "Обновления" сразу после синхронизации), чтобы увидеть по факту: дошёл
-  // ли код сюда вообще, какой HTTP-статус у transfersteam.xml, и сколько
-  // сделок реально разобралось — вместо того чтобы гадать заново.
+  // ИСПРАВЛЕНО (см. чат "Трансферы: пагинация не накапливается") —
+  // подтверждено диагностикой на реальных данных: pageIndex=0 отдаёт
+  // ПОСЛЕДНЮЮ страницу истории (сервер сам возвращает её настоящий номер —
+  // у пользователя это оказалась страница 28 из 28), а не все страницы
+  // сразу. Раньше код сохранял ровно то, что пришло с этой одной страницы —
+  // если она частичная (граница истории), список выглядел практически
+  // пустым (в диагностике: 1 сделка), хотя за карьеру их могло быть сотни
+  // (NumberOfBuys/NumberOfSales в <Stats> — это ВСЕГО за карьеру, отдельно
+  // от постраничного <Transfers>, не число на текущей странице — тоже
+  // подтверждено диагностикой: 322+356=678 при 28 страницах). Теперь
+  // дозапрашиваем более старые страницы (номер меньше) по одной, пока не
+  // наберётся хотя бы MIN_TRANSFERS_TO_ACCUMULATE записей для показа или не
+  // кончатся страницы — с защитным лимитом на число доп. запросов, чтобы не
+  // заваливать CHPP при очень длинной истории.
   try {
     const httpStatus = raw.transfersteam?.httpStatus ?? null;
     assertOkStatus(raw.transfersteam);
-    const transferHistory: TransferHistoryResult = parseTransfersTeamXml(raw.transfersteam.rawXml);
+    const firstPage: TransferHistoryResult = parseTransfersTeamXml(raw.transfersteam.rawXml);
+
+    const { result: transferHistory, pageLog } = await accumulateTransferHistory(
+      firstPage,
+      (pageIndex) => requestChppXmlRaw("transfersteam", { pageIndex: String(pageIndex), version: TRANSFERS_TEAM_VERSION }, tokens),
+      { minTransfers: MIN_TRANSFERS_TO_ACCUMULATE, maxExtraFetches: MAX_EXTRA_TRANSFER_PAGE_FETCHES },
+    );
+
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.transferHistory, transferHistory);
     anySucceeded = true;
     sectionErrors.push(
-      `Трансферы (диагностика): HTTP ${httpStatus}, команда "${transferHistory.teamName || "?"}", разобрано сделок ${transferHistory.transfers.length} (куплено ${transferHistory.numberOfBuys}, продано ${transferHistory.numberOfSales}), страница ${transferHistory.pageIndex}/${transferHistory.pages} — снимок сохранён.`,
+      `Трансферы (диагностика): HTTP ${httpStatus}, команда "${transferHistory.teamName || "?"}", всего за карьеру куплено ${transferHistory.numberOfBuys}/продано ${transferHistory.numberOfSales}, собрано для показа ${transferHistory.transfers.length} сделок (${pageLog.join("; ")}) — снимок сохранён.`,
     );
   } catch (err) {
     const message = `История трансферов (transfersteam): ${errorMessage(err)}`;
