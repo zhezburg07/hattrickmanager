@@ -26,12 +26,13 @@ export default async function CupPage() {
     return <SyncFailedScreen lastError={syncStatus.lastError} />;
   }
 
-  const { cupPaths, nextMatch, errors, debug } = hattrickUserId
+  const { cupPaths, nextMatch, errors, debug, unresolvedMatches } = hattrickUserId
     ? await getStoredCupData(hattrickUserId)
     : {
         cupPaths: [] as StoredCupInfo["cupPaths"],
         nextMatch: null,
         errors: [] as string[],
+        unresolvedMatches: [] as StoredCupInfo["unresolvedMatches"],
         debug: {
           teamId: null,
           stillInCup: null,
@@ -109,7 +110,7 @@ export default async function CupPage() {
             </div>
           )}
 
-          <CupSection cupPaths={cupPaths} nextMatch={nextMatch} />
+          <CupSection cupPaths={cupPaths} nextMatch={nextMatch} unresolvedMatches={unresolvedMatches} />
         </div>
       </main>
       <Footer />

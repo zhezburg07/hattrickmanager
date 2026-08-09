@@ -2,7 +2,6 @@ import { XMLParser } from "fast-xml-parser";
 import { assertNoChppError } from "./chppError";
 import { formatMatchDateTime } from "@/data/dashboard";
 import type { SeasonMatch, Competition } from "@/data/matches";
-import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
 
 export type RealMatchStatus = "FINISHED" | "ONGOING" | "UPCOMING";
 
@@ -220,42 +219,6 @@ export function debugRawCupTypeMatchFields(xml: string): Record<string, unknown>
     });
 }
 
-// ЭТАП 1 диагностики (см. чат "Кубки: matches.xml не может быть источником
-// CupID — предложи альтернативу") — ТОЛЬКО проверка, ничего не меняет
-// постоянно. matches.xml подтверждённо не присылает вообще никаких Cup*/
-// Context*-полей для конкретных кубковых матчей этого сезона (не
-// переименованы — реально отсутствуют). matchdetails.xml по независимому
-// CHPP-клиенту (github.com/lucianoq/hattrick, chpp/file_matchdetails.go)
-// официально определяет MatchContextID с ТЕМИ ЖЕ семантикой, что и
-// matches.xml (LeagueLevelUnitId/CupId/LadderId/TournamentId/0) — тот же
-// уже проверенный смысл поля, просто из другого, персонального по матчу
-// файла. Раз документация уже один раз разошлась с реальным ответом
-// (matches.xml), здесь так же печатаем ВСЕ поля с "cup"/"context" в имени,
-// а не только читаем предполагаемое MatchContextID — сначала смотрим, что
-// реально пришло.
-export async function debugMatchDetailsCupFields(
-  tokens: StoredHattrickTokens,
-  matchId: string,
-): Promise<string> {
-  try {
-    const raw = await requestChppXmlRaw("matchdetails", { matchID: matchId }, tokens);
-    if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
-      return `MatchID ${matchId}: HTTP ${raw.httpStatus} — ${raw.rawXml.slice(0, 200)}`;
-    }
-    const parser = new XMLParser();
-    const data = parser.parse(raw.rawXml);
-    const root = data?.HattrickData;
-    const match = (root?.Match ?? root) as Record<string, unknown> | undefined;
-    if (!match) return `MatchID ${matchId}: в ответе matchdetails.xml нет <Match>.`;
-    const cupLikeKeys = Object.keys(match).filter((k) => /cup|context/i.test(k));
-    const cupLikeFields = cupLikeKeys.length
-      ? cupLikeKeys.map((k) => `${k}=${JSON.stringify(match[k])}`).join(", ")
-      : "(полей с cup/context в имени не найдено)";
-    return `MatchID ${matchId}: ${cupLikeFields}`;
-  } catch (err) {
-    return `MatchID ${matchId}: ошибка запроса — ${err instanceof Error ? err.message : "неизвестная ошибка"}`;
-  }
-}
 
 export function debugRawMatchFields(xml: string, count = 3): Record<string, unknown>[] {
   const parser = new XMLParser();

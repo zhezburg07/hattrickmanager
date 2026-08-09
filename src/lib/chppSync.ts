@@ -48,12 +48,11 @@ import {
   filterTrainingRelevantMatches,
   debugRawMatchFields,
   debugRawCupTypeMatchFields,
-  debugMatchDetailsCupFields,
   parseArchiveEchoedRange,
   CUP_MATCH_TYPE,
 } from "./matches";
 import type { SeasonMatch } from "@/data/matches";
-import { resolveOurCupPath, fetchCupMeta, type OurCupPathResult, type RealCupMatch } from "./cupMatches";
+import { resolveOurCupPath, fetchCupMeta, type OurCupPathResult, type RealCupMatch, type UnresolvedCupMatch } from "./cupMatches";
 import type { UpcomingCupMatch } from "@/components/dashboard/CupSection";
 import { parseTransfersTeamXml, TRANSFERS_TEAM_VERSION, type TransferHistoryResult } from "./transferMarket";
 import {
@@ -193,6 +192,13 @@ export interface StoredCupInfo {
   nextMatch: UpcomingCupMatch | null;
   errors: string[];
   debug: CupDebugInfo;
+  // Сыгранные кубковые матчи, для которых CHPP не прислал данных о турнире
+  // ни в одном из проверенных источников (matches.xml/matchesarchive.xml/
+  // matchdetails.xml/matchlineup.xml — см. чат "Кубки: matches.xml не может
+  // быть источником CupID" и "Этап 1 дал отрицательный результат") — вместо
+  // того чтобы гадать, к какому кубку они относятся, показываем их честно
+  // отдельным блоком (см. CupSection.tsx).
+  unresolvedMatches: UnresolvedCupMatch[];
 }
 
 const emptyOpponentAnalysis: OpponentAnalysisResult = {
@@ -1078,7 +1084,23 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         ? { matchId: rawNextMatch.matchId, date: rawNextMatch.date, home: rawNextMatch.home, opponent: rawNextMatch.opponent }
         : null;
 
-    const stored: StoredCupInfo = { cupPaths, nextMatch, errors, debug };
+    // Сыгранные кубковые матчи, которым не удалось сопоставить ни один
+    // CupID — CHPP честно не прислал данных о турнире (проверено по трём
+    // независимым файлам, см. UnresolvedCupMatch в cupMatches.ts). Не
+    // пытаемся угадать кубок — показываем отдельным честным блоком.
+    const unresolvedMatches: UnresolvedCupMatch[] = matchesForCup
+      .filter((m) => Number(m.matchType) === CUP_MATCH_TYPE && m.status === "FINISHED" && m.cupId === null)
+      .map((m) => ({
+        matchId: m.matchId,
+        date: m.date,
+        home: m.home,
+        opponent: m.opponent,
+        opponentTeamId: m.opponentTeamId,
+        ourScore: m.ourScore,
+        oppScore: m.oppScore,
+      }));
+
+    const stored: StoredCupInfo = { cupPaths, nextMatch, errors, debug, unresolvedMatches };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.cupInfo, stored);
     if (errors.length === 0) anySucceeded = true;
     else anyFailed = true;
@@ -1132,25 +1154,6 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       `Кубки (сырые Cup*/Context* поля каждого кубкового матча из matches.xml — не matchesarchive): ${rawCupFieldsDump || "(кубковых матчей в matches.xml не найдено)"}`,
     );
 
-    // ЭТАП 1 диагностики (см. чат "Кубки: matches.xml не может быть
-    // источником CupID — предложи альтернативу"): для каждого сыгранного
-    // кубкового матча, у которого cupId не определился ни через
-    // matches.xml, ни через matchesarchive.xml, запрашиваем matchdetails.xml
-    // ПО ЭТОМУ MatchID и печатаем сырые Cup*/Context* поля — ТОЛЬКО
-    // диагностика, ничего постоянно не меняет (cupId матчей не
-    // перезаписывается, pastCupIds/pastCupPathFromMatches работают как
-    // раньше). Лимит 10 матчей — защита от лишних запросов, если фильтр
-    // вдруг зацепит намного больше, чем несколько кубковых раундов сезона.
-    const unresolvedCupMatchIds = matchesForCup
-      .filter((m) => Number(m.matchType) === CUP_MATCH_TYPE && m.status === "FINISHED" && m.cupId === null)
-      .map((m) => m.matchId)
-      .slice(0, 10);
-    if (unresolvedCupMatchIds.length > 0) {
-      const matchDetailsDump = await Promise.all(
-        unresolvedCupMatchIds.map((id) => debugMatchDetailsCupFields(tokens, id)),
-      );
-      sectionErrors.push(`Кубки (ЭТАП 1: сырые Cup*/Context* поля из matchdetails.xml для матчей без CupID): ${matchDetailsDump.join(" || ")}`);
-    }
   }
 
   const finalStatus: SyncResult["status"] = anyFailed && !anySucceeded ? "failed" : anyFailed ? "partial" : "ok";
@@ -1526,7 +1529,13 @@ const emptyCupDebug: CupDebugInfo = {
 // заставлять всех вручную жать "Обновить данные".
 export function normalizeStoredCupInfo(raw: Record<string, unknown> | undefined, fallbackError: string | null): StoredCupInfo {
   if (!raw) {
-    return { cupPaths: [], nextMatch: null, errors: fallbackError ? [fallbackError] : [], debug: emptyCupDebug };
+    return {
+      cupPaths: [],
+      nextMatch: null,
+      errors: fallbackError ? [fallbackError] : [],
+      debug: emptyCupDebug,
+      unresolvedMatches: [],
+    };
   }
 
   const cupPaths: OurCupPathResult[] = Array.isArray(raw.cupPaths)
@@ -1547,6 +1556,9 @@ export function normalizeStoredCupInfo(raw: Record<string, unknown> | undefined,
     nextMatch: (raw.nextMatch as UpcomingCupMatch | null | undefined) ?? null,
     errors: Array.isArray(raw.errors) ? (raw.errors as string[]) : [],
     debug,
+    // ?? [] — старый снимок (сохранённый до этого поля) просто не покажет
+    // блок "без турнира", а не упадёт.
+    unresolvedMatches: Array.isArray(raw.unresolvedMatches) ? (raw.unresolvedMatches as UnresolvedCupMatch[]) : [],
   };
 }
 

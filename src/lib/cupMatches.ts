@@ -21,6 +21,27 @@ export interface RealCupMatch {
   round: number;
 }
 
+// Сыгранный кубковый матч (MatchType=3), для которого CHPP не прислал
+// вообще никаких данных о турнире — ни MatchContextId в matches.xml, ни в
+// matchdetails.xml, ни (по документации независимого CHPP-клиента,
+// проверено напрямую по исходнику) в matchlineup.xml, где формально
+// определено то же поле с той же семантикой. Проверено дважды на реальных
+// данных (см. чат "Кубки: matches.xml не может быть источником CupID —
+// предложи альтернативу", затем "Этап 1 дал отрицательный результат") —
+// это не неверное имя поля с нашей стороны, а честный пробел в данных
+// Hattrick именно для этих матчей. Вместо того чтобы гадать, к какому
+// кубку они относятся (или молча их не показывать), показываем отдельным
+// честным блоком — см. CupSection.tsx.
+export interface UnresolvedCupMatch {
+  matchId: string;
+  date: string;
+  home: boolean;
+  opponent: string;
+  opponentTeamId: string;
+  ourScore: number | null;
+  oppScore: number | null;
+}
+
 export interface OurCupPathResult {
   cupId: string;
   cupName: string;
