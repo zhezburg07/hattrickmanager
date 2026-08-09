@@ -57,6 +57,7 @@ import type { UpcomingCupMatch } from "@/components/dashboard/CupSection";
 import {
   parseTransfersTeamXml,
   accumulateTransferHistory,
+  mergeTransferHistory,
   TRANSFERS_TEAM_VERSION,
   type TransferHistoryResult,
 } from "./transferMarket";
@@ -749,32 +750,49 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // подтверждено диагностикой на реальных данных: pageIndex=0 отдаёт
   // ПОСЛЕДНЮЮ страницу истории (сервер сам возвращает её настоящий номер —
   // у пользователя это оказалась страница 28 из 28), а не все страницы
-  // сразу. Раньше код сохранял ровно то, что пришло с этой одной страницы —
-  // если она частичная (граница истории), список выглядел практически
-  // пустым (в диагностике: 1 сделка), хотя за карьеру их могло быть сотни
-  // (NumberOfBuys/NumberOfSales в <Stats> — это ВСЕГО за карьеру, отдельно
-  // от постраничного <Transfers>, не число на текущей странице — тоже
-  // подтверждено диагностикой: 322+356=678 при 28 страницах). По явному
-  // запросу пользователя (см. чат "Трансферы: покажи все сделки за
-  // карьеру") дозапрашиваем ВСЕ более старые страницы (номер меньше) до
-  // самой первой — не только до какого-то минимума для показа — с защитным
-  // лимитом MAX_EXTRA_TRANSFER_PAGE_FETCHES на число доп. запросов, чтобы
-  // не зациклиться, если сервер вернёт некорректно большое Pages.
+  // сразу. NumberOfBuys/NumberOfSales в <Stats> — это ВСЕГО за карьеру,
+  // отдельно от постраничного <Transfers> (подтверждено: 322+356=678 при
+  // 28 страницах).
+  // ОПТИМИЗАЦИЯ (см. чат "Трансферы: полная история только один раз") —
+  // полный обход всех страниц (accumulateTransferHistory) нужен только
+  // ОДИН раз, пока для этого аккаунта ещё нет ни одной сохранённой сделки.
+  // На каждой следующей синхронизации запрашивается только последняя
+  // страница, а новые записи добавляются к уже сохранённой истории
+  // (mergeTransferHistory, дедупликация по TransferID) — вместо того чтобы
+  // каждый раз заново обходить всю историю. Снимок читается ДО того, как
+  // его перезапишет текущая синхронизация (тот же приём, что и для
+  // lastReliableCupId в разделе "cupInfo" выше).
   try {
     const httpStatus = raw.transfersteam?.httpStatus ?? null;
     assertOkStatus(raw.transfersteam);
-    const firstPage: TransferHistoryResult = parseTransfersTeamXml(raw.transfersteam.rawXml);
+    const latestPage: TransferHistoryResult = parseTransfersTeamXml(raw.transfersteam.rawXml, teamId);
 
-    const { result: transferHistory, pageLog } = await accumulateTransferHistory(
-      firstPage,
-      (pageIndex) => requestChppXmlRaw("transfersteam", { pageIndex: String(pageIndex), version: TRANSFERS_TEAM_VERSION }, tokens),
-      { maxExtraFetches: MAX_EXTRA_TRANSFER_PAGE_FETCHES },
-    );
+    const previousSnapshot = await getSnapshot<TransferHistoryResult>(hattrickUserId, DATA_KEYS.transferHistory);
+    const hasPriorHistory = (previousSnapshot?.data?.transfers.length ?? 0) > 0;
+
+    let transferHistory: TransferHistoryResult;
+    let pageLog: string[];
+    if (hasPriorHistory) {
+      transferHistory = mergeTransferHistory(previousSnapshot!.data, latestPage);
+      pageLog = [
+        `инкрементально (уже была история из ${previousSnapshot!.data!.transfers.length} сделок): стр.${latestPage.pageIndex}/${latestPage.pages} → ${latestPage.transfers.length} сделок на странице, после слияния/дедупликации всего ${transferHistory.transfers.length}`,
+      ];
+    } else {
+      const accumulated = await accumulateTransferHistory(
+        latestPage,
+        (pageIndex) =>
+          requestChppXmlRaw("transfersteam", { pageIndex: String(pageIndex), version: TRANSFERS_TEAM_VERSION }, tokens),
+        { maxExtraFetches: MAX_EXTRA_TRANSFER_PAGE_FETCHES },
+        teamId,
+      );
+      transferHistory = accumulated.result;
+      pageLog = [`полный обход (первая синхронизация): ${accumulated.pageLog.join("; ")}`];
+    }
 
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.transferHistory, transferHistory);
     anySucceeded = true;
     sectionErrors.push(
-      `Трансферы (диагностика): HTTP ${httpStatus}, команда "${transferHistory.teamName || "?"}", всего за карьеру куплено ${transferHistory.numberOfBuys}/продано ${transferHistory.numberOfSales}, собрано для показа ${transferHistory.transfers.length} сделок (${pageLog.join("; ")}) — снимок сохранён.`,
+      `Трансферы (диагностика): HTTP ${httpStatus}, команда "${transferHistory.teamName || "?"}", всего за карьеру куплено ${transferHistory.numberOfBuys}/продано ${transferHistory.numberOfSales}, в снимке ${transferHistory.transfers.length} сделок (${pageLog.join("; ")}) — снимок сохранён.`,
     );
   } catch (err) {
     const message = `История трансферов (transfersteam): ${errorMessage(err)}`;

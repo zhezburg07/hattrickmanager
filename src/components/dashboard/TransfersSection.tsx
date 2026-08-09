@@ -1,9 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { TransferHistoryResult, TransferHistoryEntry } from "@/lib/transferMarket";
 import { defaultCurrency } from "@/data/dashboard";
 import styles from "./Transfers.module.css";
+
+// По запросу (см. чат "Трансферы: постраничный вывод") — вся карьерная
+// история (потенциально сотни сделок) режется на страницы по PAGE_SIZE
+// вместо одного длинного списка.
+const PAGE_SIZE = 30;
 
 type FilterType = "all" | "sale" | "buy";
 
@@ -43,10 +48,11 @@ export default function TransfersSection({
   currencyLabel?: string;
 }) {
   const [filter, setFilter] = useState<FilterType>("all");
+  const [page, setPage] = useState(1);
   const currency = currencyLabel ?? defaultCurrency.label;
   const formatLocal = (value: number) => `${value.toLocaleString("ru-RU")} ${currency}`;
 
-  const shown: TransferHistoryEntry[] = useMemo(() => {
+  const filtered: TransferHistoryEntry[] = useMemo(() => {
     if (!history) return [];
     // Снимок из chppSync.ts уже приходит отсортированным по Deadline (по
     // убыванию) — сортируем здесь ещё раз на всякий случай (дёшево, а
@@ -55,12 +61,19 @@ export default function TransfersSection({
     return filter === "all" ? sorted : sorted.filter((t) => t.transferType === filter);
   }, [history, filter]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Смена фильтра — обратно на страницу 1 (иначе можно оказаться на
+  // несуществующей странице 5, если отфильтрованный список стал короче).
+  useEffect(() => setPage(1), [filter]);
+  const safePage = Math.min(page, totalPages);
+  const shown = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
   return (
     <div className={styles.card}>
       <div className={styles.cardHeadRow}>
         <div className={styles.cardTitle} style={{ margin: 0 }}>
           История трансферов{history?.teamName ? ` — ${history.teamName}` : ""}
-          {history && history.transfers.length > 0 ? ` (${shown.length} из ${history.transfers.length})` : ""}
+          {history && history.transfers.length > 0 ? ` (${filtered.length} из ${history.transfers.length})` : ""}
         </div>
       </div>
 
@@ -146,7 +159,7 @@ export default function TransfersSection({
                   ))}
                 </tbody>
               </table>
-              {shown.length === 0 && (
+              {filtered.length === 0 && (
                 <div className={styles.emptyState}>
                   {history.transfers.length === 0
                     ? "Трансферная история этой команды пока пуста"
@@ -154,6 +167,37 @@ export default function TransfersSection({
                 </div>
               )}
             </div>
+
+            {totalPages > 1 && (
+              <div className={styles.pagination}>
+                <button
+                  type="button"
+                  className={styles.pageBtn}
+                  disabled={safePage === 1}
+                  onClick={() => setPage(safePage - 1)}
+                >
+                  ‹
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    className={`${styles.pageBtn} ${n === safePage ? styles.pageBtnActive : ""}`}
+                    onClick={() => setPage(n)}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={styles.pageBtn}
+                  disabled={safePage === totalPages}
+                  onClick={() => setPage(safePage + 1)}
+                >
+                  ›
+                </button>
+              </div>
+            )}
           </>
         )
       )}

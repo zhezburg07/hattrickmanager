@@ -59,7 +59,19 @@ export interface TransferHistoryResult {
   pages: number;
 }
 
-export function parseTransfersTeamXml(xml: string): TransferHistoryResult {
+// ИСПРАВЛЕНО (см. чат "Трансферы: все сделки показываются как покупки") —
+// подтверждено пользователем на реальных данных: <Player><TransferType>
+// (значения "B"/"S") в живых ответах CHPP либо не приходит, либо приходит
+// не так, как задокументировано у независимого клиента (тот же класс
+// проблемы, что уже встречался с youthplayerlist.xml/managercompendium —
+// см. остальные чаты этой сессии) — из-за чего сравнение с "S" всегда было
+// ложным, и КАЖДАЯ сделка считалась покупкой. Вместо этого поля — надёжное
+// сравнение с СОБСТВЕННЫМ TeamID команды (его мы точно знаем, в отличие от
+// содержимого чужого поля): если наш TeamID совпадает с SellerTeamID —
+// это продажа, если с BuyerTeamID — покупка. TransferType остаётся только
+// запасным вариантом на случай, если ourTeamId не передан или ни один
+// TeamID не совпал.
+export function parseTransfersTeamXml(xml: string, ourTeamId?: string): TransferHistoryResult {
   const parser = new XMLParser();
   const data = parser.parse(xml);
   const root = data?.HattrickData;
@@ -74,7 +86,18 @@ export function parseTransfersTeamXml(xml: string): TransferHistoryResult {
     const player = t.Player as Record<string, unknown> | undefined;
     const buyer = t.Buyer as Record<string, unknown> | undefined;
     const seller = t.Seller as Record<string, unknown> | undefined;
-    const transferType: "buy" | "sale" = String(player?.TransferType ?? "") === "S" ? "sale" : "buy";
+    const buyerTeamId = String(buyer?.BuyerTeamID ?? "");
+    const sellerTeamId = String(seller?.SellerTeamID ?? "");
+
+    let transferType: "buy" | "sale";
+    if (ourTeamId && sellerTeamId === ourTeamId) {
+      transferType = "sale";
+    } else if (ourTeamId && buyerTeamId === ourTeamId) {
+      transferType = "buy";
+    } else {
+      transferType = String(player?.TransferType ?? "") === "S" ? "sale" : "buy";
+    }
+
     const counterpartTeamName =
       transferType === "sale" ? String(buyer?.BuyerTeamName ?? "") : String(seller?.SellerTeamName ?? "");
     return {
@@ -124,6 +147,7 @@ export async function accumulateTransferHistory(
   firstPage: TransferHistoryResult,
   fetchPage: (pageIndex: number) => Promise<TransferPageFetchResult>,
   options: { maxExtraFetches: number },
+  ourTeamId?: string,
 ): Promise<{ result: TransferHistoryResult; pageLog: string[] }> {
   let result = firstPage;
   const pageLog: string[] = [`стр.${result.pageIndex}/${result.pages}: ${result.transfers.length} сделок`];
@@ -139,7 +163,7 @@ export async function accumulateTransferHistory(
       break;
     }
     try {
-      const page = parseTransfersTeamXml(pageRaw.rawXml);
+      const page = parseTransfersTeamXml(pageRaw.rawXml, ourTeamId);
       pageLog.push(`стр.${page.pageIndex}/${page.pages}: ${page.transfers.length} сделок`);
       result = { ...result, transfers: [...result.transfers, ...page.transfers] };
     } catch (err) {
@@ -151,6 +175,29 @@ export async function accumulateTransferHistory(
 
   result = { ...result, transfers: [...result.transfers].sort((a, b) => b.deadline.localeCompare(a.deadline)) };
   return { result, pageLog };
+}
+
+// Инкрементальное обновление истории — вызывается на КАЖДОЙ синхронизации,
+// кроме самой первой (см. чат "Трансферы: полная история только один раз").
+// Полный обход всех страниц (accumulateTransferHistory) нужен только один
+// раз, пока в базе ещё нет ни одной сохранённой сделки — дальше на каждое
+// "Обновить данные" запрашивается только последняя (самая новая) страница,
+// и новые записи добавляются к уже сохранённой истории. Дедупликация — по
+// TransferID (уникальный и стабильный, в отличие от даты — в один день
+// теоретически может пройти несколько сделок), Map автоматически убирает
+// повторы при повторной синхронизации той же самой новой страницы. Итог
+// снова явно сортируется по Deadline по убыванию. Статистика (totals/
+// teamName/pageIndex/pages) берётся из latestPage — это всегда самые
+// свежие "как сейчас" значения от CHPP, не нужно накапливать их отдельно.
+export function mergeTransferHistory(
+  previous: TransferHistoryResult | null,
+  latestPage: TransferHistoryResult,
+): TransferHistoryResult {
+  const byId = new Map<string, TransferHistoryEntry>();
+  for (const t of previous?.transfers ?? []) byId.set(t.transferId, t);
+  for (const t of latestPage.transfers) byId.set(t.transferId, t);
+  const transfers = [...byId.values()].sort((a, b) => b.deadline.localeCompare(a.deadline));
+  return { ...latestPage, transfers };
 }
 
 export async function resolveTransferHistory(
