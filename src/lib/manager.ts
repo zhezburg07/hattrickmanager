@@ -58,6 +58,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ДИАГНОСТИКА (см. чат "Срочно: реальный пользователь не может
+// подключиться" — стабильно 401 дважды подряд, задержка/версия не помогли):
+// тело 401-ответа оказалось HTML-страницей ("<!DOCTYPE html..."), а не
+// обычной XML-ошибкой CHPP — значит запрос отклоняется раньше, чем доходит
+// до самого CHPP (похоже на структурную причину — права/scope приложения
+// на стороне Hattrick, а не временный сбой). Прежний срез в 200 символов
+// обрезал текст ДО реальной причины внутри HTML (она обычно в <title>).
+// Достаём <title> отдельно (если есть) — это и есть самый частый носитель
+// осмысленного текста в служебных HTML-страницах ошибок, а не гадаем по
+// первым 200 символам разметки.
+function extractHtmlErrorHint(body: string): string {
+  const titleMatch = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleMatch ? titleMatch[1].replace(/\s+/g, " ").trim() : null;
+  const excerpt = body.slice(0, 1500).replace(/\s+/g, " ").trim();
+  return title ? `<title>${title}</title> | сырое тело (до 1500 симв.): ${excerpt}` : excerpt;
+}
+
 // UserID нужен, чтобы выдать долгоживущую сессию сайта (см.
 // src/lib/hattrickTokensDb.ts) — но получение UserID НЕ должно блокировать
 // сам вход: если managercompendium.xml не отвечает, /api/auth/callback всё
@@ -91,7 +108,7 @@ export async function resolveManagerUserId(
     try {
       const raw = await requestChppXmlRaw("managercompendium", { version: MANAGER_COMPENDIUM_VERSION }, tokens);
       if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
-        diagnostics.push(`Попытка ${attempt}: HTTP ${raw.httpStatus} — ${raw.rawXml.slice(0, 200)}`);
+        diagnostics.push(`Попытка ${attempt}: HTTP ${raw.httpStatus} — ${extractHtmlErrorHint(raw.rawXml)}`);
         continue;
       }
       const userId = parseManagerXml(raw.rawXml).userId;
