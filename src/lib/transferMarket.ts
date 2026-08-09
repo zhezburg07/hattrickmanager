@@ -124,6 +124,38 @@ export function parseTransfersTeamXml(xml: string, ourTeamId?: string): Transfer
   };
 }
 
+// ВРЕМЕННАЯ диагностика (см. чат "Трансферы: фильтр 'Проданные' всё ещё
+// пуст на реальных данных") — пользователь подтвердил, что даже после
+// перехода на сравнение TeamID вместо TransferType, фильтр "Проданные"
+// по-прежнему ничего не показывает на реальном сайте. Дампим СЫРЫЕ
+// Buyer.BuyerTeamID/BuyerTeamName и Seller.SellerTeamID/SellerTeamName
+// (плюс запасное поле Player.TransferType) для первых нескольких сделок —
+// без этого нельзя отличить "поле называется/лежит не так, как в
+// независимом клиенте" (тот же класс проблем, что уже был с
+// youthplayerlist.xml/managercompendium) от "старые сохранённые записи
+// просто никогда не были пересчитаны после исправления".
+export function debugTransferPartyFields(xml: string, limit = 5): string {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  const transfersContainer = root?.Transfers as Record<string, unknown> | undefined;
+  const rawTransfers = asArray(transfersContainer?.Transfer).slice(0, limit);
+
+  return rawTransfers
+    .map((t) => {
+      const player = t.Player as Record<string, unknown> | undefined;
+      const buyer = t.Buyer as Record<string, unknown> | undefined;
+      const seller = t.Seller as Record<string, unknown> | undefined;
+      return (
+        `TransferID=${t.TransferID}: ` +
+        `Buyer.BuyerTeamID=${JSON.stringify(buyer?.BuyerTeamID)} Buyer.BuyerTeamName=${JSON.stringify(buyer?.BuyerTeamName)}, ` +
+        `Seller.SellerTeamID=${JSON.stringify(seller?.SellerTeamID)} Seller.SellerTeamName=${JSON.stringify(seller?.SellerTeamName)}, ` +
+        `Player.TransferType=${JSON.stringify(player?.TransferType)}`
+      );
+    })
+    .join(" || ");
+}
+
 // Дозапрашивает ВСЕ более старые страницы transfersteam.xml (номер меньше),
 // пока не дойдёт до страницы 1 (вся карьерная история собрана) или не
 // упрётся в защитный лимит options.maxExtraFetches — см. чат "Трансферы:

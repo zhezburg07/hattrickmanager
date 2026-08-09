@@ -8,7 +8,7 @@ import styles from "./Transfers.module.css";
 // По запросу (см. чат "Трансферы: постраничный вывод") — вся карьерная
 // история (потенциально сотни сделок) режется на страницы по PAGE_SIZE
 // вместо одного длинного списка.
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 50;
 
 type FilterType = "all" | "sale" | "buy";
 
@@ -138,7 +138,7 @@ export default function TransfersSection({
                   <tr>
                     <th>Игрок</th>
                     <th>Тип</th>
-                    <th>Контрагент</th>
+                    <th>Кому продали / у кого купили</th>
                     <th style={{ textAlign: "right" }}>TSI</th>
                     <th style={{ textAlign: "right" }}>Цена</th>
                     <th>Дата</th>
@@ -151,7 +151,13 @@ export default function TransfersSection({
                       <td style={{ color: t.transferType === "sale" ? "var(--color-good)" : "var(--color-accent)" }}>
                         {t.transferType === "sale" ? "Продажа" : "Покупка"}
                       </td>
-                      <td>{t.counterpartTeamName || "—"}</td>
+                      <td>
+                        {t.counterpartTeamName
+                          ? t.transferType === "sale"
+                            ? `Продан в ${t.counterpartTeamName}`
+                            : `Куплен у ${t.counterpartTeamName}`
+                          : "—"}
+                      </td>
                       <td className={styles.numCell}>{t.tsi.toLocaleString("ru-RU")}</td>
                       <td className={styles.numCell}>{formatLocal(t.price)}</td>
                       <td>{t.deadline}</td>
