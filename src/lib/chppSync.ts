@@ -1110,6 +1110,25 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         `teamName="${ourTeamName || "(пусто!)"}", итоговый CupID="${cupId ?? "(не найден)"}", ` +
         `кубков в каскаде=${cupPaths.length}.`,
     );
+    // ДИАГНОСТИКА (см. чат "Кубки: система считает текущим Kazakhstan Cup,
+    // хотя мы уже выбыли, а Sapphire Challenger пропал целиком") — раскрываем
+    // ВСЕ кандидаты на "текущий CupID" по отдельности, а не только итог.
+    // Порядок выбора: teamDetailsCupId, если пусто — clubCupId, если и он
+    // пусто — matchesCupId (ПЕРВЫЙ ненулевой cupId среди matchesForCup В
+    // ПОРЯДКЕ МАССИВА, НЕ по дате!). Если teamDetailsCupId сейчас пуст (см.
+    // stillInCup ниже — CHPP теоретически мог ещё не успеть проставить новый
+    // активный кубок сразу после вылета из предыдущего), matchesCupId
+    // ВСЕГДА найдёт CupID уже сыгранного (то есть прошлого) кубка раньше,
+    // чем ещё не сыгранного текущего — у которого пока попросту нет ни
+    // одного матча с проставленным CupID. Это и есть подозреваемый механизм
+    // того, как "172" (Kazakhstan Cup, уже пройден) попадает в chosenCupId
+    // вместо "865" (Sapphire Challenger, играется сейчас).
+    sectionErrors.push(
+      `Кубки (разбивка кандидатов на "текущий" CupID): stillInCup=${stillInCup === null ? "недоступно" : stillInCup} | ` +
+        `teamDetailsCupId=${cupIdFromTeamDetails ?? "(пусто)"} (${cupNameFromTeamDetails ?? "имя недоступно"}) | ` +
+        `clubCupId=${parsedClub?.cupId ?? "(пусто)"} | matchesCupId=${debug.matchesCupId ?? "(пусто)"} | ` +
+        `итог chosenCupId=${cupId ?? "(не найден)"}.`,
+    );
 
     // ВРЕМЕННАЯ диагностика (см. чат "Кубки: реально другие/устаревшие
     // данные, не совпадающие с hattrick.org по датам") — проверяем гипотезу
