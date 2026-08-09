@@ -186,6 +186,39 @@ export function parseArchiveEchoedRange(xml: string): { firstMatchDate: string |
   };
 }
 
+// ВРЕМЕННАЯ диагностика (см. чат "Кубки: реальные текущие матчи Kazakhstan
+// Cup не получают CupID") — тот же приём, что уже нашёл аналогичные баги у
+// национальности игроков (debugRawPlayerCountryIds) и у "раунда 0"
+// (rawMetaKeys в cupMatches.ts): вместо доверия одному предполагаемому имени
+// поля (MatchContextId) печатаем ВСЕ поля с "cup"/"context" в названии для
+// КАЖДОГО матча с MatchType=3 (кубковый) — без ограничения по количеству и
+// без предположения, что нужные матчи попадут в первые N записей списка.
+export function debugRawCupTypeMatchFields(xml: string): Record<string, unknown>[] {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  const rawMatches = root?.Team?.MatchList?.Match ?? root?.MatchList?.Match;
+  const matches: Record<string, unknown>[] = Array.isArray(rawMatches) ? rawMatches : rawMatches ? [rawMatches] : [];
+
+  return matches
+    .filter((m) => Number(m.MatchType) === CUP_MATCH_TYPE)
+    .map((m) => {
+      const cupLikeKeys = Object.keys(m).filter((k) => /cup|context/i.test(k));
+      const cupLikeFields = cupLikeKeys.length
+        ? cupLikeKeys.map((k) => `${k}=${JSON.stringify(m[k])}`).join(", ")
+        : "(полей с cup/context в имени не найдено)";
+      const homeTeam = m.HomeTeam as Record<string, unknown> | undefined;
+      const awayTeam = m.AwayTeam as Record<string, unknown> | undefined;
+      return {
+        MatchID: m.MatchID,
+        MatchDate: m.MatchDate,
+        homeTeamName: homeTeam?.HomeTeamName,
+        awayTeamName: awayTeam?.AwayTeamName,
+        cupLikeFields,
+      };
+    });
+}
+
 export function debugRawMatchFields(xml: string, count = 3): Record<string, unknown>[] {
   const parser = new XMLParser();
   const data = parser.parse(xml);

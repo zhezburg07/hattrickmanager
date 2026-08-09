@@ -47,6 +47,7 @@ import {
   dedupeMatches,
   filterTrainingRelevantMatches,
   debugRawMatchFields,
+  debugRawCupTypeMatchFields,
   parseArchiveEchoedRange,
   CUP_MATCH_TYPE,
 } from "./matches";
@@ -458,9 +459,15 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // видимости, а не только внутри блока "matchesCalendar", специально ради
   // этого переиспользования.
   let mergedSeasonMatches: RealMatch[] | null = null;
+  // ВРЕМЕННАЯ диагностика (см. чат "Кубки: реальные текущие матчи Kazakhstan
+  // Cup не получают CupID") — сырые поля Cup*/Context* КАЖДОГО кубкового
+  // матча прямо из matches.xml (текущий сезон), не только уже вычисленный
+  // cupId — см. debugRawCupTypeMatchFields в matches.ts.
+  let rawCupTypeMatchFieldsDump: Record<string, unknown>[] = [];
   try {
     assertOkStatus(raw.matches);
     parsedMatches = parseMatchesXml(raw.matches.rawXml, teamId);
+    rawCupTypeMatchFieldsDump = debugRawCupTypeMatchFields(raw.matches.rawXml);
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.matches, parsedMatches);
     anySucceeded = true;
   } catch (err) {
@@ -1113,6 +1120,16 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       currentCupPath ? `CupID ${currentCupPath.cupId} = "${currentCupPath.cupName || "(имя не определено)"}" (текущий)` : null,
     ].filter((x): x is string => x !== null);
     sectionErrors.push(`Кубки (соответствие CupID → название): ${cupIdToName.join("; ") || "(нет данных)"}`);
+
+    const rawCupFieldsDump = rawCupTypeMatchFieldsDump
+      .map(
+        (m) =>
+          `MatchID ${m.MatchID} (${m.MatchDate}, ${m.homeTeamName ?? "?"} vs ${m.awayTeamName ?? "?"}): ${m.cupLikeFields}`,
+      )
+      .join(" || ");
+    sectionErrors.push(
+      `Кубки (сырые Cup*/Context* поля каждого кубкового матча из matches.xml — не matchesarchive): ${rawCupFieldsDump || "(кубковых матчей в matches.xml не найдено)"}`,
+    );
   }
 
   const finalStatus: SyncResult["status"] = anyFailed && !anySucceeded ? "failed" : anyFailed ? "partial" : "ok";
