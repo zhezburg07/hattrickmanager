@@ -63,11 +63,28 @@ function NextCupMatchBlock({ nextMatch }: { nextMatch: UpcomingCupMatch }) {
 // Одна карточка одного кубка — команда за сезон могла сыграть в нескольких
 // (каскад Национальный Кубок → Кубок Вызова → ... после вылета), см.
 // CupSection ниже, который рендерит по одной такой карточке на кубок.
+// ВРЕМЕННАЯ диагностика (см. чат "Кубки: по-прежнему показывают чужие
+// матчи") — TeamID/TeamName нашей команды, которой строился этот путь, и
+// TeamID/TeamName обеих сторон каждого показанного матча, прямо в самой
+// карточке, а не только в скрытой debug-панели. Позволяет сразу увидеть,
+// действительно ли opponentTeamId в каком-то матче совпадает с нашим же
+// teamId (тогда "наш" матч на самом деле матч другой команды) или расходится
+// с ourTeamId, показанным здесь же. Убрать вместе с этим комментарием,
+// когда причина найдена и подтверждена.
+function OurTeamDiagnosticLine({ cupPath }: { cupPath: OurCupPathResult }) {
+  return (
+    <p style={{ fontSize: 11.5, color: "var(--color-muted, #888)", margin: "4px 0 0" }}>
+      Путь построен для: {cupPath.ourTeamName || "(имя не определено)"} (TeamID {cupPath.ourTeamId || "(пусто!)"})
+    </p>
+  );
+}
+
 function CupCard({ cupPath, nextMatch }: { cupPath: OurCupPathResult; nextMatch?: UpcomingCupMatch | null }) {
   if (cupPath.path.length === 0) {
     return (
       <div className={styles.card}>
         <div className={styles.cardTitle}>{cupPath.cupName || "Кубок"}</div>
+        <OurTeamDiagnosticLine cupPath={cupPath} />
         {nextMatch && (
           <div style={{ marginTop: 16 }}>
             <NextCupMatchBlock nextMatch={nextMatch} />
@@ -99,6 +116,7 @@ function CupCard({ cupPath, nextMatch }: { cupPath: OurCupPathResult; nextMatch?
           <div className={styles.cupRound}>
             Сезон {cupPath.season} · текущий раунд турнира: {cupPath.currentRound}
           </div>
+          <OurTeamDiagnosticLine cupPath={cupPath} />
         </div>
         <span className={`${styles.statusTag} ${statusClass}`}>
           <span className={styles.statusDot} />
@@ -134,6 +152,10 @@ function CupCard({ cupPath, nextMatch }: { cupPath: OurCupPathResult; nextMatch?
                 <div className={styles.timelineDetail}>
                   {m.home ? "vs" : "@"} {m.opponent} · {shortDate}
                   {time ? ` · ${time}` : ""}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--color-muted, #888)", marginTop: 2 }}>
+                  MatchID {m.matchId} · {m.home ? "дома" : "в гостях"} · наш TeamID {cupPath.ourTeamId || "(пусто!)"} vs
+                  соперник «{m.opponent}» TeamID {m.opponentTeamId || "(пусто!)"}
                 </div>
               </div>
             </div>

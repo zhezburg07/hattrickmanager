@@ -9,6 +9,12 @@ export interface RealCupMatch {
   date: string;
   home: boolean;
   opponent: string;
+  // TeamID соперника — ВРЕМЕННО добавлено вместе с ourTeamId/ourTeamName в
+  // OurCupPathResult ниже как диагностика "показывает чужие матчи" (см. чат
+  // "Кубки: по-прежнему показывают чужие матчи") — позволяет прямо в
+  // карточке кубка увидеть TeamID обеих команд конкретного матча, а не
+  // только имя, и явно сверить их с TeamID нашей же команды.
+  opponentTeamId: string;
   status: RealCupMatchStatus;
   ourScore: number | null;
   oppScore: number | null;
@@ -27,6 +33,13 @@ export interface OurCupPathResult {
   path: RealCupMatch[];
   debug: string[];
   error: string | null;
+  // ВРЕМЕННО — см. opponentTeamId выше: TeamID/имя команды, ДЛЯ КОТОРОЙ
+  // реально строился этот путь (тот же ourTeamId, что передан в
+  // resolveOurCupPath/pastCupPathFromMatches) — чтобы в самой карточке
+  // кубка явно было видно, чей это путь, а не только по умолчанию считать,
+  // что это "наша" команда.
+  ourTeamId: string;
+  ourTeamName: string;
 }
 
 // ИСПРАВЛЕНО (важный баг): cupmatches.xml по данному CupID отдаёт МАТЧИ ЦЕЛОГО
@@ -55,8 +68,10 @@ function toRealCupMatch(m: Record<string, unknown>, ourTeamId: string, round: nu
   const homeTeam = m.HomeTeam as Record<string, unknown> | undefined;
   const awayTeam = m.AwayTeam as Record<string, unknown> | undefined;
   const homeTeamId = teamIdOf(homeTeam);
+  const awayTeamId = teamIdOf(awayTeam);
   const isHome = homeTeamId === ourTeamId;
   const opponent = isHome ? String(awayTeam?.TeamName ?? "") : String(homeTeam?.TeamName ?? "");
+  const opponentTeamId = isHome ? awayTeamId : homeTeamId;
 
   const result = m.MatchResult as Record<string, unknown> | undefined;
   const homeGoalsRaw = result?.HomeGoals;
@@ -72,6 +87,7 @@ function toRealCupMatch(m: Record<string, unknown>, ourTeamId: string, round: nu
     date: String(m.MatchDate ?? ""),
     home: isHome,
     opponent,
+    opponentTeamId,
     status: isPlayed ? "FINISHED" : "UPCOMING",
     ourScore: isPlayed && !Number.isNaN(homeGoals) && !Number.isNaN(awayGoals) ? (isHome ? homeGoals : awayGoals) : null,
     oppScore: isPlayed && !Number.isNaN(homeGoals) && !Number.isNaN(awayGoals) ? (isHome ? awayGoals : homeGoals) : null,
@@ -180,6 +196,7 @@ export async function resolveOurCupPath(
   tokens: StoredHattrickTokens,
   cupId: string,
   ourTeamId: string,
+  ourTeamName = "",
 ): Promise<OurCupPathResult> {
   const debug: string[] = [];
   const { result: current, error } = await fetchCupRound(tokens, cupId, ourTeamId);
@@ -192,6 +209,8 @@ export async function resolveOurCupPath(
       path: [],
       debug,
       error: error ?? "Не удалось получить текущий раунд кубка.",
+      ourTeamId,
+      ourTeamName,
     };
   }
   debug.push(
@@ -222,7 +241,17 @@ export async function resolveOurCupPath(
     }
   }
 
-  return { cupId, cupName: current.cupName, season: current.season, currentRound: current.round, path, debug, error: null };
+  return {
+    cupId,
+    cupName: current.cupName,
+    season: current.season,
+    currentRound: current.round,
+    path,
+    debug,
+    error: null,
+    ourTeamId,
+    ourTeamName,
+  };
 }
 
 // Только название и сезон турнира по CupID, без прохода по раундам — для

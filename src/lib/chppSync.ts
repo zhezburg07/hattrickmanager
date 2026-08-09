@@ -222,6 +222,8 @@ function pastCupPathFromMatches(
   cupId: string,
   matches: RealMatch[],
   meta: { cupName: string; season: number } | null,
+  ourTeamId: string,
+  ourTeamName: string,
 ): OurCupPathResult {
   const ourMatches = matches
     .filter((m) => m.cupId === cupId)
@@ -231,6 +233,7 @@ function pastCupPathFromMatches(
     date: m.date,
     home: m.home,
     opponent: m.opponent,
+    opponentTeamId: m.opponentTeamId,
     status: m.status,
     ourScore: m.ourScore,
     oppScore: m.oppScore,
@@ -244,6 +247,8 @@ function pastCupPathFromMatches(
     path,
     debug: [`Путь построен из уже известных матчей (matches/matchesarchive), без прохода по раундам cupmatches: ${path.length} матч(ей).`],
     error: null,
+    ourTeamId,
+    ourTeamName,
   };
 }
 
@@ -367,6 +372,16 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
 
   let anySucceeded = false;
   let anyFailed = false;
+  // Собираем РЕАЛЬНЫЕ причины сбоев конкретных разделов (не все разделы —
+  // только те, что чаще всего спрашивают "почему не обновилось", см. чат
+  // "Кубки/Трансферы/Юношеская команда: не решены после Обновить данные") —
+  // раньше summaryError ниже был одной общей фразой без подробностей, из-за
+  // чего "часть разделов не удалось обновить" ничего не говорило о том, что
+  // именно и почему. cupInfo/youthPlayers НАРОЧНО всегда вызывают
+  // saveSnapshotSuccess (см. ниже) даже при внутренних ошибках — их error
+  // живёт внутри самого JSON, не в колонке chpp_snapshots.error, поэтому
+  // общий проход по снимкам это не поймал бы.
+  const sectionErrors: string[] = [];
 
   // -- worldCurrency (валюта + домашняя страна для флагов игроков) --
   // второстепенная деталь оформления — неудача здесь не считается серьёзным
@@ -661,6 +676,8 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       youthError = `Список академии (youthplayerlist): ${errorMessage(err)}`;
       anyFailed = true;
     }
+    if (youthError) sectionErrors.push(youthError);
+    else if (youthRawCount === 0) sectionErrors.push(`Юношеская команда: youthplayerlist.xml успешно ответил, но игроков академии в нём 0.`);
     const stored: StoredYouthPlayersData = {
       players: youthPlayers,
       error: youthError,
@@ -697,11 +714,9 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.transferHistory, transferHistory);
     anySucceeded = true;
   } catch (err) {
-    await saveSnapshotError(
-      hattrickUserId,
-      DATA_KEYS.transferHistory,
-      `История трансферов (transfersteam): ${errorMessage(err)}`,
-    );
+    const message = `История трансферов (transfersteam): ${errorMessage(err)}`;
+    await saveSnapshotError(hattrickUserId, DATA_KEYS.transferHistory, message);
+    sectionErrors.push(message);
     anyFailed = true;
   }
 
@@ -981,7 +996,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
 
     let currentCupPath: OurCupPathResult | null = null;
     if (cupId && teamId) {
-      currentCupPath = await resolveOurCupPath(tokens, cupId, teamId);
+      currentCupPath = await resolveOurCupPath(tokens, cupId, teamId, ourTeamName);
       debug.pathDebug = currentCupPath.debug;
       if (currentCupPath.error) errors.push(currentCupPath.error);
     }
@@ -1007,7 +1022,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     const pastCupPaths = await Promise.all(
       pastCupIds.map(async (id) => {
         const meta = await fetchCupMeta(tokens, id);
-        return pastCupPathFromMatches(id, matchesForCup, meta);
+        return pastCupPathFromMatches(id, matchesForCup, meta, teamId, ourTeamName);
       }),
     );
 
@@ -1030,10 +1045,22 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.cupInfo, stored);
     if (errors.length === 0) anySucceeded = true;
     else anyFailed = true;
+    if (errors.length > 0) sectionErrors.push(...errors.map((e) => `Кубки: ${e}`));
+    sectionErrors.push(
+      `Кубки (диагностика TeamID): наша команда — teamId="${teamId || "(пусто!)"}" ` +
+        `teamName="${ourTeamName || "(пусто!)"}", итоговый CupID="${cupId ?? "(не найден)"}", ` +
+        `кубков в каскаде=${cupPaths.length}.`,
+    );
   }
 
   const finalStatus: SyncResult["status"] = anyFailed && !anySucceeded ? "failed" : anyFailed ? "partial" : "ok";
-  const summaryError = anyFailed ? "Не все разделы удалось обновить — подробности у конкретных вкладок." : null;
+  const summaryError = anyFailed
+    ? sectionErrors.length > 0
+      ? sectionErrors.join(" | ")
+      : "Не все разделы удалось обновить — подробности у конкретных вкладок."
+    : sectionErrors.length > 0
+      ? sectionErrors.join(" | ") // "ok", но есть что показать (например, пустая академия/CupID диагностика)
+      : null;
   await finishSync(hattrickUserId, finalStatus, summaryError);
   return { status: finalStatus, error: summaryError };
 }
