@@ -151,13 +151,7 @@ export default function TransfersSection({
                       <td style={{ color: t.transferType === "sale" ? "var(--color-good)" : "var(--color-accent)" }}>
                         {t.transferType === "sale" ? "Продажа" : "Покупка"}
                       </td>
-                      <td>
-                        {t.counterpartTeamName
-                          ? t.transferType === "sale"
-                            ? `Продан в ${t.counterpartTeamName}`
-                            : `Куплен у ${t.counterpartTeamName}`
-                          : "—"}
-                      </td>
+                      <td>{t.counterpartTeamName || "—"}</td>
                       <td className={styles.numCell}>{t.tsi.toLocaleString("ru-RU")}</td>
                       <td className={styles.numCell}>{formatLocal(t.price)}</td>
                       <td>{t.deadline}</td>

@@ -68,10 +68,21 @@ export interface TransferHistoryResult {
 // ложным, и КАЖДАЯ сделка считалась покупкой. Вместо этого поля — надёжное
 // сравнение с СОБСТВЕННЫМ TeamID команды (его мы точно знаем, в отличие от
 // содержимого чужого поля): если наш TeamID совпадает с SellerTeamID —
-// это продажа, если с BuyerTeamID — покупка. TransferType остаётся только
-// запасным вариантом на случай, если ourTeamId не передан или ни один
-// TeamID не совпал.
-export function parseTransfersTeamXml(xml: string, ourTeamId?: string): TransferHistoryResult {
+// это продажа, если с BuyerTeamID — покупка.
+//
+// ИСПРАВЛЕНО ЕЩЁ РАЗ (см. чат "Трансферы: логическая нестыковка — 'Куплен у
+// Zhezburg'") — пользователь нашёл реальные записи, где SellerTeamName ==
+// наша команда, но тип всё равно определился как "buy" (и, соответственно,
+// контрагентом ошибочно показывалась сама команда). Значит, для ЧАСТИ
+// сделок SellerTeamID/BuyerTeamID НЕ совпадает с текущим TeamID команды,
+// хотя имя совпадает — вероятнее всего, старые сделки ссылаются на TeamID
+// команды ДО возможного ресета/переприсвоения ID в Hattrick (ID меняется
+// при ресете, имя обычно переносится). Добавлен второй, по имени команды,
+// уровень сравнения — СРАЗУ после TeamID (более надёжен для однозначных
+// совпадений), но ПЕРЕД запасным TransferType: если наше имя команды
+// совпадает с SellerTeamName/BuyerTeamName, а TeamID не совпал ни с одной
+// стороной — доверяем совпадению по имени.
+export function parseTransfersTeamXml(xml: string, ourTeamId?: string, ourTeamName?: string): TransferHistoryResult {
   const parser = new XMLParser();
   const data = parser.parse(xml);
   const root = data?.HattrickData;
@@ -88,18 +99,23 @@ export function parseTransfersTeamXml(xml: string, ourTeamId?: string): Transfer
     const seller = t.Seller as Record<string, unknown> | undefined;
     const buyerTeamId = String(buyer?.BuyerTeamID ?? "");
     const sellerTeamId = String(seller?.SellerTeamID ?? "");
+    const buyerTeamName = String(buyer?.BuyerTeamName ?? "");
+    const sellerTeamName = String(seller?.SellerTeamName ?? "");
 
     let transferType: "buy" | "sale";
     if (ourTeamId && sellerTeamId === ourTeamId) {
       transferType = "sale";
     } else if (ourTeamId && buyerTeamId === ourTeamId) {
       transferType = "buy";
+    } else if (ourTeamName && sellerTeamName === ourTeamName) {
+      transferType = "sale";
+    } else if (ourTeamName && buyerTeamName === ourTeamName) {
+      transferType = "buy";
     } else {
       transferType = String(player?.TransferType ?? "") === "S" ? "sale" : "buy";
     }
 
-    const counterpartTeamName =
-      transferType === "sale" ? String(buyer?.BuyerTeamName ?? "") : String(seller?.SellerTeamName ?? "");
+    const counterpartTeamName = transferType === "sale" ? buyerTeamName : sellerTeamName;
     return {
       transferId: String(t.TransferID ?? ""),
       deadline: String(t.Deadline ?? ""),
@@ -156,6 +172,57 @@ export function debugTransferPartyFields(xml: string, limit = 5): string {
     .join(" || ");
 }
 
+// ВРЕМЕННАЯ диагностика (см. чат "Трансферы: логическая нестыковка — 'Куплен
+// у Zhezburg'") — точечно находит сделки, где ИМЯ команды в Buyer/Seller
+// совпадает с нашим собственным (мы явно участник сделки), но ни
+// BuyerTeamID, ни SellerTeamID не совпадают с нашим TeamID — то есть именно
+// те записи, где сравнение по ID не сработало бы, а сравнение по имени
+// (см. parseTransfersTeamXml выше) вынуждено подключаться как запасной
+// вариант. Дампим сырые ID+имена обеих сторон, чтобы увидеть, что реально
+// приходит в этих конкретных случаях (например, если ourTeamId вообще не
+// совпадает ни с чем — старый TeamID после ресета команды, другое
+// расхождение и т.п.).
+export function debugSelfCounterpartMismatches(
+  xml: string,
+  ourTeamId: string,
+  ourTeamName: string,
+  limit = 10,
+): string {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  const transfersContainer = root?.Transfers as Record<string, unknown> | undefined;
+  const rawTransfers = asArray(transfersContainer?.Transfer);
+
+  const mismatches = rawTransfers.filter((t) => {
+    const buyer = t.Buyer as Record<string, unknown> | undefined;
+    const seller = t.Seller as Record<string, unknown> | undefined;
+    const buyerTeamId = String(buyer?.BuyerTeamID ?? "");
+    const sellerTeamId = String(seller?.SellerTeamID ?? "");
+    const buyerTeamName = String(buyer?.BuyerTeamName ?? "");
+    const sellerTeamName = String(seller?.SellerTeamName ?? "");
+    const idMatches = (!!ourTeamId && buyerTeamId === ourTeamId) || (!!ourTeamId && sellerTeamId === ourTeamId);
+    const nameMatches = (!!ourTeamName && buyerTeamName === ourTeamName) || (!!ourTeamName && sellerTeamName === ourTeamName);
+    return nameMatches && !idMatches;
+  });
+
+  if (mismatches.length === 0) return "(несовпадений не найдено на этой странице)";
+
+  return mismatches
+    .slice(0, limit)
+    .map((t) => {
+      const player = t.Player as Record<string, unknown> | undefined;
+      const buyer = t.Buyer as Record<string, unknown> | undefined;
+      const seller = t.Seller as Record<string, unknown> | undefined;
+      return (
+        `TransferID=${t.TransferID} Игрок=${JSON.stringify(player?.PlayerName)}: ` +
+        `BuyerTeamID=${JSON.stringify(buyer?.BuyerTeamID)} BuyerTeamName=${JSON.stringify(buyer?.BuyerTeamName)}, ` +
+        `SellerTeamID=${JSON.stringify(seller?.SellerTeamID)} SellerTeamName=${JSON.stringify(seller?.SellerTeamName)}`
+      );
+    })
+    .join(" || ");
+}
+
 // Дозапрашивает ВСЕ более старые страницы transfersteam.xml (номер меньше),
 // пока не дойдёт до страницы 1 (вся карьерная история собрана) или не
 // упрётся в защитный лимит options.maxExtraFetches — см. чат "Трансферы:
@@ -180,6 +247,7 @@ export async function accumulateTransferHistory(
   fetchPage: (pageIndex: number) => Promise<TransferPageFetchResult>,
   options: { maxExtraFetches: number },
   ourTeamId?: string,
+  ourTeamName?: string,
 ): Promise<{ result: TransferHistoryResult; pageLog: string[] }> {
   let result = firstPage;
   const pageLog: string[] = [`стр.${result.pageIndex}/${result.pages}: ${result.transfers.length} сделок`];
@@ -195,7 +263,7 @@ export async function accumulateTransferHistory(
       break;
     }
     try {
-      const page = parseTransfersTeamXml(pageRaw.rawXml, ourTeamId);
+      const page = parseTransfersTeamXml(pageRaw.rawXml, ourTeamId, ourTeamName);
       pageLog.push(`стр.${page.pageIndex}/${page.pages}: ${page.transfers.length} сделок`);
       result = { ...result, transfers: [...result.transfers, ...page.transfers] };
     } catch (err) {

@@ -59,6 +59,7 @@ import {
   accumulateTransferHistory,
   mergeTransferHistory,
   debugTransferPartyFields,
+  debugSelfCounterpartMismatches,
   TRANSFERS_TEAM_VERSION,
   type TransferHistoryResult,
 } from "./transferMarket";
@@ -766,26 +767,34 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   try {
     const httpStatus = raw.transfersteam?.httpStatus ?? null;
     assertOkStatus(raw.transfersteam);
-    const latestPage: TransferHistoryResult = parseTransfersTeamXml(raw.transfersteam.rawXml, teamId);
+    const latestPage: TransferHistoryResult = parseTransfersTeamXml(raw.transfersteam.rawXml, teamId, ourTeamName);
 
     const previousSnapshot = await getSnapshot<TransferHistoryResult>(hattrickUserId, DATA_KEYS.transferHistory);
     const hasPriorHistory = (previousSnapshot?.data?.transfers.length ?? 0) > 0;
     // САМОВОССТАНОВЛЕНИЕ (см. чат "Трансферы: фильтр 'Проданные' всё ещё
-    // пуст на реальных данных") — уже сохранённая история могла целиком
-    // накопиться ДО исправления определения покупка/продажа (полный обход
-    // всех страниц происходит только один раз, а инкрементальные обновления
-    // трогают только последнюю страницу — старые записи иначе НИКОГДА не
-    // пересчитаются). Если по статистике продажи точно есть
-    // (numberOfSales > 0), а среди уже сохранённых сделок ни одной с
-    // transferType "sale" — это явный признак, что сохранённые данные
-    // устарели/испорчены прежней логикой. В этом случае форсируем ещё один
-    // полный обход (один раз), чтобы пересчитать ВСЮ историю новой,
-    // исправленной логикой — дальше снова переходим на инкрементальный
+    // пуст на реальных данных" и "...логическая нестыковка — 'Куплен у
+    // Zhezburg'") — уже сохранённая история могла целиком накопиться ДО
+    // исправления определения покупка/продажа (полный обход всех страниц
+    // происходит только один раз, а инкрементальные обновления трогают
+    // только последнюю страницу — старые записи иначе НИКОГДА не
+    // пересчитаются). Два независимых признака устаревших/испорченных
+    // данных: (1) по статистике продажи точно есть, а среди сохранённых
+    // сделок ни одной "sale"; (2) среди сохранённых сделок есть хотя бы
+    // одна, где контрагентом указана НАША ЖЕ команда (та самая находка
+    // пользователя — "Куплен у Zhezburg", логически невозможная сделка).
+    // В любом из этих случаев форсируем ещё один полный обход (один раз),
+    // чтобы пересчитать ВСЮ историю новой логикой (TeamID + имя команды,
+    // см. parseTransfersTeamXml) — дальше снова переходим на инкрементальный
     // режим.
-    const priorLooksCorrupted =
+    const noSalesDespiteStats =
       hasPriorHistory &&
       previousSnapshot!.data!.numberOfSales > 0 &&
       !previousSnapshot!.data!.transfers.some((t) => t.transferType === "sale");
+    const hasSelfAsCounterpart =
+      hasPriorHistory &&
+      !!ourTeamName &&
+      previousSnapshot!.data!.transfers.some((t) => t.counterpartTeamName === ourTeamName);
+    const priorLooksCorrupted = noSalesDespiteStats || hasSelfAsCounterpart;
 
     let transferHistory: TransferHistoryResult;
     let pageLog: string[];
@@ -801,11 +810,17 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
           requestChppXmlRaw("transfersteam", { pageIndex: String(pageIndex), version: TRANSFERS_TEAM_VERSION }, tokens),
         { maxExtraFetches: MAX_EXTRA_TRANSFER_PAGE_FETCHES },
         teamId,
+        ourTeamName,
       );
       transferHistory = accumulated.result;
+      const reason = hasSelfAsCounterpart
+        ? "сохранённая история выглядела испорченной: среди сделок был контрагент = наша же команда"
+        : noSalesDespiteStats
+          ? `сохранённая история выглядела устаревшей: 0 продаж среди сохранённых при numberOfSales=${previousSnapshot!.data!.numberOfSales}`
+          : null;
       pageLog = [
-        priorLooksCorrupted
-          ? `полный обход (пересчёт — сохранённая история выглядела устаревшей: 0 продаж среди сохранённых при numberOfSales=${previousSnapshot!.data!.numberOfSales}): ${accumulated.pageLog.join("; ")}`
+        reason
+          ? `полный обход (пересчёт — ${reason}): ${accumulated.pageLog.join("; ")}`
           : `полный обход (первая синхронизация): ${accumulated.pageLog.join("; ")}`,
       ];
     }
@@ -814,6 +829,10 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     anySucceeded = true;
     const partyDebug = debugTransferPartyFields(raw.transfersteam.rawXml, 5);
     sectionErrors.push(`Трансферы (диагностика Buyer/Seller TeamID, наш TeamID=${teamId || "?"}): ${partyDebug}`);
+    const selfMismatchDebug = debugSelfCounterpartMismatches(raw.transfersteam.rawXml, teamId, ourTeamName, 10);
+    sectionErrors.push(
+      `Трансферы (диагностика — сделки, где по ИМЕНИ мы участник, но ни один TeamID не совпал, наша команда="${ourTeamName || "?"}"): ${selfMismatchDebug}`,
+    );
     sectionErrors.push(
       `Трансферы (диагностика): HTTP ${httpStatus}, команда "${transferHistory.teamName || "?"}", всего за карьеру куплено ${transferHistory.numberOfBuys}/продано ${transferHistory.numberOfSales}, в снимке ${transferHistory.transfers.length} сделок (продаж среди них: ${transferHistory.transfers.filter((t) => t.transferType === "sale").length}) (${pageLog.join("; ")}) — снимок сохранён.`,
     );
