@@ -23,6 +23,15 @@ const dotClass: Record<RoundStatus, string> = {
 };
 const itemClass: Record<RoundStatus, string> = { won: "", lost: "", current: styles.timelineItemCurrent };
 
+// Явное "Наша команда vs Соперник" / "Соперник vs Наша команда" вместо
+// голого "vs Соперник"/"@ Соперник" — по запросу (см. чат "Кубки: явно
+// показывать нашу команду в списке матчей"), раньше по одной лишь строке
+// матча не было видно, кто вообще играет, кроме соперника.
+function matchupLabel(home: boolean, opponent: string, ourTeamName: string): string {
+  const our = ourTeamName || "Наша команда";
+  return home ? `${our} vs ${opponent}` : `${opponent} vs ${our}`;
+}
+
 // Ближайший предстоящий матч кубка — источник ОТДЕЛЬНЫЙ от cupPath (тот
 // строится проходом по раундам cupmatches.xml, который по определению не
 // запрашивает ещё не наступившие раунды, см. resolveOurCupPath). Здесь же —
@@ -39,7 +48,7 @@ export interface UpcomingCupMatch {
   opponent: string;
 }
 
-function NextCupMatchBlock({ nextMatch }: { nextMatch: UpcomingCupMatch }) {
+function NextCupMatchBlock({ nextMatch, ourTeamName }: { nextMatch: UpcomingCupMatch; ourTeamName: string }) {
   const { shortDate, time } = formatMatchDateTime(nextMatch.date);
   return (
     <div className={styles.nextMatchBlock}>
@@ -51,9 +60,7 @@ function NextCupMatchBlock({ nextMatch }: { nextMatch: UpcomingCupMatch }) {
           {shortDate}
           {time ? ` · ${time}` : ""}
         </span>
-        <span className={styles.matchOpponent}>
-          {nextMatch.home ? "vs" : "@"} {nextMatch.opponent}
-        </span>
+        <span className={styles.matchOpponent}>{matchupLabel(nextMatch.home, nextMatch.opponent, ourTeamName)}</span>
         {nextMatch.home && <span className={styles.homeTag}>дома</span>}
       </div>
     </div>
@@ -87,7 +94,7 @@ function CupCard({ cupPath, nextMatch }: { cupPath: OurCupPathResult; nextMatch?
         <OurTeamDiagnosticLine cupPath={cupPath} />
         {nextMatch && (
           <div style={{ marginTop: 16 }}>
-            <NextCupMatchBlock nextMatch={nextMatch} />
+            <NextCupMatchBlock nextMatch={nextMatch} ourTeamName={cupPath.ourTeamName} />
           </div>
         )}
         <p className={styles.prizeNote} style={{ marginTop: nextMatch ? 16 : 0 }}>
@@ -126,7 +133,7 @@ function CupCard({ cupPath, nextMatch }: { cupPath: OurCupPathResult; nextMatch?
 
       {nextMatch && (
         <div style={{ marginTop: 20 }}>
-          <NextCupMatchBlock nextMatch={nextMatch} />
+          <NextCupMatchBlock nextMatch={nextMatch} ourTeamName={cupPath.ourTeamName} />
         </div>
       )}
 
@@ -150,7 +157,7 @@ function CupCard({ cupPath, nextMatch }: { cupPath: OurCupPathResult; nextMatch?
                   )}
                 </div>
                 <div className={styles.timelineDetail}>
-                  {m.home ? "vs" : "@"} {m.opponent} · {shortDate}
+                  {matchupLabel(m.home, m.opponent, cupPath.ourTeamName)} · {shortDate}
                   {time ? ` · ${time}` : ""}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--color-muted, #888)", marginTop: 2 }}>
@@ -181,6 +188,12 @@ export default function CupSection({
   nextMatch?: UpcomingCupMatch | null;
 }) {
   const validPaths = cupPaths.filter((c) => !c.error);
+  // Наше имя команды почти всегда есть даже у "провалившихся" cupPaths
+  // (ourTeamName проставляется ДО попытки пройти по раундам, см.
+  // OurCupPathResult в cupMatches.ts) — нужен запасной источник для блока
+  // "Ближайший матч" в пустом состоянии, где ни одной валидной карточки
+  // кубка ещё нет.
+  const ourTeamName = cupPaths.find((c) => c.ourTeamName)?.ourTeamName ?? "";
 
   if (validPaths.length === 0) {
     const firstError = cupPaths.find((c) => c.error)?.error;
@@ -188,7 +201,7 @@ export default function CupSection({
       <div className={styles.stack}>
         {nextMatch && (
           <div className={styles.card}>
-            <NextCupMatchBlock nextMatch={nextMatch} />
+            <NextCupMatchBlock nextMatch={nextMatch} ourTeamName={ourTeamName} />
           </div>
         )}
         <div className={styles.card}>
