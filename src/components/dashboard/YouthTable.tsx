@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { skillLabel, skillWord, type SquadSkills } from "@/data/squad";
-import { usePositionOverrides, type PositionOverrideValue } from "@/data/positionOverrides";
-import { EditablePositionBadge, currentSelection, naturalSelection } from "./squadCells";
+import { usePositionOverrides, type PositionOverrideValue, type PositionOverrides } from "@/data/positionOverrides";
+import { EditablePositionBadge, currentSelection, naturalSelection, positionSortValue } from "./squadCells";
 import type { RealYouthPlayer } from "@/lib/youthPlayers";
 import NationalityTag from "./NationalityTag";
 import YouthPlayerDetailModal from "./YouthPlayerDetailModal";
@@ -22,6 +22,43 @@ const skillShortLabel: Record<SkillKey, string> = {
   scoring: "Нап",
   setPieces: "Ст",
 };
+
+// Сортировка таблицы (см. чат "Юношеская команда: сортировка по умолчанию")
+// — по умолчанию, пока пользователь не выбрал столбец сам, список
+// отсортирован по возрасту по возрастанию (самые молодые сверху — они и
+// есть самое интересное пополнение академии). При клике на "Позиция"
+// работает тот же порядок GK → CD → CM → W → ST, что и на "Составе"
+// (positionSortValue, squadCells.tsx).
+type SortKey = "positionGroup" | "name" | "flag" | "age" | SkillKey;
+type SortDir = "asc" | "desc";
+
+const baseColumns: { key: SortKey; label: string; title?: string }[] = [
+  { key: "positionGroup", label: "Позиция" },
+  { key: "name", label: "Имя" },
+  { key: "flag", label: "Нац.", title: "Национальность" },
+  { key: "age", label: "Возраст" },
+  ...skillKeys.map((k) => ({ key: k as SortKey, label: skillShortLabel[k], title: skillLabel[k] })),
+];
+
+// Текстовые/позиционные столбцы (и возраст — см. выше) сортируются по
+// возрастанию при первом клике, навыки — по убыванию (лучший навык сверху),
+// как и на "Составе".
+const ascendingByDefault = new Set<SortKey>(["positionGroup", "name", "flag", "age"]);
+
+function getSortValue(player: RealYouthPlayer, key: SortKey, overrides: PositionOverrides): string | number {
+  switch (key) {
+    case "flag":
+      return player.nationality.name;
+    case "name":
+      return player.name;
+    case "age":
+      return player.age ?? Number.POSITIVE_INFINITY;
+    case "positionGroup":
+      return positionSortValue(player, overrides, undefined);
+    default:
+      return player.skills[key];
+  }
+}
 
 // Тир (цвет) слова по доле от максимума шкалы 0-20 — как в таблице основного состава
 function tierFromRatio(ratio: number): string {
@@ -79,6 +116,34 @@ export default function YouthTable({
   const roster = players ?? [];
   const [selectedPlayer, setSelectedPlayer] = useState<RealYouthPlayer | null>(null);
   const { overrides, setOverride } = usePositionOverrides();
+  const [sortKey, setSortKey] = useState<SortKey>("age");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const sorted = useMemo(() => {
+    const list = [...roster];
+    list.sort((a, b) => {
+      const va = getSortValue(a, sortKey, overrides);
+      const vb = getSortValue(b, sortKey, overrides);
+      let cmp =
+        typeof va === "string" && typeof vb === "string" ? va.localeCompare(vb, "ru") : (va as number) - (vb as number);
+      // Внутри одной позиции — по возрасту (моложе выше), раз у юниоров нет
+      // TSI как у основного состава для тай-брейка.
+      if (cmp === 0 && sortKey === "positionGroup") {
+        cmp = (a.age ?? Number.POSITIVE_INFINITY) - (b.age ?? Number.POSITIVE_INFINITY);
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return list;
+  }, [roster, sortKey, sortDir, overrides]);
+
+  function handleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(ascendingByDefault.has(key) ? "asc" : "desc");
+  }
 
   return (
     <>
@@ -109,37 +174,22 @@ export default function YouthTable({
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>
-                  <span className={styles.th} style={{ cursor: "default" }}>
-                    Позиция
-                  </span>
-                </th>
-                <th>
-                  <span className={styles.th} style={{ cursor: "default" }}>
-                    Имя
-                  </span>
-                </th>
-                <th>
-                  <span className={styles.th} style={{ cursor: "default" }}>
-                    Нац.
-                  </span>
-                </th>
-                <th>
-                  <span className={styles.th} style={{ cursor: "default" }}>
-                    Возраст
-                  </span>
-                </th>
-                {skillKeys.map((k) => (
-                  <th key={k} title={skillLabel[k]}>
-                    <span className={styles.th} style={{ cursor: "default" }}>
-                      {skillShortLabel[k]}
-                    </span>
+                {baseColumns.map((col) => (
+                  <th key={col.key} title={col.title}>
+                    <button
+                      type="button"
+                      className={`${styles.th} ${sortKey === col.key ? styles.thActive : ""}`}
+                      onClick={() => handleSort(col.key)}
+                    >
+                      {col.label}
+                      {sortKey === col.key && <span className={styles.sortArrow}>{sortDir === "asc" ? "▲" : "▼"}</span>}
+                    </button>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {roster.map((p) => {
+              {sorted.map((p) => {
                 const isOld = p.age !== null && p.age >= OLD_AGE_THRESHOLD;
                 return (
                   <tr
@@ -175,7 +225,7 @@ export default function YouthTable({
         </div>
 
         <div className={styles.cardList}>
-          {roster.map((p) => {
+          {sorted.map((p) => {
             const isOld = p.age !== null && p.age >= OLD_AGE_THRESHOLD;
             return (
               <div

@@ -207,8 +207,8 @@ export function EditablePositionBadge<T extends AmpluaSource>({
 const positionRank: Record<string, number> = { GK: 0, CD: 1, CM: 2, W: 3, ST: 4 };
 const TRAINER_RANK = 5;
 
-export function positionSortValue(
-  player: SquadPlayer,
+export function positionSortValue<T extends AmpluaSource>(
+  player: T,
   overrides: PositionOverrides,
   trainerPlayerId: number | undefined,
 ): number {
