@@ -23,7 +23,7 @@ export default async function MatchesPage() {
     return <SyncFailedScreen lastError={syncStatus.lastError} />;
   }
 
-  const { matches, ourTeamName, error, warning, debugCounts, debugRaw, challenges } = hattrickUserId
+  const { matches, ourTeamName, error, warning, debugCounts, debugRaw, challenges, arenaResults } = hattrickUserId
     ? await getStoredMatchesCalendar(hattrickUserId)
     : {
         matches: null,
@@ -33,6 +33,7 @@ export default async function MatchesPage() {
         debugCounts: [] as string[],
         debugRaw: [] as Record<string, unknown>[],
         challenges: { sentByUs: [], offersFromOthers: [], error: null },
+        arenaResults: [],
       };
 
   return (
@@ -65,7 +66,7 @@ export default async function MatchesPage() {
             </div>
           )}
           {matches && <MatchesCalendar matches={matches} ourTeamName={ourTeamName} />}
-          <HattrickArenaSection challenges={challenges} />
+          <HattrickArenaSection challenges={challenges} arenaResults={arenaResults} />
         </div>
       </main>
       <Footer />

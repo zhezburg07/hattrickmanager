@@ -1,6 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import { assertNoChppError } from "./chppError";
 import { requestChppXmlRaw, type StoredHattrickTokens } from "./hattrickApi";
+import { LADDER_MATCH_TYPE, type RealMatch } from "./matches";
 
 // "Hattrick Arena" (Pro): заявки на товарищеские матчи через challenges.xml
 // — CHPP-файл, подтверждённый по официальным именам (constants "challenges",
@@ -76,4 +77,45 @@ export async function resolveArenaChallenges(tokens: StoredHattrickTokens): Prom
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     return { sentByUs: [], offersFromOthers: [], error: `Заявки на товарищеские матчи (challenges): ${message}` };
   }
+}
+
+// ---------- Последние сыгранные Arena-матчи (см. чат "Hattrick Arena:
+// синхронизация последних сыгранных матчей") ----------
+//
+// CHPP не даёт отдельного файла "результаты Arena/лестницы" — единственный
+// источник для СЫГРАННЫХ матчей вообще это matches.xml/matchesarchive.xml
+// (уже разбираются в matches.ts, RealMatch). Выделяем среди них именно
+// Arena-матчи по MatchType === LADDER_MATCH_TYPE (62) — см. комментарий
+// там же про источник и степень уверенности в этом значении.
+export interface ArenaRecentMatch {
+  matchId: string;
+  date: string;
+  home: boolean;
+  opponent: string;
+  ourScore: number;
+  oppScore: number;
+}
+
+// limit=10 — по запросу ("последние 10 сыгранных матчей"). Сортировка по
+// дате по убыванию — те же строки MatchDate, что и везде в проекте
+// (лексикографически сортируемый формат), см. TransferHistoryEntry.deadline.
+export function filterRecentArenaMatches(matches: RealMatch[], limit = 10): ArenaRecentMatch[] {
+  return matches
+    .filter(
+      (m) =>
+        Number(m.matchType) === LADDER_MATCH_TYPE &&
+        m.status === "FINISHED" &&
+        m.ourScore !== null &&
+        m.oppScore !== null,
+    )
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, limit)
+    .map((m) => ({
+      matchId: m.matchId,
+      date: m.date,
+      home: m.home,
+      opponent: m.opponent,
+      ourScore: m.ourScore as number,
+      oppScore: m.oppScore as number,
+    }));
 }

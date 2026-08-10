@@ -41,7 +41,12 @@ import {
   type DebugYouthPlayerRaw,
 } from "./youthPlayers";
 import { parseYouthPlayerDetailsXml, debugYouthPlayerDetailsRawFields, YOUTH_PLAYER_DETAILS_VERSION } from "./youthPlayerDetails";
-import { parseChallengesXml, type ArenaChallengesResult } from "./hattrickArena";
+import {
+  parseChallengesXml,
+  filterRecentArenaMatches,
+  type ArenaChallengesResult,
+  type ArenaRecentMatch,
+} from "./hattrickArena";
 import {
   toSeasonMatches,
   dedupeMatches,
@@ -50,6 +55,7 @@ import {
   debugRawCupTypeMatchFields,
   parseArchiveEchoedRange,
   CUP_MATCH_TYPE,
+  LADDER_MATCH_TYPE,
 } from "./matches";
 import type { SeasonMatch } from "@/data/matches";
 import { resolveOurCupPath, resolvePastCupPath, fetchCupMeta, type OurCupPathResult } from "./cupMatches";
@@ -107,6 +113,7 @@ export const DATA_KEYS = {
   training: "training",
   youthPlayers: "youthPlayers",
   arenaChallenges: "arenaChallenges",
+  arenaResults: "arenaResults",
   matchesCalendar: "matchesCalendar",
   cupInfo: "cupInfo",
   transferHistory: "transferHistory",
@@ -1077,6 +1084,28 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.matchesCalendar, stored);
   }
 
+  // -- arenaResults (Hattrick Arena: последние сыгранные матчи через
+  // лестницу — см. чат "Hattrick Arena: синхронизация последних сыгранных
+  // матчей"). Отдельного CHPP-файла для результатов Arena нет — выделяем
+  // такие матчи из уже собранного mergedSeasonMatches (matches.xml +
+  // matchesarchive.xml, см. секцию "matchesCalendar" выше) по
+  // MatchType === LADDER_MATCH_TYPE (62, см. matches.ts — значение из
+  // независимого CHPP-клиента, НЕ проверенное на живых данных этого
+  // аккаунта). Диагностика (сколько всего сыгранных матчей просканировано и
+  // сколько попало под этот тип) пишется всегда, а не только при ошибке —
+  // 0 совпадений может значить и "команда давно не играла через Arena", и
+  // "предположение о MatchType неверное", отличить их можно только по
+  // числу просканированных сыгранных матчей рядом.
+  {
+    const scanSource = mergedSeasonMatches ?? parsedMatches ?? [];
+    const finishedCount = scanSource.filter((m) => m.status === "FINISHED").length;
+    const arenaResults = filterRecentArenaMatches(scanSource, 10);
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arenaResults, arenaResults);
+    sectionErrors.push(
+      `Hattrick Arena (диагностика): просканировано сыгранных матчей ${finishedCount}, из них с MatchType=${LADDER_MATCH_TYPE} (предполагаемый признак Arena/лестницы) — ${arenaResults.length}.`,
+    );
+  }
+
   // -- cupInfo (Кубки: полная история сезона — путь по раундам ТЕКУЩЕГО
   // кубка плюс путь по каждому кубку, из которого команда уже выбыла в этом
   // сезоне, плюс ближайший предстоящий кубковый матч). teamId/stillInCup/
@@ -1690,6 +1719,7 @@ export interface MatchesPageData {
   debugCounts: string[];
   debugRaw: Record<string, unknown>[];
   challenges: ArenaChallengesResult;
+  arenaResults: ArenaRecentMatch[];
 }
 
 const emptyArenaChallenges: ArenaChallengesResult = { sentByUs: [], offersFromOthers: [], error: null };
@@ -1703,6 +1733,7 @@ export async function getStoredMatchesCalendar(hattrickUserId: string): Promise<
     ...emptyArenaChallenges,
     error: challengesEntry?.error ?? null,
   };
+  const arenaResults = (snapshots[DATA_KEYS.arenaResults]?.data as ArenaRecentMatch[] | null) ?? [];
 
   return {
     matches: calendar?.matches ?? null,
@@ -1712,6 +1743,7 @@ export async function getStoredMatchesCalendar(hattrickUserId: string): Promise<
     debugCounts: calendar?.debugCounts ?? [],
     debugRaw: calendar?.debugRaw ?? [],
     challenges,
+    arenaResults,
   };
 }
 
