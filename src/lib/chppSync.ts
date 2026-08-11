@@ -422,19 +422,56 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
 
     // Таблица появляется только после старта сезона — в межсезонье standings
     // пуст, тогда сетку результатов тоже не считаем (нечего сопоставлять).
-    if (league.standings.length > 0 && raw.leaguefixtures) {
-      try {
-        assertOkStatus(raw.leaguefixtures);
-        const fixtures = parseLeagueFixturesXml(raw.leaguefixtures.rawXml);
-        const { teams, matrix } = buildRealLeagueMatrix(league.standings, fixtures);
-        const filledCells = matrix.reduce((sum, row) => sum + row.filter((c) => c !== null).length, 0);
-        if (filledCells > 0) {
-          stored.resultsMatrixTeams = teams;
-          stored.resultsMatrix = matrix;
+    // ДИАГНОСТИКА (см. чат "Обзор: не видно переключателя Все/Домашние/
+    // Гостевые") — раньше этот блок молча проглатывал ЛЮБУЮ причину пустой
+    // сетки (LeagueLevelUnitID не определён → leaguefixtures вообще не
+    // запрашивался; HTTP-ошибка; 0 сыгранных матчей в leaguefixtures.xml;
+    // TeamID из leaguedetails.xml не совпадает с TeamID из leaguefixtures.xml
+    // → 0 заполненных ячеек, хотя сыгранные матчи есть). Toggle "Все игры/
+    // Домашние/Гостевые" на LeagueTable.tsx рендерится ТОЛЬКО когда
+    // matrixTeams/resultsMatrix реально заполнены (см. showResultsMatrix
+    // там же) — то есть пропадает вместе с сеткой при любой из этих причин,
+    // никак не из-за SHOW_RESULTS_GRID (тот вообще не гейтит toggle, только
+    // саму сетку под таблицей, и сейчас включён).
+    if (league.standings.length > 0) {
+      if (!leagueLevelUnitId) {
+        sectionErrors.push(
+          "Сетка результатов лиги: LeagueLevelUnitID не определён (teamdetails) — leaguefixtures.xml вообще не запрашивался, поэтому переключатель Все/Домашние/Гостевые не показывается.",
+        );
+      } else if (!raw.leaguefixtures) {
+        sectionErrors.push(
+          `Сетка результатов лиги: LeagueLevelUnitID=${leagueLevelUnitId} есть, но raw.leaguefixtures отсутствует — запрос не выполнился.`,
+        );
+      } else {
+        try {
+          assertOkStatus(raw.leaguefixtures);
+          const fixtures = parseLeagueFixturesXml(raw.leaguefixtures.rawXml);
+          const playedCount = fixtures.filter((f) => f.homeGoals !== null && f.awayGoals !== null).length;
+          const { teams, matrix } = buildRealLeagueMatrix(league.standings, fixtures);
+          const filledCells = matrix.reduce((sum, row) => sum + row.filter((c) => c !== null).length, 0);
+          sectionErrors.push(
+            `Сетка результатов лиги: HTTP ${raw.leaguefixtures.httpStatus}, матчей в leaguefixtures.xml — ${fixtures.length}, из них сыгранных — ${playedCount}, заполненных ячеек сетки — ${filledCells}.`,
+          );
+          if (filledCells > 0) {
+            stored.resultsMatrixTeams = teams;
+            stored.resultsMatrix = matrix;
+          } else if (playedCount > 0) {
+            // Сыгранные матчи есть, но ни один не сопоставился с командой из
+            // таблицы — похоже на несовпадение TeamID между leaguedetails.xml
+            // и leaguefixtures.xml. Примеры обоих источников — увидеть
+            // реальный формат/значения, а не гадать.
+            const standingsIds = league.standings.slice(0, 5).map((s) => `${s.teamName}=${s.teamId}`).join(", ");
+            const fixtureIds = fixtures
+              .slice(0, 5)
+              .map((f) => `${f.homeTeamName}=${f.homeTeamId}/${f.awayTeamName}=${f.awayTeamId}`)
+              .join(", ");
+            sectionErrors.push(
+              `Сетка результатов лиги: 0 заполненных ячеек при ${playedCount} сыгранных матчах — похоже на несовпадение TeamID. Из таблицы (leaguedetails.xml): [${standingsIds}]. Из календаря (leaguefixtures.xml): [${fixtureIds}].`,
+            );
+          }
+        } catch (err) {
+          sectionErrors.push(`Сетка результатов лиги: ошибка — ${errorMessage(err)}`);
         }
-      } catch {
-        // Сетка результатов — дополнительная деталь, не блокирует сохранение
-        // самой таблицы лиги, если leaguefixtures не удался/не разобрался.
       }
     }
 
