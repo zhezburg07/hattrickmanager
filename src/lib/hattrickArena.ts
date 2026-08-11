@@ -107,7 +107,13 @@ export interface ArenaRecentMatch {
   ourScore: number;
   oppScore: number;
   source: "ladder" | "tournament";
+  tournamentId?: string;
   tournamentName?: string;
+  // Group === 0 в tournamentfixtures.xml — по независимому клиенту это
+  // именно матч плей-офф стадии (не групповой/лиговый тур турнира), см.
+  // комментарий у didWinTournament ниже — единственный сигнал, на основе
+  // которого вообще можно предположить "выигран ли турнир".
+  isPlayoffMatch?: boolean;
 }
 
 // limit=10 — по запросу ("последние 10 сыгранных матчей"). Сортировка по
@@ -148,6 +154,12 @@ export const TOURNAMENT_LIST_VERSION = "1.0";
 export interface TournamentListEntry {
   tournamentId: string;
   name: string;
+  // IsMatchesOngoing — подтверждённое поле независимого клиента (Tournament
+  // struct, tournamentlist.xml/tournamentdetails.xml переиспользуют одну и
+  // ту же схему), не проверено на живых данных этого проекта конкретно для
+  // этого поля (в отличие от самого списка турниров и результатов матчей,
+  // которые уже подтверждены). Используется как "турнир идёт прямо сейчас".
+  isOngoing: boolean;
 }
 
 export function parseTournamentListXml(xml: string): TournamentListEntry[] {
@@ -160,6 +172,7 @@ export function parseTournamentListXml(xml: string): TournamentListEntry[] {
   return tournaments.map((t) => ({
     tournamentId: String(t.TournamentId ?? t.TournamentID ?? ""),
     name: String(t.Name ?? `Турнир #${t.TournamentId ?? t.TournamentID ?? "?"}`),
+    isOngoing: String(t.IsMatchesOngoing ?? "").toLowerCase() === "true",
   }));
 }
 
@@ -240,6 +253,7 @@ function isFinishedTournamentStatus(rawStatus: unknown): boolean {
 export function parseTournamentFixturesXml(
   xml: string,
   ourTeamId: string,
+  tournamentId: string,
   tournamentName: string,
 ): ArenaRecentMatch[] {
   const parser = new XMLParser();
@@ -261,6 +275,9 @@ export function parseTournamentFixturesXml(
       const homeGoals = m.HomeGoals !== undefined ? Number(m.HomeGoals) : 0;
       const awayGoals = m.AwayGoals !== undefined ? Number(m.AwayGoals) : 0;
       const opponent = isHome ? String(m.AwayTeamName ?? "") : String(m.HomeTeamName ?? "");
+      // Group=0 — по независимому клиенту (TournamentFixture.Group)
+      // означает именно матч плей-офф стадии турнира, см. didWinTournament.
+      const isPlayoffMatch = Number(m.Group ?? -1) === 0;
       return {
         matchId: String(m.MatchId ?? m.MatchID ?? ""),
         date: String(m.MatchDate ?? ""),
@@ -269,7 +286,61 @@ export function parseTournamentFixturesXml(
         ourScore: isHome ? homeGoals : awayGoals,
         oppScore: isHome ? awayGoals : homeGoals,
         source: "tournament" as const,
+        tournamentId,
         tournamentName,
+        isPlayoffMatch,
       };
     });
+}
+
+// ---------- Трофеи/текущие турниры (см. чат "Матчи: закладка Арена —
+// трофеи и текущие турниры") ----------
+//
+// CHPP не даёт официального поля "мы выиграли этот турнир" — эвристика,
+// явно помеченная как предположение (не факт) везде в интерфейсе:
+// считаем турнир выигранным, только если (1) он НЕ идёт сейчас
+// (isOngoing=false — по документации это подтверждённое поле турнира) и
+// (2) наш САМЫЙ ПОЗДНИЙ сыгранный матч со стадией плей-офф (isPlayoffMatch,
+// Group=0 — см. parseTournamentFixturesXml) закончился нашей победой.
+// Group=0-матчи по докстроке независимого клиента ("the winner of the
+// first match becomes the home team" для последующих раундов) — это именно
+// раунды плей-офф-сетки одного турнира; последний по дате такой матч,
+// сыгранный нами, логически и есть финал (или наш последний матч в сетке,
+// если мы вылетели раньше финала — тогда это НЕ победа, что корректно
+// учитывается сравнением счёта). Если у турнира вообще нет матчей с
+// isPlayoffMatch (турнир не плей-офф формата, а круговой/лиговый) — трофей
+// не определяется вообще (не гадаем про круговые турниры без плей-офф).
+export interface ArenaTournamentSummary {
+  tournamentId: string;
+  name: string;
+  isOngoing: boolean;
+  wonTrophy: boolean;
+}
+
+function didWinTournament(matches: ArenaRecentMatch[]): boolean {
+  const playoffMatches = matches.filter((m) => m.isPlayoffMatch).sort((a, b) => b.date.localeCompare(a.date));
+  const last = playoffMatches[0];
+  return !!last && last.ourScore > last.oppScore;
+}
+
+export function buildArenaTournamentSummaries(
+  tournaments: TournamentListEntry[],
+  matchesByTournamentId: Map<string, ArenaRecentMatch[]>,
+): ArenaTournamentSummary[] {
+  return tournaments.map((t) => {
+    const matches = matchesByTournamentId.get(t.tournamentId) ?? [];
+    return {
+      tournamentId: t.tournamentId,
+      name: t.name,
+      isOngoing: t.isOngoing,
+      wonTrophy: !t.isOngoing && didWinTournament(matches),
+    };
+  });
+}
+
+// Итог раздела "Арена" — сохраняется в chpp_snapshots целиком (см.
+// DATA_KEYS.arenaResults в chppSync.ts).
+export interface ArenaSyncResult {
+  matches: ArenaRecentMatch[];
+  tournaments: ArenaTournamentSummary[];
 }

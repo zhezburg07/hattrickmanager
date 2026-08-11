@@ -47,10 +47,13 @@ import {
   parseTournamentListXml,
   parseTournamentFixturesXml,
   debugTournamentFixturesRawStructure,
+  buildArenaTournamentSummaries,
   TOURNAMENT_LIST_VERSION,
   TOURNAMENT_FIXTURES_VERSION,
   type ArenaChallengesResult,
   type ArenaRecentMatch,
+  type ArenaTournamentSummary,
+  type ArenaSyncResult,
 } from "./hattrickArena";
 import {
   toSeasonMatches,
@@ -1192,6 +1195,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     // ответит ошибкой, это будет явно видно в диагностике ниже, а не молча
     // проглочено.
     let tournamentResults: ArenaRecentMatch[] = [];
+    let tournamentSummaries: ArenaTournamentSummary[] = [];
     const tournamentDiagnostics: string[] = [];
     try {
       const listRaw = await requestChppXmlRaw("tournamentlist", { version: TOURNAMENT_LIST_VERSION }, tokens);
@@ -1201,7 +1205,9 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         const tournaments = parseTournamentListXml(listRaw.rawXml);
         tournamentDiagnostics.push(
           `tournamentlist.xml: найдено турниров нашей команды — ${tournaments.length}${
-            tournaments.length > 0 ? ` (${tournaments.map((t) => `"${t.name}" #${t.tournamentId}`).join(", ")})` : ""
+            tournaments.length > 0
+              ? ` (${tournaments.map((t) => `"${t.name}" #${t.tournamentId} isOngoing=${t.isOngoing}`).join(", ")})`
+              : ""
           }.`,
         );
 
@@ -1211,6 +1217,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
           ),
         );
 
+        const matchesByTournamentId = new Map<string, ArenaRecentMatch[]>();
         fixturesResults.forEach((result, i) => {
           const t = tournaments[i];
           if (result.status !== "fulfilled") {
@@ -1236,22 +1243,29 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
             return;
           }
           try {
-            const matches = parseTournamentFixturesXml(raw.rawXml, teamId, t.name);
+            const matches = parseTournamentFixturesXml(raw.rawXml, teamId, t.tournamentId, t.name);
             tournamentDiagnostics.push(`tournamentfixtures.xml [${t.name}]: наших сыгранных матчей — ${matches.length}.`);
             tournamentResults.push(...matches);
+            matchesByTournamentId.set(t.tournamentId, matches);
           } catch (err) {
             tournamentDiagnostics.push(`tournamentfixtures.xml [${t.name}]: ошибка разбора — ${errorMessage(err)}`);
           }
         });
+
+        tournamentSummaries = buildArenaTournamentSummaries(tournaments, matchesByTournamentId);
+        tournamentDiagnostics.push(
+          `Трофеи/текущие турниры (эвристика, не официальный флаг CHPP): ${tournamentSummaries
+            .map((s) => `"${s.name}" — ${s.isOngoing ? "идёт сейчас" : s.wonTrophy ? "выигран (предположительно)" : "завершён, не выигран/не определено"}`)
+            .join("; ") || "(турниров нет)"}.`,
+        );
       }
     } catch (err) {
       tournamentDiagnostics.push(`tournamentlist.xml: ошибка запроса — ${errorMessage(err)}`);
     }
     sectionErrors.push(`Hattrick Arena (диагностика — турниры): ${tournamentDiagnostics.join(" ")}`);
 
-    const arenaResults = [...ladderResults, ...tournamentResults]
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 10);
+    const arenaMatches = [...ladderResults, ...tournamentResults].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
+    const arenaResults: ArenaSyncResult = { matches: arenaMatches, tournaments: tournamentSummaries };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arenaResults, arenaResults);
   }
 
@@ -1868,10 +1882,12 @@ export interface MatchesPageData {
   debugCounts: string[];
   debugRaw: Record<string, unknown>[];
   challenges: ArenaChallengesResult;
-  arenaResults: ArenaRecentMatch[];
+  arenaMatches: ArenaRecentMatch[];
+  arenaTournaments: ArenaTournamentSummary[];
 }
 
 const emptyArenaChallenges: ArenaChallengesResult = { sentByUs: [], offersFromOthers: [], error: null };
+const emptyArenaResult: ArenaSyncResult = { matches: [], tournaments: [] };
 
 export async function getStoredMatchesCalendar(hattrickUserId: string): Promise<MatchesPageData> {
   const snapshots = await getAllSnapshots(hattrickUserId);
@@ -1882,7 +1898,7 @@ export async function getStoredMatchesCalendar(hattrickUserId: string): Promise<
     ...emptyArenaChallenges,
     error: challengesEntry?.error ?? null,
   };
-  const arenaResults = (snapshots[DATA_KEYS.arenaResults]?.data as ArenaRecentMatch[] | null) ?? [];
+  const arenaResult = (snapshots[DATA_KEYS.arenaResults]?.data as ArenaSyncResult | null) ?? emptyArenaResult;
 
   return {
     matches: calendar?.matches ?? null,
@@ -1892,7 +1908,8 @@ export async function getStoredMatchesCalendar(hattrickUserId: string): Promise<
     debugCounts: calendar?.debugCounts ?? [],
     debugRaw: calendar?.debugRaw ?? [],
     challenges,
-    arenaResults,
+    arenaMatches: arenaResult.matches,
+    arenaTournaments: arenaResult.tournaments,
   };
 }
 

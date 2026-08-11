@@ -262,3 +262,89 @@
   font-size: 12px;
   color: var(--color-text-muted);
 }
+
+/* Закладки "папки" (folder tabs) над вкладкой "Матчи" — Официальные/Арена
+   (см. чат "Матчи: разделить на Официальные/Арена"). Активная закладка
+   визуально сливается с панелью контента под ней (тот же фон, граница того
+   же цвета, что и фон — заглушает верхнюю границу контента ровно под собой),
+   неактивные — на тон темнее, как оттиснутые язычки папки позади активной. */
+.folderTabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: -1px;
+  position: relative;
+  z-index: 1;
+}
+
+.folderTab {
+  background: var(--color-bg-darker);
+  border: 1px solid var(--color-border);
+  border-radius: 10px 10px 0 0;
+  padding: 11px 22px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.folderTab:hover:not(.folderTabActive) {
+  color: var(--color-text);
+}
+
+.folderTabActive {
+  background: var(--color-bg-card);
+  color: var(--color-accent);
+  border-color: var(--color-border);
+  border-bottom-color: var(--color-bg-card);
+  padding-top: 13px;
+  margin-top: -2px;
+}
+
+.folderTabContent {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 0 var(--radius) var(--radius) var(--radius);
+  padding: 20px;
+}
+
+.arenaStack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.trophyList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trophyItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.trophyIcon {
+  color: var(--color-accent);
+  font-size: 16px;
+}
+
+.ongoingTournamentBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-good);
+  border: 1px solid var(--color-good);
+  border-radius: 999px;
+  padding: 2px 10px;
+  margin-left: 8px;
+}
