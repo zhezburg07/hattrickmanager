@@ -180,6 +180,43 @@ export function parseTournamentListXml(xml: string): TournamentListEntry[] {
 // подобрать по-другому, а не считать, что турниров действительно нет.
 export const TOURNAMENT_FIXTURES_VERSION = "1.1";
 
+// ДИАГНОСТИКА (см. чат "tournamentfixtures.xml реально содержит 28 <Match>,
+// но наш разбор находит 0") — пользователь подтвердил на сыром теле ответа:
+// матчи ЕСТЬ (HomeTeamId=793810, HomeTeamName=Zhezburg видны прямо в тексте),
+// но parseTournamentFixturesXml их не находит. Поле HomeTeamId уже
+// проверяется в правильном регистре (см. m.HomeTeamId в фильтре ниже) —
+// значит, вероятнее всего, дело не в регистре самого поля игрока/счёта, а в
+// ПУТИ КОНТЕЙНЕРА (root.Matches.Match может не совпадать с реальной
+// вложенностью). Пробуем несколько вероятных путей одновременно и
+// показываем, где реально нашлись элементы, плюс ПОЛНЫЙ дамп первого сырого
+// найденного матча (все поля как есть, без каких-либо допущений об именах) —
+// чтобы одним взглядом увидеть, как на самом деле называются Status/
+// MatchDate/HomeTeamId и т.п., а не гадать по одному полю за раз.
+export function debugTournamentFixturesRawStructure(xml: string): string {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData as Record<string, unknown> | undefined;
+  if (!root) return "root (HattrickData) не найден — либо другой корневой тег, либо XML не разобрался";
+
+  const rootKeys = Object.keys(root);
+  const candidates: { path: string; count: number; sample: string }[] = [];
+  const record = (path: string, value: unknown) => {
+    const arr = asArray(value);
+    candidates.push({ path, count: arr.length, sample: arr.length > 0 ? JSON.stringify(arr[0]).slice(0, 400) : "" });
+  };
+
+  record("root.Matches.Match", (root.Matches as Record<string, unknown> | undefined)?.Match);
+  record("root.Match", root.Match);
+  record("root.Team.Matches.Match", ((root.Team as Record<string, unknown> | undefined)?.Matches as Record<string, unknown> | undefined)?.Match);
+  record("root.Tournament.Matches.Match", ((root.Tournament as Record<string, unknown> | undefined)?.Matches as Record<string, unknown> | undefined)?.Match);
+  record("root.TournamentFixtures.Match", (root.TournamentFixtures as Record<string, unknown> | undefined)?.Match);
+
+  const summary = candidates
+    .map((c) => `${c.path}: ${c.count} эл.${c.sample ? ` первый=${c.sample}` : ""}`)
+    .join(" | ");
+  return `Ключи HattrickData: [${rootKeys.join(", ")}]. ${summary}`;
+}
+
 export function parseTournamentFixturesXml(
   xml: string,
   ourTeamId: string,
