@@ -8,7 +8,7 @@ import { requestChppXmlRaw, type ChppRawResponse, type StoredHattrickTokens } fr
 import { isChppAuthError, assertNoChppError } from "./chppError";
 import { parseTeamDetailsXml } from "./teamDetails";
 import { parseLeagueDetailsXml, type RealLeagueStandingRow } from "./leagueDetails";
-import { parseLeagueFixturesXml } from "./leagueFixtures";
+import { parseLeagueFixturesXml, debugLeagueFixturesRawStructure } from "./leagueFixtures";
 import { buildRealLeagueMatrix } from "./realLeagueMatrix";
 import { parseMatchesXml, isFriendlyMatchType, type RealMatch } from "./matches";
 import { parseEconomyXml, type RealEconomy } from "./economy";
@@ -453,7 +453,15 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
           const { teams, matrix } = buildRealLeagueMatrix(league.standings, fixtures);
           const filledCells = matrix.reduce((sum, row) => sum + row.filter((c) => c !== null).length, 0);
           sectionErrors.push(
-            `Сетка результатов лиги: HTTP ${raw.leaguefixtures.httpStatus}, матчей в leaguefixtures.xml — ${fixtures.length}, из них сыгранных — ${playedCount}, заполненных ячеек сетки — ${filledCells}.`,
+            `Сетка результатов лиги: LeagueLevelUnitID=${leagueLevelUnitId}, HTTP ${raw.leaguefixtures.httpStatus}, матчей в leaguefixtures.xml — ${fixtures.length}, из них сыгранных — ${playedCount}, заполненных ячеек сетки — ${filledCells}.`,
+          );
+          // ДИАГНОСТИКА (см. чат "Сетка результатов лиги: HTTP 200, но 0
+          // матчей") — сырая структура ответа выводится ВСЕГДА, а не только
+          // при 0 матчах, чтобы сразу подтвердить (или опровергнуть) новый
+          // путь root.Match на реальном ответе, а не молча надеяться, что
+          // логика анонимного встраивания верна и на этот раз.
+          sectionErrors.push(
+            `Сетка результатов лиги (сырая структура ответа): ${debugLeagueFixturesRawStructure(raw.leaguefixtures.rawXml)}`,
           );
           if (filledCells > 0) {
             stored.resultsMatrixTeams = teams;

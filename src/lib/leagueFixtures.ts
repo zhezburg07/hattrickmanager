@@ -11,6 +11,10 @@ export interface RealFixtureMatch {
   awayGoals: number | null;
 }
 
+function asArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? (value as Record<string, unknown>[]) : value ? [value as Record<string, unknown>] : [];
+}
+
 // Разбирает XML-ответ CHPP на файл leaguefixtures.xml — календарь ВСЕЙ серии
 // (LeagueLevelUnitID), а не только своей команды: все матчи между всеми
 // командами лиги за сезон, с результатами уже сыгранных. Используется, чтобы
@@ -18,11 +22,19 @@ export interface RealFixtureMatch {
 // src/lib/realLeagueMatrix.ts) — то же самое, что сейчас показывается на
 // тестовых данных (src/data/leagueMatrix.ts), но из реального CHPP.
 //
-// Поля <HomeTeam>/<AwayTeam> и <HomeGoals>/<AwayGoals> — та же структура,
-// что уже подтверждена на живых данных в matches.xml (см. src/lib/matches.ts);
-// CHPP переиспользует один и тот же тип <Match> в разных файлах. Несыгранные
-// матчи Hattrick отдаёт с голами "-1" (тот же приём, что и InjuryLevel в
-// players.xml) — здесь это превращается в null.
+// ИСПРАВЛЕНО (см. чат "Сетка результатов лиги: HTTP 200, но 0 матчей") —
+// раньше здесь предполагался контейнер <MatchList><Match> (по аналогии с
+// matches.xml) — НИКОГДА не проверенный на живом ответе именно этого файла.
+// Независимый CHPP-клиент (github.com/lucianoq/hattrick,
+// chpp/file_leaguefixtures.go): верхний тип встраивает `*SeriesFixtures`
+// АНОНИМНО (без xml-тега) — по тому же паттерну, что и встроенный `Envelope`
+// в каждом файле этого клиента (проверено отдельно на file_teamdetails.go:
+// анонимное встраивание там means "поля переносятся на родительский элемент
+// напрямую, без обёртки" — Envelope-поля лежат прямо в HattrickData). Значит
+// <Match> лежит НАПРЯМУЮ под <HattrickData>, БЕЗ обёртки <SeriesFixtures> —
+// не так, как можно ошибочно предположить по одному только названию Go-типа.
+// Старые пути (MatchList, SeriesFixtures.Match) оставлены запасными
+// вариантами на случай, если реальный ответ всё же не совпадёт и с этим.
 export function parseLeagueFixturesXml(xml: string): RealFixtureMatch[] {
   const parser = new XMLParser();
   const data = parser.parse(xml);
@@ -30,12 +42,12 @@ export function parseLeagueFixturesXml(xml: string): RealFixtureMatch[] {
   const root = data?.HattrickData;
   assertNoChppError(root, "leaguefixtures");
 
-  const rawMatches = root?.MatchList?.Match ?? root?.Team?.MatchList?.Match;
-  const matches: Record<string, unknown>[] = Array.isArray(rawMatches)
-    ? rawMatches
-    : rawMatches
-      ? [rawMatches]
-      : [];
+  const rawMatches =
+    root?.Match ??
+    (root?.SeriesFixtures as Record<string, unknown> | undefined)?.Match ??
+    root?.MatchList?.Match ??
+    root?.Team?.MatchList?.Match;
+  const matches = asArray(rawMatches);
 
   return matches.map((m) => {
     const homeTeam = m.HomeTeam as Record<string, unknown> | undefined;
@@ -55,4 +67,34 @@ export function parseLeagueFixturesXml(xml: string): RealFixtureMatch[] {
       awayGoals: isPlayed ? awayGoalsRaw : null,
     };
   });
+}
+
+// ДИАГНОСТИКА (тот же приём, что уже выручил с tournamentfixtures.xml, см.
+// debugTournamentFixturesRawStructure в hattrickArena.ts) — пробует
+// несколько вероятных путей к списку матчей одновременно и дампит ПОЛНЫЙ
+// первый найденный сырой матч (все поля как есть), чтобы одним взглядом
+// подтвердить или опровергнуть путь root.Match, выбранный выше по логике
+// анонимного встраивания, а не гадать по одному полю за раз ещё раз.
+export function debugLeagueFixturesRawStructure(xml: string): string {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData as Record<string, unknown> | undefined;
+  if (!root) return "root (HattrickData) не найден — либо другой корневой тег, либо XML не разобрался";
+
+  const rootKeys = Object.keys(root);
+  const candidates: { path: string; count: number; sample: string }[] = [];
+  const record = (path: string, value: unknown) => {
+    const arr = asArray(value);
+    candidates.push({ path, count: arr.length, sample: arr.length > 0 ? JSON.stringify(arr[0]).slice(0, 400) : "" });
+  };
+
+  record("root.Match", root.Match);
+  record("root.SeriesFixtures.Match", (root.SeriesFixtures as Record<string, unknown> | undefined)?.Match);
+  record("root.MatchList.Match", (root.MatchList as Record<string, unknown> | undefined)?.Match);
+  record("root.Team.MatchList.Match", ((root.Team as Record<string, unknown> | undefined)?.MatchList as Record<string, unknown> | undefined)?.Match);
+
+  const summary = candidates
+    .map((c) => `${c.path}: ${c.count} эл.${c.sample ? ` первый=${c.sample}` : ""}`)
+    .join(" | ");
+  return `Ключи HattrickData: [${rootKeys.join(", ")}]. ${summary}`;
 }
