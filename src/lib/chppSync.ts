@@ -1897,6 +1897,25 @@ export interface MatchesPageData {
 const emptyArenaChallenges: ArenaChallengesResult = { sentByUs: [], offersFromOthers: [], error: null };
 const emptyArenaResult: ArenaSyncResult = { matches: [], tournaments: [] };
 
+// ИСПРАВЛЕНО (см. чат "Матчи: серверная ошибка после закладок Официальные/
+// Арена") — форма снимка DATA_KEYS.arenaResults поменялась с плоского
+// массива (ArenaRecentMatch[]) на объект {matches, tournaments} в этом же
+// коммите. У аккаунтов, синхронизировавшихся ДО этого деплоя, в базе всё
+// ещё лежит СТАРЫЙ снимок-массив — слепой `as ArenaSyncResult` ничего не
+// проверяет в рантайме, поэтому arenaResult.matches/tournaments оказывались
+// undefined у старых снимков, и HattrickArenaSection падал на
+// arenaTournaments.filter(...) на сервере (TypeError, digest 21536431).
+// Явная проверка формы вместо слепого каста — до следующей синхронизации
+// показываем честные пустые списки, а не роняем страницу.
+function isArenaSyncResult(value: unknown): value is ArenaSyncResult {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    Array.isArray((value as ArenaSyncResult).matches) &&
+    Array.isArray((value as ArenaSyncResult).tournaments)
+  );
+}
+
 export async function getStoredMatchesCalendar(hattrickUserId: string): Promise<MatchesPageData> {
   const snapshots = await getAllSnapshots(hattrickUserId);
   const calendarEntry = snapshots[DATA_KEYS.matchesCalendar];
@@ -1906,7 +1925,8 @@ export async function getStoredMatchesCalendar(hattrickUserId: string): Promise<
     ...emptyArenaChallenges,
     error: challengesEntry?.error ?? null,
   };
-  const arenaResult = (snapshots[DATA_KEYS.arenaResults]?.data as ArenaSyncResult | null) ?? emptyArenaResult;
+  const arenaResultRaw = snapshots[DATA_KEYS.arenaResults]?.data;
+  const arenaResult = isArenaSyncResult(arenaResultRaw) ? arenaResultRaw : emptyArenaResult;
 
   return {
     matches: calendar?.matches ?? null,

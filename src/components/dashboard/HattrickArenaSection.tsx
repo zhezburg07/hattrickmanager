@@ -11,12 +11,12 @@ function formatMaybeDate(raw: string | null): string {
 
 export default function HattrickArenaSection({
   challenges,
-  arenaMatches,
-  arenaTournaments,
+  arenaMatches = [],
+  arenaTournaments = [],
 }: {
   challenges: ArenaChallengesResult;
-  arenaMatches: ArenaRecentMatch[];
-  arenaTournaments: ArenaTournamentSummary[];
+  arenaMatches?: ArenaRecentMatch[];
+  arenaTournaments?: ArenaTournamentSummary[];
 }) {
   const wonTournaments = arenaTournaments.filter((t) => t.wonTrophy);
   const ongoingTournaments = arenaTournaments.filter((t) => t.isOngoing);
