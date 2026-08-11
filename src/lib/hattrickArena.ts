@@ -217,6 +217,26 @@ export function debugTournamentFixturesRawStructure(xml: string): string {
   return `Ключи HattrickData: [${rootKeys.join(", ")}]. ${summary}`;
 }
 
+// ИСПРАВЛЕНО (см. чат "Наконец нашли точную причину!") — путь контейнера
+// (root.Matches.Match) с самого начала был верным, 28 матчей реально
+// находились; проблема была в статусе. Подтверждено на реальных данных:
+// Status здесь ЧИСЛОВОЙ (например "2"), а не текстовый "FINISHED", как в
+// matches.xml/matchesarchive.xml — код сравнивал с текстом и поэтому
+// отбрасывал вообще все матчи как "не сыгранные". Числовые коды подтверждены
+// по независимому CHPP-клиенту (chpp/type_match_status.go, MatchStatus):
+// 0=NotStarted (UPCOMING), 1=Ongoing, 2=Finished — та же неймингом система,
+// что и MatchType в этом же файле (см. MatchType=50 —
+// MatchTypeTournamentLeagueMatch, отдельное подтверждение, что
+// tournamentfixtures.xml вообще использует другую, "числовую" схему
+// кодирования полей по сравнению с обычным списком матчей команды).
+// Принимаем И числовой (2), И текстовый ("FINISHED") варианты — на случай,
+// если CHPP когда-нибудь всё же начнёт присылать текст, как и остальные
+// файлы.
+function isFinishedTournamentStatus(rawStatus: unknown): boolean {
+  const s = String(rawStatus ?? "").toUpperCase();
+  return s === "2" || s === "FINISHED";
+}
+
 export function parseTournamentFixturesXml(
   xml: string,
   ourTeamId: string,
@@ -233,8 +253,7 @@ export function parseTournamentFixturesXml(
     .filter((m) => {
       const homeId = String(m.HomeTeamId ?? m.HomeTeamID ?? "");
       const awayId = String(m.AwayTeamId ?? m.AwayTeamID ?? "");
-      const status = String(m.Status ?? "").toUpperCase();
-      return (homeId === ourTeamId || awayId === ourTeamId) && status === "FINISHED";
+      return (homeId === ourTeamId || awayId === ourTeamId) && isFinishedTournamentStatus(m.Status);
     })
     .map((m) => {
       const homeId = String(m.HomeTeamId ?? m.HomeTeamID ?? "");
