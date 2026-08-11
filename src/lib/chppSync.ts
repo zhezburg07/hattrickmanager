@@ -1180,8 +1180,20 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
             return;
           }
           const raw = result.value;
+          // ДИАГНОСТИКА (см. чат "tournamentfixtures.xml вернул 0 матчей —
+          // возможно, тихая ошибка параметра") — HTTP-статус и сырое тело
+          // ответа (первые 500 символов) выводятся ВСЕГДА, а не только при
+          // не-2xx статусе: параметр может быть неверным, но CHPP при этом
+          // всё равно ответить 200 с пустым/другим по структуре телом (тихая
+          // ошибка), которую предыдущая диагностика не показывала вовсе. Плюс
+          // грубый подсчёт тегов <Match> прямо в сыром тексте (без разбора и
+          // без допущений о структуре) — отличает "реально 0 матчей в
+          // турнире" от "матчи есть, но что-то другое не так".
+          const rawMatchTagCount = (raw.rawXml.match(/<Match>/g) ?? []).length;
+          tournamentDiagnostics.push(
+            `tournamentfixtures.xml [${t.name}] сырой ответ: HTTP ${raw.httpStatus}, тегов <Match> в теле — ${rawMatchTagCount}, начало тела: ${raw.rawXml.slice(0, 500)}`,
+          );
           if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
-            tournamentDiagnostics.push(`tournamentfixtures.xml [${t.name}]: HTTP ${raw.httpStatus} — ${raw.rawXml.slice(0, 300)}`);
             return;
           }
           try {
