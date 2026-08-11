@@ -1098,11 +1098,30 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // числу просканированных сыгранных матчей рядом.
   {
     const scanSource = mergedSeasonMatches ?? parsedMatches ?? [];
-    const finishedCount = scanSource.filter((m) => m.status === "FINISHED").length;
+    const finishedMatches = scanSource.filter((m) => m.status === "FINISHED");
     const arenaResults = filterRecentArenaMatches(scanSource, 10);
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arenaResults, arenaResults);
     sectionErrors.push(
-      `Hattrick Arena (диагностика): просканировано сыгранных матчей ${finishedCount}, из них с MatchType=${LADDER_MATCH_TYPE} (предполагаемый признак Arena/лестницы) — ${arenaResults.length}.`,
+      `Hattrick Arena (диагностика): просканировано сыгранных матчей ${finishedMatches.length}, из них с MatchType=${LADDER_MATCH_TYPE} (предполагаемый признак Arena/лестницы) — ${arenaResults.length}.`,
+    );
+    // ДИАГНОСТИКА (см. чат "0 из 61 сыгранных матчей имеют MatchType=62 —
+    // гипотеза не подтвердилась") — пользователь попросил полный список
+    // реальных значений MatchType среди сыгранных матчей С ПОДСЧЁТОМ, а не
+    // очередное предположение вслепую. Гистограмма по убыванию частоты —
+    // сопоставить с реально известными типами (лига/кубок/обычные
+    // товарищеские/возможно Arena), либо честно убедиться, что 0 — это
+    // правильный результат (команда просто не играла через Arena).
+    const typeCounts = new Map<string, number>();
+    for (const m of finishedMatches) {
+      const key = m.matchType || "(пусто)";
+      typeCounts.set(key, (typeCounts.get(key) ?? 0) + 1);
+    }
+    const histogram = [...typeCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, count]) => `MatchType=${type}: ${count}`)
+      .join(", ");
+    sectionErrors.push(
+      `Hattrick Arena (диагностика — все реальные значения MatchType среди ${finishedMatches.length} сыгранных матчей): ${histogram || "(сыгранных матчей не найдено)"}.`,
     );
   }
 
