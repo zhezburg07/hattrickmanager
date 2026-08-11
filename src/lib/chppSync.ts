@@ -44,6 +44,8 @@ import { parseYouthPlayerDetailsXml, debugYouthPlayerDetailsRawFields, YOUTH_PLA
 import {
   parseChallengesXml,
   filterRecentArenaMatches,
+  debugTournamentListXml,
+  TOURNAMENT_LIST_VERSION,
   type ArenaChallengesResult,
   type ArenaRecentMatch,
 } from "./hattrickArena";
@@ -1123,6 +1125,44 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     sectionErrors.push(
       `Hattrick Arena (диагностика — все реальные значения MatchType среди ${finishedMatches.length} сыгранных матчей): ${histogram || "(сыгранных матчей не найдено)"}.`,
     );
+
+    // ДИАГНОСТИКА (см. чат "у меня десятки матчей Ладдер/Турнир на
+    // hattrick.org, но их нет вообще ни под каким MatchType в выборке") —
+    // полный построчный список ВСЕХ просканированных сыгранных матчей
+    // (дата/тип/соперник/счёт), а не только агрегированная гистограмма —
+    // чтобы можно было напрямую сверить по датам с реальными матчами Ладдер/
+    // Турнир с hattrick.org и увидеть, действительно ли их там нет вообще,
+    // а не просто под неожиданным MatchType.
+    const fullDump = finishedMatches
+      .map(
+        (m) =>
+          `${m.date} MatchType=${m.matchType || "?"} ${m.home ? "дома" : "гости"} vs ${m.opponent} ${m.ourScore}:${m.oppScore}`,
+      )
+      .join(" || ");
+    sectionErrors.push(
+      `Hattrick Arena (диагностика — полный список всех ${finishedMatches.length} сыгранных матчей): ${fullDump || "(нет матчей)"}.`,
+    );
+
+    // ИССЛЕДОВАНИЕ (см. чат "может, нужен отдельный источник данных именно
+    // для Ладдера/Турниров") — диагностика-only запрос tournamentlist.xml
+    // (см. подробный комментарий в hattrickArena.ts): по докстроке
+    // независимого клиента этот файл, В ОТЛИЧИЕ от лестниц, команд-
+    // специфичен — "список турниров, в которых участвует ИМЕННО эта
+    // команда". Не проверено на живых данных — только смотрим, что реально
+    // приходит, никакой готовой функциональности на этом ещё не строим.
+    try {
+      const tournamentRaw = await requestChppXmlRaw("tournamentlist", { version: TOURNAMENT_LIST_VERSION }, tokens);
+      if (tournamentRaw.httpStatus < 200 || tournamentRaw.httpStatus >= 300) {
+        sectionErrors.push(
+          `Hattrick Arena (исследование tournamentlist.xml): HTTP ${tournamentRaw.httpStatus} — ${tournamentRaw.rawXml.slice(0, 300)}`,
+        );
+      } else {
+        const tournamentDump = debugTournamentListXml(tournamentRaw.rawXml);
+        sectionErrors.push(`Hattrick Arena (исследование tournamentlist.xml — турниры нашей команды): ${tournamentDump}`);
+      }
+    } catch (err) {
+      sectionErrors.push(`Hattrick Arena (исследование tournamentlist.xml): ошибка запроса — ${errorMessage(err)}`);
+    }
   }
 
   // -- cupInfo (Кубки: полная история сезона — путь по раундам ТЕКУЩЕГО

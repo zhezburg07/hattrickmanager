@@ -119,3 +119,47 @@ export function filterRecentArenaMatches(matches: RealMatch[], limit = 10): Aren
       oppScore: m.oppScore as number,
     }));
 }
+
+// ---------- ИССЛЕДОВАНИЕ: tournamentlist.xml (см. чат "матчи Ладдер/
+// Турнир не попадают в выборку из matches.xml") ----------
+//
+// Пользователь подтвердил на реальном hattrick.org: десятки сыгранных
+// матчей типов "Ладдер" И "Турнир" за последний месяц — но диагностика
+// (MatchType=62 и полная гистограмма) показала 0 совпадений среди 61
+// сыгранного матча из matches.xml/matchesarchive.xml. Это означает, что
+// матчи Arena-системы, ПОХОЖЕ, вообще не приходят через обычный список
+// матчей команды — нужен другой источник.
+//
+// Независимый CHPP-клиент (github.com/lucianoq/hattrick) описывает ОТДЕЛЬНУЮ
+// от лестниц группу файлов: tournamentlist.xml/tournamentdetails.xml/
+// tournamentfixtures.xml ("HTO tournaments" — турниры, создаваемые
+// пользователями). В отличие от ladderlist.xml (общий список ВСЕХ лестниц
+// игры, без привязки к команде — см. комментарий выше про Ladder), докстрока
+// у tournamentlist.xml прямо говорит: "The list of tournaments the given
+// team takes part in" — то есть, в отличие от лестниц, для турниров у CHPP,
+// похоже, ЕСТЬ команд-специфичный источник. НЕ проверено на живых данных
+// этого аккаунта — это диагностика, а не готовая функциональность: сначала
+// подтверждаем, что файл вообще отвечает и содержит турниры именно нашей
+// команды, и только потом (если подтвердится) строим на этом
+// tournamentfixtures.xml для реальных результатов матчей.
+export const TOURNAMENT_LIST_VERSION = "1.0";
+
+export function debugTournamentListXml(xml: string): string {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  assertNoChppError(root, "tournamentlist");
+
+  const tournaments = asArray((root?.Tournaments as Record<string, unknown> | undefined)?.Tournament);
+  if (tournaments.length === 0) {
+    return "0 турниров в ответе (либо команда ни в одном не участвует, либо контейнер/поле называется иначе, чем предполагалось)";
+  }
+  return tournaments
+    .map(
+      (t) =>
+        `TournamentId=${JSON.stringify(t.TournamentId ?? t.TournamentID)} Name=${JSON.stringify(t.Name)} ` +
+        `TournamentType=${JSON.stringify(t.TournamentType)} Season=${JSON.stringify(t.Season)} ` +
+        `IsMatchesOngoing=${JSON.stringify(t.IsMatchesOngoing)}`,
+    )
+    .join(" || ");
+}
