@@ -82,11 +82,23 @@ export async function resolveArenaChallenges(tokens: StoredHattrickTokens): Prom
 // ---------- Последние сыгранные Arena-матчи (см. чат "Hattrick Arena:
 // синхронизация последних сыгранных матчей") ----------
 //
-// CHPP не даёт отдельного файла "результаты Arena/лестницы" — единственный
-// источник для СЫГРАННЫХ матчей вообще это matches.xml/matchesarchive.xml
-// (уже разбираются в matches.ts, RealMatch). Выделяем среди них именно
-// Arena-матчи по MatchType === LADDER_MATCH_TYPE (62) — см. комментарий
-// там же про источник и степень уверенности в этом значении.
+// CHPP не даёт единого файла "результаты Arena" — источники РАЗНЫЕ для
+// разных подсистем Arena, и это ПОДТВЕРЖДЕНО на реальных данных (см. чат
+// "Отличная новость по Турнирам"):
+//   - "Ладдер" (лестница): подтверждено — физически недоступен через CHPP
+//     ни в каком виде. matches.xml/matchesarchive.xml НЕ содержат эти матчи
+//     вообще (сверено по датам с реальными матчами на hattrick.org — полное
+//     отсутствие, не вопрос неверного MatchType). ladderlist.xml/
+//     ladderdetails.xml тоже не годятся (см. комментарий выше про Ladder).
+//     LADDER_MATCH_TYPE (62) оставлен как есть — вдруг на каком-то другом
+//     аккаунте это всё же сработает, но на практике пока ни разу не дал
+//     результата, и дальше не угадываем (решение пользователя — честное
+//     ограничение, не самоцель "найти любой ценой").
+//   - "Турнир": подтверждено — tournamentlist.xml реально отдаёт турниры
+//     ИМЕННО нашей команды (докстрока независимого клиента "The list of
+//     tournaments the given team takes part in" оказалась верной), а
+//     tournamentfixtures.xml по TournamentID даёт реальные результаты
+//     матчей. Основной, рабочий источник для этого раздела теперь — здесь.
 export interface ArenaRecentMatch {
   matchId: string;
   date: string;
@@ -94,6 +106,8 @@ export interface ArenaRecentMatch {
   opponent: string;
   ourScore: number;
   oppScore: number;
+  source: "ladder" | "tournament";
+  tournamentName?: string;
 }
 
 // limit=10 — по запросу ("последние 10 сыгранных матчей"). Сортировка по
@@ -117,49 +131,89 @@ export function filterRecentArenaMatches(matches: RealMatch[], limit = 10): Aren
       opponent: m.opponent,
       ourScore: m.ourScore as number,
       oppScore: m.oppScore as number,
+      source: "ladder" as const,
     }));
 }
 
-// ---------- ИССЛЕДОВАНИЕ: tournamentlist.xml (см. чат "матчи Ладдер/
-// Турнир не попадают в выборку из matches.xml") ----------
+// ---------- tournamentlist.xml / tournamentfixtures.xml (см. чат
+// "Отличная новость по Турнирам") — подтверждённый рабочий источник ----------
 //
-// Пользователь подтвердил на реальном hattrick.org: десятки сыгранных
-// матчей типов "Ладдер" И "Турнир" за последний месяц — но диагностика
-// (MatchType=62 и полная гистограмма) показала 0 совпадений среди 61
-// сыгранного матча из matches.xml/matchesarchive.xml. Это означает, что
-// матчи Arena-системы, ПОХОЖЕ, вообще не приходят через обычный список
-// матчей команды — нужен другой источник.
-//
-// Независимый CHPP-клиент (github.com/lucianoq/hattrick) описывает ОТДЕЛЬНУЮ
-// от лестниц группу файлов: tournamentlist.xml/tournamentdetails.xml/
-// tournamentfixtures.xml ("HTO tournaments" — турниры, создаваемые
-// пользователями). В отличие от ladderlist.xml (общий список ВСЕХ лестниц
-// игры, без привязки к команде — см. комментарий выше про Ladder), докстрока
-// у tournamentlist.xml прямо говорит: "The list of tournaments the given
-// team takes part in" — то есть, в отличие от лестниц, для турниров у CHPP,
-// похоже, ЕСТЬ команд-специфичный источник. НЕ проверено на живых данных
-// этого аккаунта — это диагностика, а не готовая функциональность: сначала
-// подтверждаем, что файл вообще отвечает и содержит турниры именно нашей
-// команды, и только потом (если подтвердится) строим на этом
-// tournamentfixtures.xml для реальных результатов матчей.
+// tournamentlist.xml (v1.0) — список турниров ИМЕННО нашей команды.
+// Подтверждено на реальных данных: 2 турнира ("Champions League (Small
+// club)" TournamentId=6994463, "Kazakhstan Cup - Liga: III"
+// TournamentId=5484335). Не требует параметров, кроме версии — сам User
+// определяется по OAuth-токену, как и остальные "мои данные" файлы.
 export const TOURNAMENT_LIST_VERSION = "1.0";
 
-export function debugTournamentListXml(xml: string): string {
+export interface TournamentListEntry {
+  tournamentId: string;
+  name: string;
+}
+
+export function parseTournamentListXml(xml: string): TournamentListEntry[] {
   const parser = new XMLParser();
   const data = parser.parse(xml);
   const root = data?.HattrickData;
   assertNoChppError(root, "tournamentlist");
 
   const tournaments = asArray((root?.Tournaments as Record<string, unknown> | undefined)?.Tournament);
-  if (tournaments.length === 0) {
-    return "0 турниров в ответе (либо команда ни в одном не участвует, либо контейнер/поле называется иначе, чем предполагалось)";
-  }
-  return tournaments
-    .map(
-      (t) =>
-        `TournamentId=${JSON.stringify(t.TournamentId ?? t.TournamentID)} Name=${JSON.stringify(t.Name)} ` +
-        `TournamentType=${JSON.stringify(t.TournamentType)} Season=${JSON.stringify(t.Season)} ` +
-        `IsMatchesOngoing=${JSON.stringify(t.IsMatchesOngoing)}`,
-    )
-    .join(" || ");
+  return tournaments.map((t) => ({
+    tournamentId: String(t.TournamentId ?? t.TournamentID ?? ""),
+    name: String(t.Name ?? `Турнир #${t.TournamentId ?? t.TournamentID ?? "?"}`),
+  }));
+}
+
+// tournamentfixtures.xml (v1.1) — реальные матчи (включая счёт) конкретного
+// турнира, ПО ВСЕМ участникам, а не только нашей команде (структура
+// TournamentFixture по независимому клиенту: HomeTeamID/AwayTeamID/
+// HomeGoals/AwayGoals/Status на КАЖДЫЙ матч турнира) — поэтому здесь, как и
+// в matches.ts, нужно самим отфильтровать по ourTeamId и определить
+// домашнюю/гостевую сторону.
+//
+// ПАРАМЕТР ЗАПРОСА НЕ ПОДТВЕРЖДЁН НА ЖИВЫХ ДАННЫХ: официальная документация
+// CHPP по этому файлу недоступна из песочницы (сайты chpp.hattrick.org и
+// hattrick.org недоступны отсюда), а независимый клиент lucianoq/hattrick
+// содержит только формы ответа, не параметры запроса. Используется
+// "tournamentID" по аналогии с остальными ID-параметрами проекта
+// (cupID/matchID/youthPlayerId) — если CHPP ответит ошибкой/пустым списком,
+// это будет видно в диагностике (см. chppSync.ts) и параметр нужно будет
+// подобрать по-другому, а не считать, что турниров действительно нет.
+export const TOURNAMENT_FIXTURES_VERSION = "1.1";
+
+export function parseTournamentFixturesXml(
+  xml: string,
+  ourTeamId: string,
+  tournamentName: string,
+): ArenaRecentMatch[] {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  assertNoChppError(root, "tournamentfixtures");
+
+  const rawMatches = asArray((root?.Matches as Record<string, unknown> | undefined)?.Match);
+
+  return rawMatches
+    .filter((m) => {
+      const homeId = String(m.HomeTeamId ?? m.HomeTeamID ?? "");
+      const awayId = String(m.AwayTeamId ?? m.AwayTeamID ?? "");
+      const status = String(m.Status ?? "").toUpperCase();
+      return (homeId === ourTeamId || awayId === ourTeamId) && status === "FINISHED";
+    })
+    .map((m) => {
+      const homeId = String(m.HomeTeamId ?? m.HomeTeamID ?? "");
+      const isHome = homeId === ourTeamId;
+      const homeGoals = m.HomeGoals !== undefined ? Number(m.HomeGoals) : 0;
+      const awayGoals = m.AwayGoals !== undefined ? Number(m.AwayGoals) : 0;
+      const opponent = isHome ? String(m.AwayTeamName ?? "") : String(m.HomeTeamName ?? "");
+      return {
+        matchId: String(m.MatchId ?? m.MatchID ?? ""),
+        date: String(m.MatchDate ?? ""),
+        home: isHome,
+        opponent,
+        ourScore: isHome ? homeGoals : awayGoals,
+        oppScore: isHome ? awayGoals : homeGoals,
+        source: "tournament" as const,
+        tournamentName,
+      };
+    });
 }

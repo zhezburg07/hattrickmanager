@@ -27,21 +27,20 @@ export default function HattrickArenaSection({
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Последние сыгранные матчи</div>
           {arenaResults.length === 0 ? (
-            <p className={styles.hint}>
-              Сыгранных матчей через лестницу Hattrick Arena среди последних матчей команды не найдено.
-            </p>
+            <p className={styles.hint}>Сыгранных матчей через турниры или лестницу не найдено.</p>
           ) : (
             <ul>
               {arenaResults.map((m) => (
                 <li key={m.matchId}>
                   {m.opponent} — {m.ourScore}:{m.oppScore} ({m.home ? "дома" : "в гостях"}) · {formatMaybeDate(m.date)}
+                  {m.source === "tournament" && m.tournamentName ? ` · ${m.tournamentName}` : ""}
                 </li>
               ))}
             </ul>
           )}
           <p className={styles.hint} style={{ marginTop: 8, marginBottom: 0 }}>
-            CHPP не отдаёт отдельный файл "результаты Arena" — эти матчи выделены из общей истории сыгранных матчей по
-            коду типа матча, который, по независимым источникам, означает "матч через лестницу".
+            Матчи турниров — через tournamentlist.xml/tournamentfixtures.xml (список турниров команды и их
+            результаты). Матчи через лестницу CHPP не отдаёт ни в каком виде — см. пояснение ниже.
           </p>
         </div>
 
@@ -82,10 +81,10 @@ export default function HattrickArenaSection({
         )}
 
         <p className={styles.hint} style={{ marginTop: 18 }}>
-          Лестницы (ladder) и приватные турниры: CHPP не даёт способа определить, в каких лестницах участвует именно
-          ваша команда — ladderlist.xml отдаёт общий список всех лестниц игры без привязки к команде, а
-          ladderdetails.xml показывает таблицу только по уже известному ID лестницы. Отдельного файла для приватных
-          турниров CHPP не предоставляет.
+          Лестницы (ladder): подтверждено на реальных данных — CHPP не даёт способа получить эти матчи ни через
+          основной список матчей команды, ни через ladderlist.xml (общий список всех лестниц игры без привязки к
+          команде), ни через ladderdetails.xml (нужен заранее известный ID лестницы, который CHPP не сообщает). Это
+          честное ограничение самого CHPP, а не пропуск в синхронизации.
         </p>
       </div>
     </ProLockOverlay>

@@ -44,8 +44,10 @@ import { parseYouthPlayerDetailsXml, debugYouthPlayerDetailsRawFields, YOUTH_PLA
 import {
   parseChallengesXml,
   filterRecentArenaMatches,
-  debugTournamentListXml,
+  parseTournamentListXml,
+  parseTournamentFixturesXml,
   TOURNAMENT_LIST_VERSION,
+  TOURNAMENT_FIXTURES_VERSION,
   type ArenaChallengesResult,
   type ArenaRecentMatch,
 } from "./hattrickArena";
@@ -1101,10 +1103,9 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   {
     const scanSource = mergedSeasonMatches ?? parsedMatches ?? [];
     const finishedMatches = scanSource.filter((m) => m.status === "FINISHED");
-    const arenaResults = filterRecentArenaMatches(scanSource, 10);
-    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arenaResults, arenaResults);
+    const ladderResults = filterRecentArenaMatches(scanSource, 10);
     sectionErrors.push(
-      `Hattrick Arena (диагностика): просканировано сыгранных матчей ${finishedMatches.length}, из них с MatchType=${LADDER_MATCH_TYPE} (предполагаемый признак Arena/лестницы) — ${arenaResults.length}.`,
+      `Hattrick Arena (диагностика — лестница): просканировано сыгранных матчей ${finishedMatches.length}, из них с MatchType=${LADDER_MATCH_TYPE} (подтверждённо ненадёжный признак — см. ниже) — ${ladderResults.length}.`,
     );
     // ДИАГНОСТИКА (см. чат "0 из 61 сыгранных матчей имеют MatchType=62 —
     // гипотеза не подтвердилась") — пользователь попросил полный список
@@ -1143,26 +1144,64 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       `Hattrick Arena (диагностика — полный список всех ${finishedMatches.length} сыгранных матчей): ${fullDump || "(нет матчей)"}.`,
     );
 
-    // ИССЛЕДОВАНИЕ (см. чат "может, нужен отдельный источник данных именно
-    // для Ладдера/Турниров") — диагностика-only запрос tournamentlist.xml
-    // (см. подробный комментарий в hattrickArena.ts): по докстроке
-    // независимого клиента этот файл, В ОТЛИЧИЕ от лестниц, команд-
-    // специфичен — "список турниров, в которых участвует ИМЕННО эта
-    // команда". Не проверено на живых данных — только смотрим, что реально
-    // приходит, никакой готовой функциональности на этом ещё не строим.
+    // ПОДТВЕРЖДЁННЫЙ РАБОЧИЙ ИСТОЧНИК (см. чат "Отличная новость по
+    // Турнирам") — tournamentlist.xml реально отдаёт турниры именно нашей
+    // команды (докстрока независимого клиента подтвердилась на живых
+    // данных), а tournamentfixtures.xml по каждому TournamentId — реальные
+    // матчи с счётом. Парам запроса tournamentfixtures ("tournamentID") НЕ
+    // подтверждён официальной документацией (недоступна из песочницы) — по
+    // аналогии с cupID/matchID/youthPlayerId в этом проекте; если CHPP
+    // ответит ошибкой, это будет явно видно в диагностике ниже, а не молча
+    // проглочено.
+    let tournamentResults: ArenaRecentMatch[] = [];
+    const tournamentDiagnostics: string[] = [];
     try {
-      const tournamentRaw = await requestChppXmlRaw("tournamentlist", { version: TOURNAMENT_LIST_VERSION }, tokens);
-      if (tournamentRaw.httpStatus < 200 || tournamentRaw.httpStatus >= 300) {
-        sectionErrors.push(
-          `Hattrick Arena (исследование tournamentlist.xml): HTTP ${tournamentRaw.httpStatus} — ${tournamentRaw.rawXml.slice(0, 300)}`,
-        );
+      const listRaw = await requestChppXmlRaw("tournamentlist", { version: TOURNAMENT_LIST_VERSION }, tokens);
+      if (listRaw.httpStatus < 200 || listRaw.httpStatus >= 300) {
+        tournamentDiagnostics.push(`tournamentlist.xml: HTTP ${listRaw.httpStatus} — ${listRaw.rawXml.slice(0, 300)}`);
       } else {
-        const tournamentDump = debugTournamentListXml(tournamentRaw.rawXml);
-        sectionErrors.push(`Hattrick Arena (исследование tournamentlist.xml — турниры нашей команды): ${tournamentDump}`);
+        const tournaments = parseTournamentListXml(listRaw.rawXml);
+        tournamentDiagnostics.push(
+          `tournamentlist.xml: найдено турниров нашей команды — ${tournaments.length}${
+            tournaments.length > 0 ? ` (${tournaments.map((t) => `"${t.name}" #${t.tournamentId}`).join(", ")})` : ""
+          }.`,
+        );
+
+        const fixturesResults = await Promise.allSettled(
+          tournaments.map((t) =>
+            requestChppXmlRaw("tournamentfixtures", { tournamentID: t.tournamentId, version: TOURNAMENT_FIXTURES_VERSION }, tokens),
+          ),
+        );
+
+        fixturesResults.forEach((result, i) => {
+          const t = tournaments[i];
+          if (result.status !== "fulfilled") {
+            tournamentDiagnostics.push(`tournamentfixtures.xml [${t.name}]: запрос не выполнился — ${errorMessage(result.reason)}`);
+            return;
+          }
+          const raw = result.value;
+          if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
+            tournamentDiagnostics.push(`tournamentfixtures.xml [${t.name}]: HTTP ${raw.httpStatus} — ${raw.rawXml.slice(0, 300)}`);
+            return;
+          }
+          try {
+            const matches = parseTournamentFixturesXml(raw.rawXml, teamId, t.name);
+            tournamentDiagnostics.push(`tournamentfixtures.xml [${t.name}]: наших сыгранных матчей — ${matches.length}.`);
+            tournamentResults.push(...matches);
+          } catch (err) {
+            tournamentDiagnostics.push(`tournamentfixtures.xml [${t.name}]: ошибка разбора — ${errorMessage(err)}`);
+          }
+        });
       }
     } catch (err) {
-      sectionErrors.push(`Hattrick Arena (исследование tournamentlist.xml): ошибка запроса — ${errorMessage(err)}`);
+      tournamentDiagnostics.push(`tournamentlist.xml: ошибка запроса — ${errorMessage(err)}`);
     }
+    sectionErrors.push(`Hattrick Arena (диагностика — турниры): ${tournamentDiagnostics.join(" ")}`);
+
+    const arenaResults = [...ladderResults, ...tournamentResults]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 10);
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arenaResults, arenaResults);
   }
 
   // -- cupInfo (Кубки: полная история сезона — путь по раундам ТЕКУЩЕГО
