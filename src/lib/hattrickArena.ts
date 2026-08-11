@@ -10,15 +10,89 @@ import { LADDER_MATCH_TYPE, type RealMatch } from "./matches";
 // (Team.ChallengesByMe.Challenge, Team.OffersByOthers.Offer) подтверждена,
 // а поля отдельной заявки — лучшее предположение.
 //
-// ВАЖНО про "лестницы" (ladder) и приватные турниры: у CHPP нет способа
-// узнать, в каких лестницах участвует конкретная команда. ladderlist.xml
-// отдаёт общий список ВСЕХ лестниц игры (без привязки к команде), а
-// ladderdetails.xml показывает таблицу конкретной лестницы только если уже
-// знаешь её LadderID — источника "мой LadderID" в CHPP нет. Поэтому здесь
-// эти два файла не вызываются вовсе: честная диагностика (см.
-// src/components/dashboard/HattrickArenaSection.tsx) важнее звонка в CHPP
-// ради вопроса, на который он структурно не может ответить. Отдельного
-// файла для приватных турниров CHPP тоже не описывает.
+// ПЕРЕСМОТРЕНО про "лестницы" (ladder) (см. чат "Ещё одна честная попытка
+// найти данные по лестницам") — раньше здесь считалось, что ladderlist.xml
+// отдаёт общий список ВСЕХ лестниц игры без привязки к команде. Свежая
+// проверка докстроки независимого клиента (chpp/file_ladderlist.go)
+// опровергает это: "LadderListXML contains the list of ladders that a team
+// currently takes part in" — та же ситуация, что уже была с
+// tournamentlist.xml (тоже когда-то считался "общим списком", тоже оказался
+// команд-специфичным на практике). LadderListEntry по докстроке содержит
+// Position/Wins/Lost/NextMatchDate — то есть именно ТЕКУЩЕЕ МЕСТО команды в
+// лестнице, без похода в ladderdetails.xml вообще. НЕ проверено на живых
+// данных этого аккаунта — см. debugLadderListRawStructure и диагностику в
+// chppSync.ts, тот же приём, что уже подтвердил/опроверг структуру
+// tournamentfixtures.xml и leaguefixtures.xml раньше в этом проекте.
+//
+// ВАЖНО — это НЕ решает всё про Arena: ladderlist.xml даёт только ТЕКУЩУЮ
+// СВОДКУ (место, W/L), а не список отдельных сыгранных матчей лестницы
+// (соперник/счёт/дата) — тот вопрос остаётся подтверждённым ограничением:
+// matches.xml/matchesarchive.xml не содержат матчи лестницы ни под каким
+// MatchType (сверено по датам с реальными данными hattrick.org), а
+// ladderdetails.xml — это таблица ЛЕСТНИЦЫ целиком (все команды), не список
+// НАШИХ матчей, и всё ещё требует уже известный LadderID (теперь, впрочем,
+// доступный из самого ladderlist.xml — если когда-нибудь понадобится полная
+// таблица лестницы, это уже решаемо, просто не то же самое, что список
+// сыгранных матчей).
+export const LADDER_LIST_VERSION = "1.0";
+
+export interface ArenaLadderPosition {
+  ladderId: string;
+  name: string;
+  position: number;
+  wins: number;
+  lost: number;
+  nextMatchDate: string | null;
+}
+
+export function parseLadderListXml(xml: string): ArenaLadderPosition[] {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  assertNoChppError(root, "ladderlist");
+
+  const ladders = asArray((root?.Ladders as Record<string, unknown> | undefined)?.Ladder);
+  return ladders.map((l) => ({
+    ladderId: String(l.LadderId ?? l.LadderID ?? ""),
+    name: String(l.Name ?? `Лестница #${l.LadderId ?? l.LadderID ?? "?"}`),
+    // Posistion — подтверждённая опечатка в самом CHPP (см. докстроку
+    // независимого клиента: "the doc's own element name is misspelled...
+    // it is not a typo to fix"), Position — запасной вариант на случай,
+    // если Hattrick когда-нибудь всё же исправит написание.
+    position: Number(l.Posistion ?? l.Position ?? 0),
+    wins: Number(l.Wins ?? 0),
+    lost: Number(l.Lost ?? 0),
+    nextMatchDate: l.NextMatchDate !== undefined ? String(l.NextMatchDate) : null,
+  }));
+}
+
+// ДИАГНОСТИКА (тот же приём, что уже выручил с tournamentfixtures.xml и
+// leaguefixtures.xml) — пробует несколько вероятных путей к списку лестниц
+// одновременно и дампит ПОЛНЫЙ первый найденный сырой элемент (все поля как
+// есть), чтобы одним взглядом подтвердить или опровергнуть структуру, а не
+// гадать по одному полю за раз.
+export function debugLadderListRawStructure(xml: string): string {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData as Record<string, unknown> | undefined;
+  if (!root) return "root (HattrickData) не найден — либо другой корневой тег, либо XML не разобрался";
+
+  const rootKeys = Object.keys(root);
+  const candidates: { path: string; count: number; sample: string }[] = [];
+  const record = (path: string, value: unknown) => {
+    const arr = asArray(value);
+    candidates.push({ path, count: arr.length, sample: arr.length > 0 ? JSON.stringify(arr[0]).slice(0, 400) : "" });
+  };
+
+  record("root.Ladders.Ladder", (root.Ladders as Record<string, unknown> | undefined)?.Ladder);
+  record("root.Ladder", root.Ladder);
+  record("root.Team.Ladders.Ladder", ((root.Team as Record<string, unknown> | undefined)?.Ladders as Record<string, unknown> | undefined)?.Ladder);
+
+  const summary = candidates
+    .map((c) => `${c.path}: ${c.count} эл.${c.sample ? ` первый=${c.sample}` : ""}`)
+    .join(" | ");
+  return `Ключи HattrickData: [${rootKeys.join(", ")}]. ${summary}`;
+}
 export interface ArenaChallengeEntry {
   opponentTeamId: string;
   opponentTeamName: string;
@@ -343,4 +417,5 @@ export function buildArenaTournamentSummaries(
 export interface ArenaSyncResult {
   matches: ArenaRecentMatch[];
   tournaments: ArenaTournamentSummary[];
+  ladders: ArenaLadderPosition[];
 }

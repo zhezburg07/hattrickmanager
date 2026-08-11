@@ -1,5 +1,9 @@
+"use client";
+
+import { Fragment, useState } from "react";
 import { formatMatchDateTime } from "@/data/dashboard";
-import type { ArenaChallengesResult, ArenaRecentMatch, ArenaTournamentSummary } from "@/lib/hattrickArena";
+import type { ArenaChallengesResult, ArenaRecentMatch, ArenaTournamentSummary, ArenaLadderPosition } from "@/lib/hattrickArena";
+import MatchDetailAnalysis from "./MatchDetailAnalysis";
 import ProLockOverlay from "./ProLockOverlay";
 import styles from "./Matches.module.css";
 
@@ -13,18 +17,23 @@ export default function HattrickArenaSection({
   challenges,
   arenaMatches = [],
   arenaTournaments = [],
+  arenaLadders = [],
+  ourTeamName = "",
 }: {
   challenges: ArenaChallengesResult;
   arenaMatches?: ArenaRecentMatch[];
   arenaTournaments?: ArenaTournamentSummary[];
+  arenaLadders?: ArenaLadderPosition[];
+  ourTeamName?: string;
 }) {
   const wonTournaments = arenaTournaments.filter((t) => t.wonTrophy);
   const ongoingTournaments = arenaTournaments.filter((t) => t.isOngoing);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
     <ProLockOverlay
       title="Hattrick Arena"
-      description="Доступно на тарифе Pro — трофеи, турниры, результаты и заявки на товарищеские матчи."
+      description="Доступно на тарифе Pro — трофеи, турниры, лестница, результаты и заявки на товарищеские матчи."
     >
       <div className={styles.card}>
         <div className={styles.cardTitle}>Трофеи и турниры</div>
@@ -71,24 +80,97 @@ export default function HattrickArenaSection({
       </div>
 
       <div className={styles.card}>
+        <div className={styles.cardTitle}>Место в лестнице (Ladder)</div>
+        {arenaLadders.length === 0 ? (
+          <p className={styles.hint} style={{ marginBottom: 0 }}>
+            Данные о месте в лестнице не получены при последней синхронизации.
+          </p>
+        ) : (
+          <ul className={styles.trophyList}>
+            {arenaLadders.map((l) => (
+              <li key={l.ladderId} className={styles.trophyItem}>
+                {l.name} — место {l.position} ({l.wins}W/{l.lost}L)
+                {l.nextMatchDate && (
+                  <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>
+                    {" "}
+                    · след. матч {formatMaybeDate(l.nextMatchDate)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className={styles.hint} style={{ marginTop: 8, marginBottom: 0 }}>
+          Через ladderlist.xml (недавно найденный команд-специфичный источник) — только текущая сводка (место,
+          победы/поражения), не подтверждённый официально факт от Hattrick. Список отдельных сыгранных матчей
+          лестницы (соперник/счёт/дата) по-прежнему недоступен — см. пояснение ниже.
+        </p>
+      </div>
+
+      <div className={styles.card}>
         <div className={styles.cardTitle}>Матчи Арены</div>
         {arenaMatches.length === 0 ? (
           <p className={styles.hint} style={{ marginBottom: 0 }}>
             Сыгранных матчей через турниры или лестницу не найдено.
           </p>
         ) : (
-          <ul>
-            {arenaMatches.map((m) => (
-              <li key={m.matchId}>
-                {m.opponent} — {m.ourScore}:{m.oppScore} ({m.home ? "дома" : "в гостях"}) · {formatMaybeDate(m.date)}
-                {m.source === "tournament" && m.tournamentName ? ` · ${m.tournamentName}` : ""}
-              </li>
-            ))}
-          </ul>
+          <div className={styles.matchListWrap}>
+            {arenaMatches.map((m) => {
+              const isExpanded = expandedId === m.matchId;
+              const isWin = m.ourScore > m.oppScore;
+              const isLoss = m.ourScore < m.oppScore;
+              const scoreClass = isWin ? styles.scoreWin : isLoss ? styles.scoreLoss : styles.scoreDraw;
+
+              return (
+                <Fragment key={m.matchId}>
+                  <div
+                    className={`${styles.matchRow} ${isExpanded ? styles.matchRowExpanded : ""}`}
+                    title={`${m.tournamentName ?? "Арена"} — показать анализ матча`}
+                    onClick={() => setExpandedId((id) => (id === m.matchId ? null : m.matchId))}
+                  >
+                    <span className={styles.matchDate}>{formatMaybeDate(m.date)}</span>
+                    <span className={styles.matchTeams}>
+                      {m.home ? (
+                        <>
+                          <b>{ourTeamName || "Мы"}</b> — {m.opponent}
+                        </>
+                      ) : (
+                        <>
+                          {m.opponent} — <b>{ourTeamName || "Мы"}</b>
+                        </>
+                      )}
+                      {m.source === "tournament" && m.tournamentName ? ` · ${m.tournamentName}` : ""}
+                    </span>
+                    <span className={`${styles.matchScore} ${scoreClass}`}>
+                      {m.ourScore}:{m.oppScore}
+                    </span>
+                  </div>
+
+                  {isExpanded && (
+                    <div className={styles.matchExpanded}>
+                      <MatchDetailAnalysis
+                        match={{
+                          id: Number(m.matchId),
+                          date: m.date,
+                          opponent: m.opponent,
+                          home: m.home,
+                          ourScore: m.ourScore,
+                          oppScore: m.oppScore,
+                        }}
+                        ourTeamName={ourTeamName}
+                      />
+                    </div>
+                  )}
+                </Fragment>
+              );
+            })}
+          </div>
         )}
         <p className={styles.hint} style={{ marginTop: 8, marginBottom: 0 }}>
           Матчи турниров — через tournamentlist.xml/tournamentfixtures.xml (список турниров команды и их результаты).
-          Матчи через лестницу CHPP не отдаёт ни в каком виде — см. пояснение ниже.
+          Нажмите на матч, чтобы открыть полный анализ — те же вкладки (Рейтинги игроков/Зоны поля/Посещаемость/
+          Хронология), что и для официальных матчей; matchdetails.xml запрашивается впервые именно для Arena-матчей,
+          так что результат не гарантирован для каждого матча.
         </p>
       </div>
 
@@ -132,10 +214,10 @@ export default function HattrickArenaSection({
         )}
 
         <p className={styles.hint} style={{ marginTop: 18, marginBottom: 0 }}>
-          Лестницы (ladder): подтверждено на реальных данных — CHPP не даёт способа получить эти матчи ни через
-          основной список матчей команды, ни через ladderlist.xml (общий список всех лестниц игры без привязки к
-          команде), ни через ladderdetails.xml (нужен заранее известный ID лестницы, который CHPP не сообщает). Это
-          честное ограничение самого CHPP, а не пропуск в синхронизации.
+          Отдельные сыгранные матчи лестницы (соперник/счёт/дата, не только текущая сводка выше): подтверждено на
+          реальных данных — CHPP не отдаёт их ни через основной список матчей команды, ни через ladderdetails.xml (это
+          таблица лестницы целиком, не список наших матчей). Честное ограничение самого CHPP, а не пропуск в
+          синхронизации.
         </p>
       </div>
     </ProLockOverlay>

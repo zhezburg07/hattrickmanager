@@ -48,11 +48,15 @@ import {
   parseTournamentFixturesXml,
   debugTournamentFixturesRawStructure,
   buildArenaTournamentSummaries,
+  parseLadderListXml,
+  debugLadderListRawStructure,
   TOURNAMENT_LIST_VERSION,
   TOURNAMENT_FIXTURES_VERSION,
+  LADDER_LIST_VERSION,
   type ArenaChallengesResult,
   type ArenaRecentMatch,
   type ArenaTournamentSummary,
+  type ArenaLadderPosition,
   type ArenaSyncResult,
 } from "./hattrickArena";
 import {
@@ -1272,8 +1276,37 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     }
     sectionErrors.push(`Hattrick Arena (диагностика — турниры): ${tournamentDiagnostics.join(" ")}`);
 
+    // ПЕРЕСМОТРЕНО (см. чат "Ещё одна честная попытка найти данные по
+    // лестницам") — свежая проверка докстроки независимого клиента
+    // (chpp/file_ladderlist.go) опровергла прежний вывод: "the list of
+    // ladders that a TEAM currently takes part in", а не общий список всех
+    // лестниц игры (тот же класс сюрприза, что уже был с tournamentlist.xml
+    // — см. подробный комментарий в hattrickArena.ts). НЕ проверено на
+    // живых данных — полная диагностика (HTTP-статус + сырая структура
+    // ответа) пишется всегда, а не только при 0 результатах.
+    let ladders: ArenaLadderPosition[] = [];
+    try {
+      const ladderRaw = await requestChppXmlRaw("ladderlist", { version: LADDER_LIST_VERSION }, tokens);
+      const structureDump = debugLadderListRawStructure(ladderRaw.rawXml);
+      sectionErrors.push(
+        `Hattrick Arena (диагностика — ladderlist.xml): HTTP ${ladderRaw.httpStatus}. ${structureDump}`,
+      );
+      if (ladderRaw.httpStatus >= 200 && ladderRaw.httpStatus < 300) {
+        ladders = parseLadderListXml(ladderRaw.rawXml);
+        sectionErrors.push(
+          `Hattrick Arena (ladderlist.xml — место в лестнице): найдено записей — ${ladders.length}${
+            ladders.length > 0
+              ? ` (${ladders.map((l) => `"${l.name}": место ${l.position}, ${l.wins}W/${l.lost}L`).join("; ")})`
+              : ""
+          }.`,
+        );
+      }
+    } catch (err) {
+      sectionErrors.push(`Hattrick Arena (диагностика — ladderlist.xml): ошибка — ${errorMessage(err)}`);
+    }
+
     const arenaMatches = [...ladderResults, ...tournamentResults].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
-    const arenaResults: ArenaSyncResult = { matches: arenaMatches, tournaments: tournamentSummaries };
+    const arenaResults: ArenaSyncResult = { matches: arenaMatches, tournaments: tournamentSummaries, ladders };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arenaResults, arenaResults);
   }
 
@@ -1892,10 +1925,11 @@ export interface MatchesPageData {
   challenges: ArenaChallengesResult;
   arenaMatches: ArenaRecentMatch[];
   arenaTournaments: ArenaTournamentSummary[];
+  arenaLadders: ArenaLadderPosition[];
 }
 
 const emptyArenaChallenges: ArenaChallengesResult = { sentByUs: [], offersFromOthers: [], error: null };
-const emptyArenaResult: ArenaSyncResult = { matches: [], tournaments: [] };
+const emptyArenaResult: ArenaSyncResult = { matches: [], tournaments: [], ladders: [] };
 
 // ИСПРАВЛЕНО (см. чат "Матчи: серверная ошибка после закладок Официальные/
 // Арена") — форма снимка DATA_KEYS.arenaResults поменялась с плоского
@@ -1906,8 +1940,10 @@ const emptyArenaResult: ArenaSyncResult = { matches: [], tournaments: [] };
 // undefined у старых снимков, и HattrickArenaSection падал на
 // arenaTournaments.filter(...) на сервере (TypeError, digest 21536431).
 // Явная проверка формы вместо слепого каста — до следующей синхронизации
-// показываем честные пустые списки, а не роняем страницу.
-function isArenaSyncResult(value: unknown): value is ArenaSyncResult {
+// показываем честные пустые списки, а не роняем страницу. Проверяем только
+// matches/tournaments (поле ladders добавилось позже — снимки между этими
+// двумя коммитами валидны, просто ещё без лестниц, читаем их дефолтом ниже).
+function isArenaSyncResult(value: unknown): value is Omit<ArenaSyncResult, "ladders"> {
   return (
     !!value &&
     typeof value === "object" &&
@@ -1927,6 +1963,9 @@ export async function getStoredMatchesCalendar(hattrickUserId: string): Promise<
   };
   const arenaResultRaw = snapshots[DATA_KEYS.arenaResults]?.data;
   const arenaResult = isArenaSyncResult(arenaResultRaw) ? arenaResultRaw : emptyArenaResult;
+  const arenaLadders = Array.isArray((arenaResultRaw as ArenaSyncResult | undefined)?.ladders)
+    ? (arenaResultRaw as ArenaSyncResult).ladders
+    : [];
 
   return {
     matches: calendar?.matches ?? null,
@@ -1938,6 +1977,7 @@ export async function getStoredMatchesCalendar(hattrickUserId: string): Promise<
     challenges,
     arenaMatches: arenaResult.matches,
     arenaTournaments: arenaResult.tournaments,
+    arenaLadders,
   };
 }
 

@@ -24,20 +24,31 @@ export default async function MatchesPage() {
     return <SyncFailedScreen lastError={syncStatus.lastError} />;
   }
 
-  const { matches, ourTeamName, error, warning, debugCounts, debugRaw, challenges, arenaMatches, arenaTournaments } =
-    hattrickUserId
-      ? await getStoredMatchesCalendar(hattrickUserId)
-      : {
-          matches: null,
-          ourTeamName: "",
-          error: null,
-          warning: null,
-          debugCounts: [] as string[],
-          debugRaw: [] as Record<string, unknown>[],
-          challenges: { sentByUs: [], offersFromOthers: [], error: null },
-          arenaMatches: [],
-          arenaTournaments: [],
-        };
+  const {
+    matches,
+    ourTeamName,
+    error,
+    warning,
+    debugCounts,
+    debugRaw,
+    challenges,
+    arenaMatches,
+    arenaTournaments,
+    arenaLadders,
+  } = hattrickUserId
+    ? await getStoredMatchesCalendar(hattrickUserId)
+    : {
+        matches: null,
+        ourTeamName: "",
+        error: null,
+        warning: null,
+        debugCounts: [] as string[],
+        debugRaw: [] as Record<string, unknown>[],
+        challenges: { sentByUs: [], offersFromOthers: [], error: null },
+        arenaMatches: [],
+        arenaTournaments: [],
+        arenaLadders: [],
+      };
 
   const officialContent = (
     <>
@@ -70,7 +81,13 @@ export default async function MatchesPage() {
   );
 
   const arenaContent = (
-    <HattrickArenaSection challenges={challenges} arenaMatches={arenaMatches} arenaTournaments={arenaTournaments} />
+    <HattrickArenaSection
+      challenges={challenges}
+      arenaMatches={arenaMatches}
+      arenaTournaments={arenaTournaments}
+      arenaLadders={arenaLadders}
+      ourTeamName={ourTeamName}
+    />
   );
 
   return (
