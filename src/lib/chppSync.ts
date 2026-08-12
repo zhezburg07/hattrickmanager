@@ -51,8 +51,10 @@ import {
   parseLadderListXml,
   debugLadderListRawStructure,
   debugTournamentListFullResponse,
+  debugTournamentDetailsFullResponse,
   TOURNAMENT_LIST_VERSION,
   TOURNAMENT_FIXTURES_VERSION,
+  TOURNAMENT_DETAILS_VERSION,
   LADDER_LIST_VERSION,
   type ArenaChallengesResult,
   type ArenaRecentMatch,
@@ -1297,6 +1299,30 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       tournamentDiagnostics.push(`tournamentlist.xml: ошибка запроса — ${errorMessage(err)}`);
     }
     sectionErrors.push(`Hattrick Arena (диагностика — турниры): ${tournamentDiagnostics.join(" ")}`);
+
+    // ВРЕМЕННАЯ диагностика (см. чат "Кубок Поколений — новая зацепка про
+    // tournamentdetails.xml по известному tournamentId") — пользователь
+    // нашёл на реальной странице Hattrick Arena старый турнир "Кубок
+    // Поколений" (tournamentId=3116059), которого нет в tournamentlist.xml
+    // выше. Запрашиваем tournamentdetails.xml НАПРЯМУЮ по этому ID, в обход
+    // tournamentlist.xml — если CHPP всё же ответит реальными данными
+    // (несмотря на докстроку "только текущий сезон"), это открыло бы доступ
+    // к истории турниров, которых нет в основном списке.
+    try {
+      const knownOldTournamentId = "3116059";
+      const detailsRaw = await requestChppXmlRaw(
+        "tournamentdetails",
+        { tournamentID: knownOldTournamentId, version: TOURNAMENT_DETAILS_VERSION },
+        tokens,
+      );
+      sectionErrors.push(
+        `Hattrick Arena (диагностика — tournamentdetails.xml напрямую по известному старому tournamentId=${knownOldTournamentId} "Кубок Поколений"): HTTP ${detailsRaw.httpStatus}. ${debugTournamentDetailsFullResponse(detailsRaw.rawXml)}`,
+      );
+    } catch (err) {
+      sectionErrors.push(
+        `Hattrick Arena (диагностика — tournamentdetails.xml напрямую по известному старому tournamentId): ошибка — ${errorMessage(err)}`,
+      );
+    }
 
     // ПЕРЕСМОТРЕНО (см. чат "Ещё одна честная попытка найти данные по
     // лестницам") — свежая проверка докстроки независимого клиента

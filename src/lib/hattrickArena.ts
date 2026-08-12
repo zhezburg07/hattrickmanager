@@ -339,6 +339,31 @@ export function debugTournamentListFullResponse(xml: string): string {
   );
 }
 
+// ВРЕМЕННАЯ диагностика (см. чат "Кубок Поколений — новая зацепка про
+// tournamentdetails.xml по известному tournamentId") — пользователь нашёл
+// на реальной странице Hattrick Arena старый турнир ("Кубок Поколений",
+// tournamentId=3116059), который tournamentlist.xml НЕ возвращает (тот же
+// подтверждённый лимит — только турниры, в которых команда участвует
+// СЕЙЧАС). Независимый клиент утверждает, что tournamentdetails.xml тоже
+// ограничен "текущим сезоном", но это только докстрока, ни разу не
+// проверенная на живом ответе — а в этом проекте докстрока уже несколько
+// раз расходилась с реальностью (tournamentlist.xml/ladderlist.xml
+// оказались команд-специфичными вопреки прежнему выводу). Проверяем
+// напрямую: запрашиваем tournamentdetails.xml по ЭТОМУ конкретному ID, в
+// обход tournamentlist.xml, и дампим ПОЛНЫЙ сырой ответ — если CHPP всё же
+// отдаст данные (а не ошибку/пустой ответ), это открыло бы доступ к
+// истории ЛЮБОГО известного турнира, а не только активных.
+export const TOURNAMENT_DETAILS_VERSION = "1.0";
+
+export function debugTournamentDetailsFullResponse(xml: string): string {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData as Record<string, unknown> | undefined;
+  if (!root) return "root (HattrickData) не найден — либо другой корневой тег, либо XML не разобрался";
+
+  return `Ключи HattrickData: [${Object.keys(root).join(", ")}]. Полный сырой дамп: ${JSON.stringify(root)}`;
+}
+
 // tournamentfixtures.xml (v1.1) — реальные матчи (включая счёт) конкретного
 // турнира, ПО ВСЕМ участникам, а не только нашей команде (структура
 // TournamentFixture по независимому клиенту: HomeTeamID/AwayTeamID/
