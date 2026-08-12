@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { MatchOutcome } from "@/data/dashboard";
 import { computeStandingsFromMatrix, type LeagueTableMode, type MatrixTeamMeta } from "@/data/leagueMatrix";
+import ResultsMatrix from "./ResultsMatrix";
 import styles from "./Overview.module.css";
 
 const outcomeIcon: Record<MatchOutcome, { symbol: string; cls: string; title: string }> = {
@@ -54,56 +55,6 @@ const modeTabs: { mode: LeagueTableMode; label: string }[] = [
 // вдруг снова вернёт 0 сыгранных матчей: тогда сетка просто не покажется,
 // как и раньше.
 const SHOW_RESULTS_GRID = true;
-
-// Сетка очных результатов между всеми командами лиги — строки: команда
-// дома, столбцы: команда в гостях, на пересечении — счёт "голы хозяев-голы
-// гостей", как на оригинальной странице лиги в Hattrick. Диагональ пустая.
-// Работает и с тестовыми данными (src/data/leagueMatrix.ts), и с реальными,
-// построенными из leaguefixtures.xml (src/lib/realLeagueMatrix.ts) — сама
-// таблица не знает, откуда пришли данные.
-function ResultsMatrix({ teams, matrix }: { teams: MatrixTeamMeta[]; matrix: (string | null)[][] }) {
-  return (
-    <div className={styles.matrixWrap}>
-      <table className={styles.matrixTable}>
-        <thead>
-          <tr>
-            <th className={styles.matrixCorner} />
-            {teams.map((team) => (
-              <th key={team.name} className={team.isOurTeam ? styles.matrixHeadUs : undefined}>
-                <a href="#" onClick={(e) => e.preventDefault()} title={team.name}>
-                  {team.name}
-                </a>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {teams.map((homeTeam, homeIndex) => (
-            <tr key={homeTeam.name}>
-              <th className={homeTeam.isOurTeam ? styles.matrixHeadUs : undefined} scope="row">
-                <a href="#" onClick={(e) => e.preventDefault()} title={homeTeam.name}>
-                  {homeTeam.name}
-                </a>
-              </th>
-              {teams.map((awayTeam, awayIndex) => {
-                const isDiagonal = homeIndex === awayIndex;
-                const highlighted = homeTeam.isOurTeam || awayTeam.isOurTeam;
-                return (
-                  <td
-                    key={awayTeam.name}
-                    className={`${styles.matrixCell} ${highlighted ? styles.matrixCellUs : ""}`}
-                  >
-                    {isDiagonal ? "" : matrix[homeIndex]?.[awayIndex]}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 export default function LeagueTable({
   rows,

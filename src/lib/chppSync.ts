@@ -31,6 +31,7 @@ import {
   type OpponentAnalysisResult,
 } from "./opponentAnalysis";
 import { trainingWeekKey, saveCurrentWeekSnapshot, saveWeeklyTsiSnapshot } from "./playerHistoryDb";
+import { resolveMatchFanExpectation, NEUTRAL_FAN_EXPECTATION, type FanExpectation } from "./fanExpectation";
 import { parseArenaDetailsXml, type RealArenaCapacity } from "./arena";
 import { parseTrainingXml, type RealTraining } from "./training";
 import {
@@ -102,6 +103,13 @@ const MAX_EXTRA_TRANSFER_PAGE_FETCHES = 100;
 // они не могли разойтись между собой. Если реально доступных матчей
 // меньше — показываются все доступные, лимит не досоздаёт недостающие.
 const ARENA_MATCHES_SHOWN = 10;
+
+// Сколько сыгранных / предстоящих матчей показывать в блоке "Матчи" на
+// Обзоре (см. чат "Матчи на Обзоре: 4 с каждой стороны + индикатор
+// ожиданий") — единая константа и для отбора матчей, для которых сразу на
+// синхронизации считается "Индекс силы" (см. ниже), и для чтения в
+// getStoredOverviewData, чтобы они не могли разойтись между собой.
+const OVERVIEW_MATCHES_COUNT = 4;
 import {
   saveSnapshotSuccess,
   saveSnapshotError,
@@ -140,6 +148,7 @@ export const DATA_KEYS = {
   matchesCalendar: "matchesCalendar",
   cupInfo: "cupInfo",
   transferHistory: "transferHistory",
+  overviewFanExpectations: "overviewFanExpectations",
 } as const;
 
 export interface StoredTeamData {
@@ -534,6 +543,38 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     anySucceeded = true;
   } catch (err) {
     await saveSnapshotError(hattrickUserId, DATA_KEYS.matches, `Матчи (matches): ${errorMessage(err)}`);
+    anyFailed = true;
+  }
+
+  // -- overviewFanExpectations (см. чат "Матчи на Обзоре: индикатор
+  // ожиданий болельщиков") — "Индекс силы" (см. matchAnalysis.ts) считается
+  // ТОЛЬКО из зональных рейтингов конкретного УЖЕ СЫГРАННОГО матча
+  // (matchdetails.xml), поэтому здесь заранее (на синхронизации, не при
+  // каждом визите на Обзор) считается только для ровно тех же последних
+  // OVERVIEW_MATCHES_COUNT сыгранных матчей, что getStoredOverviewData ниже
+  // покажет как "recentMatches" — если эту выборку изменить в одном месте,
+  // нужно менять и в другом. Для предстоящих матчей запрос не делается
+  // вовсе (зональных рейтингов ещё физически не существует) — там всегда
+  // NEUTRAL_FAN_EXPECTATION при чтении.
+  try {
+    const recentFinished = (parsedMatches ?? [])
+      .filter((m) => m.status === "FINISHED" && m.ourScore !== null && m.oppScore !== null && m.matchId)
+      .slice(0, OVERVIEW_MATCHES_COUNT);
+    const results = await Promise.all(
+      recentFinished.map((m) => resolveMatchFanExpectation(tokens, m.matchId, teamId)),
+    );
+    const byMatchId: Record<string, FanExpectation> = {};
+    recentFinished.forEach((m, i) => {
+      byMatchId[m.matchId] = results[i];
+    });
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.overviewFanExpectations, byMatchId);
+    anySucceeded = true;
+  } catch (err) {
+    await saveSnapshotError(
+      hattrickUserId,
+      DATA_KEYS.overviewFanExpectations,
+      `Индикатор ожиданий болельщиков (matchdetails): ${errorMessage(err)}`,
+    );
     anyFailed = true;
   }
 
@@ -1752,10 +1793,11 @@ export async function getStoredOverviewData(hattrickUserId: string): Promise<Ove
   if (snapshots[DATA_KEYS.league]?.error) errors.push(snapshots[DATA_KEYS.league]!.error!);
 
   const matches = snapshots[DATA_KEYS.matches]?.data as RealMatch[] | null;
+  const fanExpectations = (snapshots[DATA_KEYS.overviewFanExpectations]?.data as Record<string, FanExpectation> | null) ?? {};
   if (matches) {
     data.recentMatches = matches
       .filter((m) => m.status === "FINISHED" && m.ourScore !== null && m.oppScore !== null)
-      .slice(0, 3)
+      .slice(0, OVERVIEW_MATCHES_COUNT)
       .map((m) => ({
         id: m.matchId,
         date: m.date,
@@ -1764,15 +1806,22 @@ export async function getStoredOverviewData(hattrickUserId: string): Promise<Ove
         ourScore: m.ourScore!,
         oppScore: m.oppScore!,
         result: m.ourScore! > m.oppScore! ? "win" : m.ourScore! < m.oppScore! ? "loss" : "draw",
+        // Уже посчитано на синхронизации (см. секцию overviewFanExpectations
+        // выше) — тот же matchId, честный нейтральный индикатор, если запись
+        // не нашлась (например снимок ещё старой формы, до этого изменения).
+        fanExpectation: fanExpectations[m.matchId] ?? NEUTRAL_FAN_EXPECTATION,
       }));
     data.upcomingMatches = matches
       .filter((m) => m.status === "UPCOMING")
-      .slice(0, 3)
+      .slice(0, OVERVIEW_MATCHES_COUNT)
       .map((m) => ({
         id: m.matchId,
         date: m.date,
         home: m.home,
         opponent: m.opponent,
+        // Предстоящий матч ещё не сыгран — зональных рейтингов физически не
+        // существует, всегда честный нейтральный индикатор (см. fanExpectation.ts).
+        fanExpectation: NEUTRAL_FAN_EXPECTATION,
         competition: isFriendlyMatchType(m.matchType) ? undefined : "Официальный матч",
       }));
   }

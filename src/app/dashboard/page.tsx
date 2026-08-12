@@ -144,6 +144,8 @@ export default async function DashboardPage({
                     ourTeamName={data.clubShortName ?? data.clubName ?? "Наша команда"}
                     recentMatches={data.recentMatches}
                     upcomingMatches={data.upcomingMatches}
+                    matrixTeams={data.resultsMatrixTeams}
+                    resultsMatrix={data.resultsMatrix}
                   />
                 )}
               </div>
