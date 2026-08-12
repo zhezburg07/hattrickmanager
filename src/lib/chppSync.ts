@@ -1832,7 +1832,8 @@ export async function getStoredOverviewData(hattrickUserId: string): Promise<Ove
         // Предстоящий матч ещё не сыгран — зональных рейтингов физически не
         // существует, всегда честный нейтральный индикатор (см. fanExpectation.ts).
         fanExpectation: NEUTRAL_FAN_EXPECTATION,
-        competition: isFriendlyMatchType(m.matchType) ? undefined : "Официальный матч",
+        // Эмодзи-кубок вместо текстовой подписи "Официальный матч" — по запросу.
+        competition: isFriendlyMatchType(m.matchType) ? undefined : "🏆",
       }));
   }
   if (snapshots[DATA_KEYS.matches]?.error) errors.push(snapshots[DATA_KEYS.matches]!.error!);

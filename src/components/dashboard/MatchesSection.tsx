@@ -124,7 +124,7 @@ export default function MatchesSection({
                   <span className={styles.matchDate}>{shortDate}</span>
                   <span className={styles.matchOpponent}>
                     {matchupLabel(m.home, ourTeamName, m.opponent)}
-                    {m.competition ? ` · ${m.competition}` : ""}
+                    {m.competition ? ` ${m.competition}` : ""}
                   </span>
                   <FanExpectationBadge expectation={m.fanExpectation} />
                 </div>

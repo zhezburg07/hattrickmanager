@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { MatchOutcome } from "@/data/dashboard";
 import { computeStandingsFromMatrix, type LeagueTableMode, type MatrixTeamMeta } from "@/data/leagueMatrix";
-import ResultsMatrix from "./ResultsMatrix";
 import styles from "./Overview.module.css";
 
 const outcomeIcon: Record<MatchOutcome, { symbol: string; cls: string; title: string }> = {
@@ -46,15 +45,6 @@ const modeTabs: { mode: LeagueTableMode; label: string }[] = [
   { mode: "home", label: "Домашние игры" },
   { mode: "away", label: "Гостевые игры" },
 ];
-
-// Включено обратно — сезон лиги начался, первые туры сыграны. Сама сетка
-// самостраховывается: рендерится только когда matrixTeams/resultsMatrix
-// реально заполнены (см. showResultsMatrix ниже и filledCells > 0 в
-// src/app/dashboard/page.tsx) — то есть безопасно держать этот флаг
-// включённым в любом случае, даже если leaguefixtures на каком-то аккаунте
-// вдруг снова вернёт 0 сыгранных матчей: тогда сетка просто не покажется,
-// как и раньше.
-const SHOW_RESULTS_GRID = true;
 
 export default function LeagueTable({
   rows,
@@ -184,13 +174,6 @@ export default function LeagueTable({
           </tbody>
         </table>
       </div>
-
-      {SHOW_RESULTS_GRID && showResultsMatrix && matrixTeams && resultsMatrix && (
-        <>
-          <div className={styles.matrixTitle}>Результаты между командами</div>
-          <ResultsMatrix teams={matrixTeams} matrix={resultsMatrix} />
-        </>
-      )}
     </div>
   );
 }
