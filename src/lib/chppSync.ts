@@ -120,6 +120,7 @@ import {
   getSyncStatus,
   type ChppSyncStatus,
 } from "./chppSyncDb";
+import { upsertKnownTournaments, getKnownTournaments } from "./knownTournamentsDb";
 
 // Ключи chpp_snapshots.data_key — по РАЗДЕЛУ ДАННЫХ, а не по странице: если
 // одни и те же сырые данные (например teamdetails) нужны нескольким вкладкам
@@ -1289,6 +1290,25 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
               : ""
           }.`,
         );
+
+        // Запоминаем каждый турнир из живого tournamentlist.xml НАВСЕГДА (см.
+        // src/lib/knownTournamentsDb.ts) — пока он ещё виден здесь, чтобы
+        // после того, как выпадет из этого списка (подтверждённое поведение
+        // CHPP — см. чат "Titans of 2007 Trophy"), у нас остался его
+        // tournamentId для прямого запроса tournamentdetails.xml/
+        // tournamentfixtures.xml. Сбой сохранения не должен ронять
+        // остальную синхронизацию — только диагностика.
+        try {
+          await upsertKnownTournaments(hattrickUserId, tournaments);
+          const known = await getKnownTournaments(hattrickUserId);
+          tournamentDiagnostics.push(
+            `Локальная память турниров (known_tournaments): всего когда-либо виденных — ${known.length}${
+              known.length > 0 ? ` (${known.map((k) => `"${k.name}" #${k.tournamentId}`).join(", ")})` : ""
+            }.`,
+          );
+        } catch (err) {
+          tournamentDiagnostics.push(`Локальная память турниров (known_tournaments): ошибка сохранения — ${errorMessage(err)}`);
+        }
         // ДИАГНОСТИКА (см. чат "tournamentlist.xml возвращает только 2
         // турнира, а на сайте их явно больше") — полный сырой дамп ответа
         // (все поля, не только уже используемые TournamentId/Name/
@@ -1351,27 +1371,35 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     }
     sectionErrors.push(`Hattrick Arena (диагностика — турниры): ${tournamentDiagnostics.join(" ")}`);
 
-    // ВРЕМЕННАЯ диагностика (см. чат "Кубок Поколений — новая зацепка про
-    // tournamentdetails.xml по известному tournamentId") — пользователь
-    // нашёл на реальной странице Hattrick Arena старый турнир "Кубок
-    // Поколений" (tournamentId=3116059), которого нет в tournamentlist.xml
-    // выше. Запрашиваем tournamentdetails.xml НАПРЯМУЮ по этому ID, в обход
-    // tournamentlist.xml — если CHPP всё же ответит реальными данными
-    // (несмотря на докстроку "только текущий сезон"), это открыло бы доступ
-    // к истории турниров, которых нет в основном списке.
+    // ПОДТВЕРЖДЕНО (см. чат "Titans of 2007 Trophy — tournamentdetails.xml
+    // реально работает по старому ID") — пользователь нашёл на реальной
+    // странице Hattrick Arena старый турнир ("Titans of 2007 Trophy",
+    // tournamentId=3116059), которого нет в tournamentlist.xml выше;
+    // прямой запрос tournamentdetails.xml по этому ID реально ответил
+    // данными (Name/TrophyType=98/NumberOfTeams=3064) — докстрока "только
+    // текущий сезон" снова оказалась неверной. TrophyType — НЕ признак
+    // победы: по докстроке независимого клиента это "тип награждаемого
+    // трофея, если он есть" (свойство самого турнира, не нашего результата
+    // в нём) — сигнал "выиграли ли МЫ" по-прежнему может дать только
+    // tournamentfixtures.xml (последний матч плей-офф, см.
+    // buildArenaTournamentSummaries), поэтому здесь же честно проверяем,
+    // работает ли ОН ТОЖЕ для этого старого ID, а не только tournamentdetails.
     try {
       const knownOldTournamentId = "3116059";
-      const detailsRaw = await requestChppXmlRaw(
-        "tournamentdetails",
-        { tournamentID: knownOldTournamentId, version: TOURNAMENT_DETAILS_VERSION },
-        tokens,
-      );
+      const [detailsRaw, fixturesRaw] = await Promise.all([
+        requestChppXmlRaw("tournamentdetails", { tournamentID: knownOldTournamentId, version: TOURNAMENT_DETAILS_VERSION }, tokens),
+        requestChppXmlRaw("tournamentfixtures", { tournamentID: knownOldTournamentId, version: TOURNAMENT_FIXTURES_VERSION }, tokens),
+      ]);
       sectionErrors.push(
-        `Hattrick Arena (диагностика — tournamentdetails.xml напрямую по известному старому tournamentId=${knownOldTournamentId} "Кубок Поколений"): HTTP ${detailsRaw.httpStatus}. ${debugTournamentDetailsFullResponse(detailsRaw.rawXml)}`,
+        `Hattrick Arena (диагностика — tournamentdetails.xml напрямую по известному старому tournamentId=${knownOldTournamentId} "Titans of 2007 Trophy"): HTTP ${detailsRaw.httpStatus}. ${debugTournamentDetailsFullResponse(detailsRaw.rawXml)}`,
+      );
+      const rawMatchTagCount = (fixturesRaw.rawXml.match(/<Match>/g) ?? []).length;
+      sectionErrors.push(
+        `Hattrick Arena (диагностика — tournamentfixtures.xml напрямую по тому же старому tournamentId=${knownOldTournamentId}): HTTP ${fixturesRaw.httpStatus}, тегов <Match> в тексте — ${rawMatchTagCount}. ${debugTournamentFixturesRawStructure(fixturesRaw.rawXml)}`,
       );
     } catch (err) {
       sectionErrors.push(
-        `Hattrick Arena (диагностика — tournamentdetails.xml напрямую по известному старому tournamentId): ошибка — ${errorMessage(err)}`,
+        `Hattrick Arena (диагностика — tournamentdetails/tournamentfixtures напрямую по известному старому tournamentId): ошибка — ${errorMessage(err)}`,
       );
     }
 
