@@ -47,12 +47,12 @@ import {
   filterRecentArenaMatches,
   parseTournamentListXml,
   parseTournamentFixturesXml,
+  parseTournamentDetailsXml,
   debugTournamentFixturesRawStructure,
   buildArenaTournamentSummaries,
   parseLadderListXml,
   debugLadderListRawStructure,
   debugTournamentListFullResponse,
-  debugTournamentDetailsFullResponse,
   TOURNAMENT_LIST_VERSION,
   TOURNAMENT_FIXTURES_VERSION,
   TOURNAMENT_DETAILS_VERSION,
@@ -61,6 +61,7 @@ import {
   type ArenaRecentMatch,
   type ArenaTournamentSummary,
   type ArenaLadderPosition,
+  type TournamentListEntry,
   type ArenaSyncResult,
 } from "./hattrickArena";
 import {
@@ -110,6 +111,17 @@ const ARENA_MATCHES_SHOWN = 10;
 // синхронизации считается "Индекс силы" (см. ниже), и для чтения в
 // getStoredOverviewData, чтобы они не могли разойтись между собой.
 const OVERVIEW_MATCHES_COUNT = 4;
+
+// Сколько ИСТОРИЧЕСКИХ турниров (уже выпавших из живого tournamentlist.xml,
+// см. known_tournaments) опрашивать НАПРЯМУЮ (tournamentdetails.xml +
+// tournamentfixtures.xml) за один проход синхронизации — см. чат "План:
+// историческая проверка трофеев по known_tournaments". Каждый стоит 2
+// дополнительных запроса, поэтому лимит защищает время синхронизации от
+// неограниченного роста по мере того, как у команды со временем копится всё
+// больше "выпавших" турниров — если известных турниров больше лимита,
+// остальные подхватятся на СЛЕДУЮЩИХ синхронизациях (см. срез .slice в
+// arenaResults ниже), а не потеряются навсегда.
+const MAX_HISTORICAL_TOURNAMENTS_PER_SYNC = 15;
 import {
   saveSnapshotSuccess,
   saveSnapshotError,
@@ -120,7 +132,7 @@ import {
   getSyncStatus,
   type ChppSyncStatus,
 } from "./chppSyncDb";
-import { upsertKnownTournaments, getKnownTournaments } from "./knownTournamentsDb";
+import { upsertKnownTournaments, getKnownTournaments, markTournamentsChecked } from "./knownTournamentsDb";
 
 // Ключи chpp_snapshots.data_key — по РАЗДЕЛУ ДАННЫХ, а не по странице: если
 // одни и те же сырые данные (например teamdetails) нужны нескольким вкладкам
@@ -1300,6 +1312,15 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         // остальную синхронизацию — только диагностика.
         try {
           await upsertKnownTournaments(hattrickUserId, tournaments);
+          // Разовая ручная "посадка" уже подтверждённого живым запросом
+          // старого турнира (см. чат "Titans of 2007 Trophy") — сам этот
+          // ID никогда не попадёт сюда через обычный путь (он не участвует
+          // в tournamentlist.xml прямо сейчас, весь смысл открытия был
+          // именно в том, что он оттуда выпал), поэтому без этой посадки
+          // находка так и осталась бы отдельной диагностикой, а не частью
+          // реальной проверки трофеев ниже. upsert идемпотентен — безопасно
+          // вызывать каждую синхронизацию.
+          await upsertKnownTournaments(hattrickUserId, [{ tournamentId: "3116059", name: "Titans of 2007 Trophy" }]);
           const known = await getKnownTournaments(hattrickUserId);
           tournamentDiagnostics.push(
             `Локальная память турниров (known_tournaments): всего когда-либо виденных — ${known.length}${
@@ -1359,9 +1380,98 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
           }
         });
 
-        tournamentSummaries = buildArenaTournamentSummaries(tournaments, matchesByTournamentId);
+        // ИСТОРИЧЕСКИЕ ТУРНИРЫ (см. чат "План: историческая проверка
+        // трофеев по known_tournaments") — ПОДТВЕРЖДЕНО живым запросом
+        // (см. чат "Titans of 2007 Trophy"): tournamentdetails.xml И
+        // tournamentfixtures.xml оба реально отвечают по tournamentId
+        // турнира, давно выпавшего из tournamentlist.xml (63 реальных
+        // матча для турнира из 2007 года), вопреки докстроке "только
+        // текущий сезон". Значит та же эвристика "последний матч плей-офф
+        // = победа/поражение" (buildArenaTournamentSummaries) применима и к
+        // истории, а не только к активным турнирам — берём из
+        // known_tournaments турниры, которых больше НЕТ в tournaments
+        // (текущем живом списке выше), и опрашиваем каждый напрямую.
+        // Ограничено MAX_HISTORICAL_TOURNAMENTS_PER_SYNC (2 запроса на
+        // турнир) — при большом накопленном числе исторических турниров
+        // обходим их порциями, по кругу (см. markTournamentsChecked и
+        // сортировку "непроверенные сначала" в getKnownTournaments), а не
+        // раздуваем время каждой синхронизации без ограничений.
+        const historicalEntries: TournamentListEntry[] = [];
+        const historicalMatchesByTournamentId = new Map<string, ArenaRecentMatch[]>();
+        try {
+          const activeIds = new Set(tournaments.map((t) => t.tournamentId));
+          const known = await getKnownTournaments(hattrickUserId);
+          const allStale = known.filter((k) => !activeIds.has(k.tournamentId));
+          const stale = allStale.slice(0, MAX_HISTORICAL_TOURNAMENTS_PER_SYNC);
+          tournamentDiagnostics.push(
+            `Исторические турниры: известно всего — ${known.length}, выпавших из живого списка — ${allStale.length}, обрабатываем за эту синхронизацию — ${stale.length}${
+              stale.length > 0 ? ` (${stale.map((s) => `"${s.name}" #${s.tournamentId}`).join(", ")})` : ""
+            }.`,
+          );
+
+          const historicalResults = await Promise.allSettled(
+            stale.map(async (k) => {
+              const [detailsRaw, fixturesRaw] = await Promise.all([
+                requestChppXmlRaw("tournamentdetails", { tournamentID: k.tournamentId, version: TOURNAMENT_DETAILS_VERSION }, tokens),
+                requestChppXmlRaw("tournamentfixtures", { tournamentID: k.tournamentId, version: TOURNAMENT_FIXTURES_VERSION }, tokens),
+              ]);
+              return { known: k, detailsRaw, fixturesRaw };
+            }),
+          );
+
+          historicalResults.forEach((result, i) => {
+            const k = stale[i];
+            if (result.status !== "fulfilled") {
+              tournamentDiagnostics.push(`Исторический турнир "${k.name}" #${k.tournamentId}: запрос не выполнился — ${errorMessage(result.reason)}`);
+              return;
+            }
+            const { detailsRaw, fixturesRaw } = result.value;
+
+            let entry: TournamentListEntry | null = null;
+            if (detailsRaw.httpStatus >= 200 && detailsRaw.httpStatus < 300) {
+              try {
+                entry = parseTournamentDetailsXml(detailsRaw.rawXml);
+              } catch (err) {
+                tournamentDiagnostics.push(`Исторический турнир "${k.name}" #${k.tournamentId}: ошибка разбора tournamentdetails — ${errorMessage(err)}`);
+              }
+            } else {
+              tournamentDiagnostics.push(`Исторический турнир "${k.name}" #${k.tournamentId}: tournamentdetails.xml — HTTP ${detailsRaw.httpStatus}.`);
+            }
+            // tournamentdetails не ответил/не разобрался — используем уже
+            // известное имя из known_tournaments, isOngoing=false (турнир
+            // выпал из живого списка, других сигналов у нас нет).
+            if (!entry) entry = { tournamentId: k.tournamentId, name: k.name, isOngoing: false };
+            historicalEntries.push(entry);
+
+            if (fixturesRaw.httpStatus < 200 || fixturesRaw.httpStatus >= 300) {
+              tournamentDiagnostics.push(`Исторический турнир "${entry.name}" #${k.tournamentId}: tournamentfixtures.xml — HTTP ${fixturesRaw.httpStatus}.`);
+              return;
+            }
+            try {
+              const matches = parseTournamentFixturesXml(fixturesRaw.rawXml, teamId, k.tournamentId, entry.name);
+              historicalMatchesByTournamentId.set(k.tournamentId, matches);
+              tournamentDiagnostics.push(`Исторический турнир "${entry.name}" #${k.tournamentId}: наших сыгранных матчей — ${matches.length}.`);
+            } catch (err) {
+              tournamentDiagnostics.push(`Исторический турнир "${entry.name}" #${k.tournamentId}: ошибка разбора tournamentfixtures — ${errorMessage(err)}`);
+            }
+          });
+
+          // Сдвигаем обработанные в конец очереди независимо от успеха —
+          // иначе постоянно недоступный ID навсегда застрял бы первым.
+          await markTournamentsChecked(hattrickUserId, stale.map((s) => s.tournamentId));
+        } catch (err) {
+          tournamentDiagnostics.push(`Исторические турниры: ошибка — ${errorMessage(err)}`);
+        }
+
+        // Активные (tournamentlist.xml) + исторические (known_tournaments,
+        // выпавшие из живого списка) — ОДИН общий проход эвристики "победа =
+        // последний матч плей-офф выигран", без дублирования логики между
+        // активными и историческими турнирами.
+        const combinedTournamentEntries = [...tournaments, ...historicalEntries];
+        const combinedMatchesByTournamentId = new Map([...matchesByTournamentId, ...historicalMatchesByTournamentId]);
+        tournamentSummaries = buildArenaTournamentSummaries(combinedTournamentEntries, combinedMatchesByTournamentId);
         tournamentDiagnostics.push(
-          `Трофеи/текущие турниры (эвристика, не официальный флаг CHPP): ${tournamentSummaries
+          `Трофеи/текущие турниры (эвристика, не официальный флаг CHPP; включая исторические): ${tournamentSummaries
             .map((s) => `"${s.name}" — ${s.isOngoing ? "идёт сейчас" : s.wonTrophy ? "выигран (предположительно)" : "завершён, не выигран/не определено"}`)
             .join("; ") || "(турниров нет)"}.`,
         );
@@ -1370,38 +1480,6 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       tournamentDiagnostics.push(`tournamentlist.xml: ошибка запроса — ${errorMessage(err)}`);
     }
     sectionErrors.push(`Hattrick Arena (диагностика — турниры): ${tournamentDiagnostics.join(" ")}`);
-
-    // ПОДТВЕРЖДЕНО (см. чат "Titans of 2007 Trophy — tournamentdetails.xml
-    // реально работает по старому ID") — пользователь нашёл на реальной
-    // странице Hattrick Arena старый турнир ("Titans of 2007 Trophy",
-    // tournamentId=3116059), которого нет в tournamentlist.xml выше;
-    // прямой запрос tournamentdetails.xml по этому ID реально ответил
-    // данными (Name/TrophyType=98/NumberOfTeams=3064) — докстрока "только
-    // текущий сезон" снова оказалась неверной. TrophyType — НЕ признак
-    // победы: по докстроке независимого клиента это "тип награждаемого
-    // трофея, если он есть" (свойство самого турнира, не нашего результата
-    // в нём) — сигнал "выиграли ли МЫ" по-прежнему может дать только
-    // tournamentfixtures.xml (последний матч плей-офф, см.
-    // buildArenaTournamentSummaries), поэтому здесь же честно проверяем,
-    // работает ли ОН ТОЖЕ для этого старого ID, а не только tournamentdetails.
-    try {
-      const knownOldTournamentId = "3116059";
-      const [detailsRaw, fixturesRaw] = await Promise.all([
-        requestChppXmlRaw("tournamentdetails", { tournamentID: knownOldTournamentId, version: TOURNAMENT_DETAILS_VERSION }, tokens),
-        requestChppXmlRaw("tournamentfixtures", { tournamentID: knownOldTournamentId, version: TOURNAMENT_FIXTURES_VERSION }, tokens),
-      ]);
-      sectionErrors.push(
-        `Hattrick Arena (диагностика — tournamentdetails.xml напрямую по известному старому tournamentId=${knownOldTournamentId} "Titans of 2007 Trophy"): HTTP ${detailsRaw.httpStatus}. ${debugTournamentDetailsFullResponse(detailsRaw.rawXml)}`,
-      );
-      const rawMatchTagCount = (fixturesRaw.rawXml.match(/<Match>/g) ?? []).length;
-      sectionErrors.push(
-        `Hattrick Arena (диагностика — tournamentfixtures.xml напрямую по тому же старому tournamentId=${knownOldTournamentId}): HTTP ${fixturesRaw.httpStatus}, тегов <Match> в тексте — ${rawMatchTagCount}. ${debugTournamentFixturesRawStructure(fixturesRaw.rawXml)}`,
-      );
-    } catch (err) {
-      sectionErrors.push(
-        `Hattrick Arena (диагностика — tournamentdetails/tournamentfixtures напрямую по известному старому tournamentId): ошибка — ${errorMessage(err)}`,
-      );
-    }
 
     // ПЕРЕСМОТРЕНО (см. чат "Ещё одна честная попытка найти данные по
     // лестницам") — свежая проверка докстроки независимого клиента

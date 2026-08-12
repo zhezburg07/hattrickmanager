@@ -33,9 +33,14 @@ async function ensureTable(): Promise<void> {
       name TEXT NOT NULL,
       first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_checked_at TIMESTAMPTZ,
       PRIMARY KEY (hattrick_user_id, tournament_id)
     )
   `;
+  // На случай, если таблица уже была создана предыдущей версией этого файла
+  // (до появления last_checked_at) — тот же приём миграции, что уже
+  // используется в hattrickTokensDb.ts.
+  await db`ALTER TABLE known_tournaments ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ`;
   tableEnsured = true;
 }
 
@@ -44,13 +49,20 @@ export interface KnownTournament {
   name: string;
   firstSeenAt: Date;
   lastSeenAt: Date;
+  // Когда последний раз ходили за tournamentdetails.xml/tournamentfixtures.xml
+  // по этому ID ради проверки трофея (см. markTournamentsChecked ниже) —
+  // null, если ни разу. Используется только для порядка выборки
+  // (getKnownTournaments сортирует "непроверенные и давно не проверенные
+  // сначала"), само значение сейчас нигде не читается.
+  lastCheckedAt: Date | null;
 }
 
 // Вызывается на каждой синхронизации сразу после успешного tournamentlist.xml
 // (см. src/lib/chppSync.ts) — сохраняет/обновляет каждый турнир, который
 // команда прямо сейчас видит в своём списке. name обновляется на случай,
 // если Hattrick когда-нибудь его поменяет; first_seen_at — только при первой
-// вставке (ON CONFLICT его не трогает).
+// вставке (ON CONFLICT его не трогает), last_checked_at тоже не трогается
+// (это отдельный процесс — см. markTournamentsChecked).
 export async function upsertKnownTournaments(
   hattrickUserId: string,
   tournaments: { tournamentId: string; name: string }[],
@@ -71,23 +83,51 @@ export async function upsertKnownTournaments(
 }
 
 // Полный список турниров, когда-либо виденных у этой команды — включая те,
-// что уже выпали из живого tournamentlist.xml. Пока используется только для
-// диагностики (см. chppSync.ts); в будущем — источник ID для похода за
-// историческими трофеями через tournamentdetails.xml/tournamentfixtures.xml.
+// что уже выпали из живого tournamentlist.xml. Порядок — "непроверенные и
+// давно не проверенные на трофей сначала" (last_checked_at ASC NULLS
+// FIRST), чтобы при обходе ограниченными пачками (MAX_HISTORICAL_
+// TOURNAMENTS_PER_SYNC в chppSync.ts) со временем проверялись ВСЕ
+// известные турниры по кругу, а не одни и те же первые N при каждой
+// синхронизации.
 export async function getKnownTournaments(hattrickUserId: string): Promise<KnownTournament[]> {
   await ensureTable();
   const db = sql();
   const rows = (await db`
-    SELECT tournament_id, name, first_seen_at, last_seen_at
+    SELECT tournament_id, name, first_seen_at, last_seen_at, last_checked_at
     FROM known_tournaments
     WHERE hattrick_user_id = ${hattrickUserId}
-    ORDER BY last_seen_at DESC
-  `) as { tournament_id: string; name: string; first_seen_at: Date; last_seen_at: Date }[];
+    ORDER BY last_checked_at ASC NULLS FIRST, first_seen_at ASC
+  `) as {
+    tournament_id: string;
+    name: string;
+    first_seen_at: Date;
+    last_seen_at: Date;
+    last_checked_at: Date | null;
+  }[];
 
   return rows.map((r) => ({
     tournamentId: r.tournament_id,
     name: r.name,
     firstSeenAt: r.first_seen_at,
     lastSeenAt: r.last_seen_at,
+    lastCheckedAt: r.last_checked_at,
   }));
+}
+
+// Отмечает, что мы только что сходили за tournamentdetails.xml/
+// tournamentfixtures.xml по этим ID (см. "исторические турниры" в
+// chppSync.ts) — сдвигает их в конец очереди getKnownTournaments, чтобы
+// следующая синхронизация проверила ДРУГИЕ известные турниры, а не эти же
+// самые. Вызывается независимо от того, удался запрос или нет — иначе
+// постоянно недоступный ID навсегда застрял бы в начале очереди.
+export async function markTournamentsChecked(hattrickUserId: string, tournamentIds: string[]): Promise<void> {
+  if (tournamentIds.length === 0) return;
+  await ensureTable();
+  const db = sql();
+  for (const tournamentId of tournamentIds) {
+    await db`
+      UPDATE known_tournaments SET last_checked_at = now()
+      WHERE hattrick_user_id = ${hattrickUserId} AND tournament_id = ${tournamentId}
+    `;
+  }
 }

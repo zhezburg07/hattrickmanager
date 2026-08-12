@@ -304,6 +304,32 @@ export function parseTournamentListXml(xml: string): TournamentListEntry[] {
   }));
 }
 
+// ПОДТВЕРЖДЕНО (см. чат "Titans of 2007 Trophy — tournamentdetails.xml
+// реально работает по старому ID") — вопреки докстроке "только текущий
+// сезон", tournamentdetails.xml реально отвечает и по tournamentId турнира,
+// давно выпавшего из tournamentlist.xml. Разбор ОДНОГО турнира (не списка,
+// как parseTournamentListXml) — та же форма TournamentListEntry, чтобы
+// исторические и активные турниры можно было слить в один общий список и
+// один проход buildArenaTournamentSummaries (см. chppSync.ts,
+// "исторические турниры" из known_tournaments). isOngoing — тот же
+// hasUpcomingMatchRound, что и у активных: если у исторического турнира
+// вдруг всё же найдётся будущий раунд, это будет честно отражено, а не
+// вслепую проставлено false только потому, что он выпал из живого списка.
+export function parseTournamentDetailsXml(xml: string): TournamentListEntry | null {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData;
+  assertNoChppError(root, "tournamentdetails");
+
+  const t = root?.Tournament as Record<string, unknown> | undefined;
+  if (!t) return null;
+  return {
+    tournamentId: String(t.TournamentId ?? t.TournamentID ?? ""),
+    name: String(t.Name ?? `Турнир #${t.TournamentId ?? t.TournamentID ?? "?"}`),
+    isOngoing: hasUpcomingMatchRound(t.NextMatchRoundDate),
+  };
+}
+
 // ДИАГНОСТИКА (см. чат "tournamentlist.xml возвращает только 2 турнира, а
 // на сайте их явно больше") — дампит АБСОЛЮТНО ВСЕ поля ответа, не только
 // сам массив турниров: скалярные поля прямо на HattrickData (на случай,
