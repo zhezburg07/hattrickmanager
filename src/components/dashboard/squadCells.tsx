@@ -313,12 +313,20 @@ function ThumbsUpIcon({ title }: { title: string }) {
 }
 
 // Статус игрока — "в составе"/"в основе" (здоров, ничего особенного)
-// показываем иконкой вместо текста; "в запасе" — текстовой меткой.
-// "Травмирован" текстом не показываем вовсе — статус травмы виден по
-// значку InjuryIcon ниже (рендерится отдельно, по injuryWeeksRemaining).
-function StatusIndicator({ status }: { status: PlayerStatus }) {
+// показываем иконкой вместо текста, с общей подсказкой "Готов" (одна и та
+// же иконка для обоих статусов — незачем показывать разный текст); "в
+// запасе" — текстовой меткой. "Травмирован" текстом не показываем вовсе —
+// статус травмы виден по значку InjuryIcon ниже. isInjured передаётся
+// отдельно от status: игрок может числиться "в составе"/"в основе" и при
+// этом иметь травму (injuryWeeksRemaining задан) — раньше в этом случае
+// показывались ОБА значка (👍 и травма) одновременно, теперь травма
+// полностью вытесняет 👍, как единственный актуальный статус.
+function StatusIndicator({ status, isInjured }: { status: PlayerStatus; isInjured: boolean }) {
+  if (isInjured) {
+    return null;
+  }
   if (status === "starting" || status === "squad") {
-    return <ThumbsUpIcon title={statusLabel[status]} />;
+    return <ThumbsUpIcon title="Готов" />;
   }
   if (status === "injured") {
     return null;
@@ -326,16 +334,17 @@ function StatusIndicator({ status }: { status: PlayerStatus }) {
   return <StatusTag status={status} />;
 }
 
-// Компактный ряд значков в столбце "Статус": базовый статус (👍/в запасе) +
-// специализация (если есть) + значок травмы по сроку восстановления +
-// карточки (жёлтые с числом предупреждений в сезоне, красная — при
-// дисквалификации).
+// Компактный ряд значков в столбце "Статус": базовый статус (👍/в запасе,
+// либо значок травмы вместо 👍, если игрок травмирован) + специализация
+// (если есть) + значок травмы по сроку восстановления + карточки (жёлтые с
+// числом предупреждений в сезоне, красная — при дисквалификации).
 export function StatusRow({ player }: { player: SquadPlayer }) {
+  const isInjured = player.injuryWeeksRemaining !== undefined;
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "nowrap" }}>
-      <StatusIndicator status={player.status} />
+      <StatusIndicator status={player.status} isInjured={isInjured} />
       {player.specialty && <SpecialtyIcon specialty={player.specialty} label={specialtyLabel[player.specialty]} />}
-      {player.injuryWeeksRemaining !== undefined && <InjuryIcon weeksRemaining={player.injuryWeeksRemaining} />}
+      {isInjured && <InjuryIcon weeksRemaining={player.injuryWeeksRemaining as number} />}
       {player.isSuspended && <CardIcon color="red" />}
       {!player.isSuspended && player.yellowCards !== undefined && player.yellowCards > 0 && (
         <CardIcon color="yellow" count={player.yellowCards} />
