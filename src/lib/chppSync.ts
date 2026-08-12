@@ -17,7 +17,7 @@ import { parsePlayersXml, type RealSquadSummary } from "./players";
 import { parsePlayersDetailedXml, PLAYERS_XML_VERSION } from "./squadPlayers";
 import { parseWorldLeagueInfoXml, type WorldLeagueInfo, type HomeCountryInfo } from "./worldCurrency";
 import { getCountryIdLookup } from "./worldCountries";
-import { parseAchievementsXml, ACHIEVEMENTS_VERSION, type AchievementsResult } from "./achievements";
+import { parseAchievementsXml, debugAchievementsFullResponse, ACHIEVEMENTS_VERSION, type AchievementsResult } from "./achievements";
 import {
   parseMatchLineupRatings,
   RECENT_MATCH_COUNT,
@@ -646,6 +646,11 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   try {
     assertOkStatus(raw.achievements);
     const achievements: AchievementsResult = parseAchievementsXml(raw.achievements.rawXml);
+    // ВРЕМЕННАЯ диагностика (см. чат "Ещё раз попробовать найти данные
+    // трофеев Арены до того как сдаваться") — ищем среди достижений
+    // менеджера скрытый сигнал о победе в HTO-турнире (ID турнира в сыром
+    // поле, не только уже разобранные Title/Text/CategoryID).
+    sectionErrors.push(`Достижения (диагностика — поиск трофеев турниров): ${debugAchievementsFullResponse(raw.achievements.rawXml)}`);
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.achievements, achievements);
     anySucceeded = true;
   } catch (err) {
