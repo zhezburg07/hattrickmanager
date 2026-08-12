@@ -91,6 +91,14 @@ import {
 // другой причине. С запасом на рост истории команды за пределы уже
 // известных 28 страниц (322+356=678 сделок на момент написания).
 const MAX_EXTRA_TRANSFER_PAGE_FETCHES = 100;
+
+// Сколько последних сыгранных матчей Арены (лестница + все турниры вместе)
+// показывать на закладке "Арена" (см. чат "Матчи Арены: слишком мало
+// показывается") — единая константа для обоих мест, где применяется лимит
+// (filterRecentArenaMatches для лестницы и итоговая обрезка ниже), чтобы
+// они не могли разойтись между собой. Если реально доступных матчей
+// меньше — показываются все доступные, лимит не досоздаёт недостающие.
+const ARENA_MATCHES_SHOWN = 10;
 import {
   saveSnapshotSuccess,
   saveSnapshotError,
@@ -1156,7 +1164,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   {
     const scanSource = mergedSeasonMatches ?? parsedMatches ?? [];
     const finishedMatches = scanSource.filter((m) => m.status === "FINISHED");
-    const ladderResults = filterRecentArenaMatches(scanSource, 10);
+    const ladderResults = filterRecentArenaMatches(scanSource, ARENA_MATCHES_SHOWN);
     sectionErrors.push(
       `Hattrick Arena (диагностика — лестница): просканировано сыгранных матчей ${finishedMatches.length}, из них с MatchType=${LADDER_MATCH_TYPE} (подтверждённо ненадёжный признак — см. ниже) — ${ladderResults.length}.`,
     );
@@ -1305,7 +1313,19 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       sectionErrors.push(`Hattrick Arena (диагностика — ladderlist.xml): ошибка — ${errorMessage(err)}`);
     }
 
-    const arenaMatches = [...ladderResults, ...tournamentResults].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
+    // ДИАГНОСТИКА (см. чат "Матчи Арены: слишком мало показывается") —
+    // явный подсчёт ДО и ПОСЛЕ обрезки лимитом, чтобы видеть на "Обновления"
+    // честно, сколько реально доступно матчей Арены во всех источниках
+    // вместе (лестница + все турниры), и что лимит (см. ARENA_MATCHES_SHOWN
+    // ниже) действительно не режет данные раньше времени — если доступно
+    // меньше лимита, показываются все доступные, без искусственного урезания.
+    const allArenaMatches = [...ladderResults, ...tournamentResults].sort((a, b) => b.date.localeCompare(a.date));
+    const arenaMatches = allArenaMatches.slice(0, ARENA_MATCHES_SHOWN);
+    sectionErrors.push(
+      `Hattrick Arena (диагностика — итоговый список матчей): всего доступно (лестница + турниры) — ${allArenaMatches.length}, лимит показа — ${ARENA_MATCHES_SHOWN}, сохранено в снимок — ${arenaMatches.length}${
+        allArenaMatches.length > ARENA_MATCHES_SHOWN ? " (обрезано лимитом)" : " (лимит не сработал — показаны все доступные)"
+      }.`,
+    );
     const arenaResults: ArenaSyncResult = { matches: arenaMatches, tournaments: tournamentSummaries, ladders };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arenaResults, arenaResults);
   }
