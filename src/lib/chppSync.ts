@@ -50,12 +50,10 @@ import {
   buildArenaTournamentSummaries,
   parseLadderListXml,
   debugLadderListRawStructure,
-  debugLadderDetailsFullResponse,
   debugTournamentListFullResponse,
   TOURNAMENT_LIST_VERSION,
   TOURNAMENT_FIXTURES_VERSION,
   LADDER_LIST_VERSION,
-  LADDER_DETAILS_VERSION,
   type ArenaChallengesResult,
   type ArenaRecentMatch,
   type ArenaTournamentSummary,
@@ -1305,9 +1303,22 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     // (chpp/file_ladderlist.go) опровергла прежний вывод: "the list of
     // ladders that a TEAM currently takes part in", а не общий список всех
     // лестниц игры (тот же класс сюрприза, что уже был с tournamentlist.xml
-    // — см. подробный комментарий в hattrickArena.ts). НЕ проверено на
-    // живых данных — полная диагностика (HTTP-статус + сырая структура
-    // ответа) пишется всегда, а не только при 0 результатах.
+    // — см. подробный комментарий в hattrickArena.ts). Полная диагностика
+    // (HTTP-статус + сырая структура ответа) пишется всегда, а не только
+    // при 0 результатах.
+    //
+    // ladderdetails.xml по КАЖДОМУ найденному LadderId был отдельно
+    // проверен живым запросом (см. чат "Ещё одна честная проверка
+    // ladderdetails.xml") — ПОДТВЕРЖДЕНО ОКОНЧАТЕЛЬНО, расследование
+    // закрыто: для всех 3 лестниц пользователя (Kazakhstan/Все/Ulytau)
+    // ladderdetails.xml отдаёт только таблицу позиций команд (TeamId/
+    // TeamName/Position/Wins/Lost), Matches.Match везде пустой (0
+    // элементов) — список отдельных сыгранных матчей лестницы (соперник/
+    // счёт/дата) через CHPP действительно недоступен ни в каком виде.
+    // Запрос ladderdetails.xml больше не делается на каждой синхронизации
+    // (3 лишних запроса без какой-либо пользы для уже закрытого вопроса) —
+    // см. src/components/dashboard/HattrickArenaSection.tsx для честной
+    // формулировки в интерфейсе.
     let ladders: ArenaLadderPosition[] = [];
     try {
       const ladderRaw = await requestChppXmlRaw("ladderlist", { version: LADDER_LIST_VERSION }, tokens);
@@ -1324,33 +1335,6 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
               : ""
           }.`,
         );
-
-        // ЕЩЁ ОДНА ЧЕСТНАЯ ПРОВЕРКА (см. чат "Ещё одна честная проверка
-        // ladderdetails.xml") — раньше решение не запрашивать ladderdetails.xml
-        // вообще опиралось только на схему независимого клиента
-        // (LadderDetailsTeam: только Position/Wins/Lost), без единого
-        // реального запроса. Теперь, когда есть подтверждённый LadderId из
-        // ladderlist.xml выше, запрашиваем ladderdetails.xml по КАЖДОМУ
-        // найденному LadderId и дампим ПОЛНЫЙ сырой ответ — вдруг там всё же
-        // найдётся история наших сыгранных матчей (соперник/счёт/дата), а не
-        // только таблица позиций.
-        for (const l of ladders) {
-          try {
-            const detailsRaw = await requestChppXmlRaw(
-              "ladderdetails",
-              { ladderID: l.ladderId, version: LADDER_DETAILS_VERSION },
-              tokens,
-            );
-            const detailsDump = debugLadderDetailsFullResponse(detailsRaw.rawXml);
-            sectionErrors.push(
-              `Hattrick Arena (диагностика — ladderdetails.xml для LadderId=${l.ladderId} "${l.name}"): HTTP ${detailsRaw.httpStatus}. ${detailsDump}`,
-            );
-          } catch (err) {
-            sectionErrors.push(
-              `Hattrick Arena (диагностика — ladderdetails.xml для LadderId=${l.ladderId}): ошибка — ${errorMessage(err)}`,
-            );
-          }
-        }
       }
     } catch (err) {
       sectionErrors.push(`Hattrick Arena (диагностика — ladderlist.xml): ошибка — ${errorMessage(err)}`);
