@@ -93,6 +93,63 @@ export function debugLadderListRawStructure(xml: string): string {
     .join(" | ");
   return `Ключи HattrickData: [${rootKeys.join(", ")}]. ${summary}`;
 }
+
+// ladderdetails.xml (v1.0) — по докстроке независимого клиента и его
+// struct-полям (LadderDetailsTeam: только Position/Wins/Lost/WinsInARow/
+// LostInARow) это ТОЛЬКО общая таблица лестницы целиком, без списка
+// отдельных сыгранных матчей. НО это предположение никогда не проверялось
+// на реальном подтверждённом LadderId (см. чат "Ещё одна честная проверка
+// ladderdetails.xml") — раньше решение не запрашивать его вообще
+// опиралось только на документацию/схему клиента, а не на живой ответ.
+// Параметр запроса ("ladderID") НЕ подтверждён официальной документацией
+// (недоступна из песочницы) — по аналогии с cupID/matchID/tournamentID в
+// этом проекте.
+export const LADDER_DETAILS_VERSION = "1.0";
+
+// ДИАГНОСТИКА — дампит АБСОЛЮТНО ВСЕ поля ответа (не только уже
+// предполагаемые Position/Wins/Lost), включая полный дамп каждой записи
+// внутри Teams (или что бы ни называлось), на случай, если там всё же
+// найдётся дата/соперник/счёт отдельного матча, а не только текущая
+// позиция в таблице — тот же приём, что уже применялся для
+// tournamentlist.xml/tournamentfixtures.xml/ladderlist.xml.
+export function debugLadderDetailsFullResponse(xml: string): string {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData as Record<string, unknown> | undefined;
+  if (!root) return "root (HattrickData) не найден — либо другой корневой тег, либо XML не разобрался";
+
+  const rootKeys = Object.keys(root);
+  const scalarRoot = Object.entries(root).filter(([k, v]) => k !== "Ladder" && (typeof v !== "object" || v === null));
+
+  const candidates: { path: string; count: number; sample: string }[] = [];
+  const record = (path: string, value: unknown) => {
+    const arr = asArray(value);
+    candidates.push({ path, count: arr.length, sample: arr.length > 0 ? JSON.stringify(arr[0]).slice(0, 500) : "" });
+  };
+
+  const ladder = root.Ladder as Record<string, unknown> | undefined;
+  const ladderKeys = ladder ? Object.keys(ladder) : [];
+  const scalarLadder = ladder
+    ? Object.entries(ladder).filter(([k, v]) => typeof v !== "object" || v === null)
+    : [];
+
+  record("root.Ladder.Teams.Team", (ladder?.Teams as Record<string, unknown> | undefined)?.Team);
+  record("root.Ladder.Team", ladder?.Team);
+  record("root.Teams.Team", (root.Teams as Record<string, unknown> | undefined)?.Team);
+  record("root.Ladder.Matches.Match", (ladder?.Matches as Record<string, unknown> | undefined)?.Match);
+  record("root.Matches.Match", (root.Matches as Record<string, unknown> | undefined)?.Match);
+
+  const summary = candidates
+    .map((c) => `${c.path}: ${c.count} эл.${c.sample ? ` первый=${c.sample}` : ""}`)
+    .join(" | ");
+
+  return (
+    `Ключи HattrickData: [${rootKeys.join(", ")}]. Скалярные поля HattrickData: ${scalarRoot.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ") || "(нет)"}. ` +
+    `Ключи <Ladder>: [${ladderKeys.join(", ")}]. Скалярные поля <Ladder>: ${scalarLadder.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ") || "(нет)"}. ` +
+    `${summary}`
+  );
+}
+
 export interface ArenaChallengeEntry {
   opponentTeamId: string;
   opponentTeamName: string;

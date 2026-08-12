@@ -50,10 +50,12 @@ import {
   buildArenaTournamentSummaries,
   parseLadderListXml,
   debugLadderListRawStructure,
+  debugLadderDetailsFullResponse,
   debugTournamentListFullResponse,
   TOURNAMENT_LIST_VERSION,
   TOURNAMENT_FIXTURES_VERSION,
   LADDER_LIST_VERSION,
+  LADDER_DETAILS_VERSION,
   type ArenaChallengesResult,
   type ArenaRecentMatch,
   type ArenaTournamentSummary,
@@ -1322,6 +1324,33 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
               : ""
           }.`,
         );
+
+        // ЕЩЁ ОДНА ЧЕСТНАЯ ПРОВЕРКА (см. чат "Ещё одна честная проверка
+        // ladderdetails.xml") — раньше решение не запрашивать ladderdetails.xml
+        // вообще опиралось только на схему независимого клиента
+        // (LadderDetailsTeam: только Position/Wins/Lost), без единого
+        // реального запроса. Теперь, когда есть подтверждённый LadderId из
+        // ladderlist.xml выше, запрашиваем ladderdetails.xml по КАЖДОМУ
+        // найденному LadderId и дампим ПОЛНЫЙ сырой ответ — вдруг там всё же
+        // найдётся история наших сыгранных матчей (соперник/счёт/дата), а не
+        // только таблица позиций.
+        for (const l of ladders) {
+          try {
+            const detailsRaw = await requestChppXmlRaw(
+              "ladderdetails",
+              { ladderID: l.ladderId, version: LADDER_DETAILS_VERSION },
+              tokens,
+            );
+            const detailsDump = debugLadderDetailsFullResponse(detailsRaw.rawXml);
+            sectionErrors.push(
+              `Hattrick Arena (диагностика — ladderdetails.xml для LadderId=${l.ladderId} "${l.name}"): HTTP ${detailsRaw.httpStatus}. ${detailsDump}`,
+            );
+          } catch (err) {
+            sectionErrors.push(
+              `Hattrick Arena (диагностика — ladderdetails.xml для LadderId=${l.ladderId}): ошибка — ${errorMessage(err)}`,
+            );
+          }
+        }
       }
     } catch (err) {
       sectionErrors.push(`Hattrick Arena (диагностика — ladderlist.xml): ошибка — ${errorMessage(err)}`);
