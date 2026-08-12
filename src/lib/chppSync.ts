@@ -50,6 +50,7 @@ import {
   buildArenaTournamentSummaries,
   parseLadderListXml,
   debugLadderListRawStructure,
+  debugTournamentListFullResponse,
   TOURNAMENT_LIST_VERSION,
   TOURNAMENT_FIXTURES_VERSION,
   LADDER_LIST_VERSION,
@@ -1230,6 +1231,14 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
               : ""
           }.`,
         );
+        // ДИАГНОСТИКА (см. чат "tournamentlist.xml возвращает только 2
+        // турнира, а на сайте их явно больше") — полный сырой дамп ответа
+        // (все поля, не только уже используемые TournamentId/Name/
+        // IsMatchesOngoing) — проверить пагинацию (PageIndex/Pages/
+        // TotalCount вне или внутри <Tournaments>) и увидеть остальные поля
+        // турнира (Type/TrophyType/Creator и т.п.), которые могли бы
+        // подсказать, почему часть турниров не попадает в этот список.
+        tournamentDiagnostics.push(`tournamentlist.xml (полный сырой дамп): ${debugTournamentListFullResponse(listRaw.rawXml)}`);
 
         const fixturesResults = await Promise.allSettled(
           tournaments.map((t) =>

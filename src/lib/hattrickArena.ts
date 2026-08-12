@@ -216,13 +216,42 @@ export function filterRecentArenaMatches(matches: RealMatch[], limit = 10): Aren
 }
 
 // ---------- tournamentlist.xml / tournamentfixtures.xml (см. чат
-// "Отличная новость по Турнирам") — подтверждённый рабочий источник ----------
+// "Отличная новость по Турнирам", уточнено в чате "tournamentlist.xml
+// возвращает только 2 турнира, а на сайте их явно больше") ----------
 //
 // tournamentlist.xml (v1.0) — список турниров ИМЕННО нашей команды.
 // Подтверждено на реальных данных: 2 турнира ("Champions League (Small
 // club)" TournamentId=6994463, "Kazakhstan Cup - Liga: III"
 // TournamentId=5484335). Не требует параметров, кроме версии — сам User
 // определяется по OAuth-токену, как и остальные "мои данные" файлы.
+//
+// НЕПОЛНОЕ ПОКРЫТИЕ (подтверждено пользователем): на реальном hattrick.org
+// видно ЗНАЧИТЕЛЬНО больше матчей "Турнир" с соперниками, которых нет ни в
+// одном из этих 2 турниров (например, POCCOBXO3 Aktobe, FC Begonia 87
+// Bonn, Novo Deportivo Kuzziddh). Проверено по докстроке независимого
+// клиента (chpp/file_tournamentlist.go) построчно:
+//   1) Пагинация — структура TournamentListXML НЕ содержит PageIndex/Pages/
+//      TotalCount ни в каком виде (в отличие от TeamTransferHistory в
+//      transfersteam.xml, где такие поля явно смоделированы клиентом) —
+//      судя по самой структуре ответа, пагинации здесь, похоже, не
+//      предусмотрено вовсе. НЕ проверено вживую — см.
+//      debugTournamentListFullResponse ниже, которая дампит АБСОЛЮТНО ВСЕ
+//      поля ответа (не только сам список турниров), на случай скрытого
+//      поля, которое клиент не смоделировал.
+//   2) Ограничивающий параметр запроса — не подтверждается и не
+//      опровергается: клиент документирует только ФОРМУ ОТВЕТА, не
+//      параметры запроса, поэтому и сезон/статус-фильтр остаются
+//      неизвестными из этого источника в принципе.
+//   3) Наиболее вероятное объяснение — структурное: Tournament описан
+//      докстрокой клиента как "a single HTO tournament" (см. поле Creator:
+//      UserID/LoginName — "the user who CREATED the tournament"), то есть
+//      это именно ПОЛЬЗОВАТЕЛЬСКИЕ, вручную организованные турниры. Имена
+//      соперников из примеров пользователя (не похожи на организованные
+//      клубы лиги) наводят на мысль, что это ОТДЕЛЬНАЯ, автоматически
+//      генерируемая Hattrick система матчей внутри Arena — тот же класс
+//      ограничения, что уже подтверждён для Ladder (нет команд-специфичного
+//      источника в CHPP вообще). НЕ подтверждено окончательно — решение
+//      по этому пункту зависит от следующей живой диагностики.
 export const TOURNAMENT_LIST_VERSION = "1.0";
 
 export interface TournamentListEntry {
@@ -248,6 +277,41 @@ export function parseTournamentListXml(xml: string): TournamentListEntry[] {
     name: String(t.Name ?? `Турнир #${t.TournamentId ?? t.TournamentID ?? "?"}`),
     isOngoing: String(t.IsMatchesOngoing ?? "").toLowerCase() === "true",
   }));
+}
+
+// ДИАГНОСТИКА (см. чат "tournamentlist.xml возвращает только 2 турнира, а
+// на сайте их явно больше") — дампит АБСОЛЮТНО ВСЕ поля ответа, не только
+// сам массив турниров: скалярные поля прямо на HattrickData (на случай,
+// если счётчик страниц лежит ТАМ, а не внутри <Tournaments>, как было с
+// PageIndex/Pages в transfersteam.xml) и скалярные поля самого контейнера
+// <Tournaments> (кроме повторяющегося <Tournament>), плюс ПОЛНЫЙ дамп
+// каждого найденного турнира со всеми его полями как есть (Type/
+// TrophyType/NumberOfTeams/Creator и т.д. — сейчас используются только
+// TournamentId/Name/IsMatchesOngoing, остальные поля никогда не
+// проверялись на то, дают ли они сигнал "это не HTO-турнир").
+export function debugTournamentListFullResponse(xml: string): string {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData as Record<string, unknown> | undefined;
+  if (!root) return "root (HattrickData) не найден — либо другой корневой тег, либо XML не разобрался";
+
+  const rootKeys = Object.keys(root);
+  const scalarRoot = Object.entries(root).filter(([, v]) => typeof v !== "object" || v === null);
+  const tournamentsContainer = root.Tournaments as Record<string, unknown> | undefined;
+  const containerKeys = tournamentsContainer ? Object.keys(tournamentsContainer) : [];
+  const scalarContainer = tournamentsContainer
+    ? Object.entries(tournamentsContainer).filter(([k, v]) => k !== "Tournament" && (typeof v !== "object" || v === null))
+    : [];
+  const tournaments = asArray(tournamentsContainer?.Tournament);
+  const fullDump = tournaments.map((t) => JSON.stringify(t)).join(" || ");
+
+  return (
+    `Ключи HattrickData: [${rootKeys.join(", ")}]. ` +
+    `Скалярные поля HattrickData (кандидаты на пагинацию вне <Tournaments>): ${scalarRoot.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ") || "(нет)"}. ` +
+    `Ключи <Tournaments>: [${containerKeys.join(", ")}]. ` +
+    `Скалярные поля <Tournaments> кроме Tournament (кандидаты на PageIndex/Pages/TotalCount): ${scalarContainer.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ") || "(нет)"}. ` +
+    `Полный дамп каждого найденного турнира (все поля как есть): ${fullDump || "(турниров нет)"}.`
+  );
 }
 
 // tournamentfixtures.xml (v1.1) — реальные матчи (включая счёт) конкретного
