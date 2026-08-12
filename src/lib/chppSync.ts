@@ -31,7 +31,7 @@ import {
   type OpponentAnalysisResult,
 } from "./opponentAnalysis";
 import { trainingWeekKey, saveCurrentWeekSnapshot, saveWeeklyTsiSnapshot } from "./playerHistoryDb";
-import { resolveMatchFanExpectation, NEUTRAL_FAN_EXPECTATION, type FanExpectation } from "./fanExpectation";
+import { resolveFanExpectations, NEUTRAL_FAN_EXPECTATION, type FanExpectation } from "./fanExpectation";
 import { parseArenaDetailsXml, type RealArenaCapacity } from "./arena";
 import { parseTrainingXml, type RealTraining } from "./training";
 import {
@@ -546,34 +546,44 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     anyFailed = true;
   }
 
-  // -- overviewFanExpectations (см. чат "Матчи на Обзоре: индикатор
-  // ожиданий болельщиков") — "Индекс силы" (см. matchAnalysis.ts) считается
-  // ТОЛЬКО из зональных рейтингов конкретного УЖЕ СЫГРАННОГО матча
-  // (matchdetails.xml), поэтому здесь заранее (на синхронизации, не при
-  // каждом визите на Обзор) считается только для ровно тех же последних
-  // OVERVIEW_MATCHES_COUNT сыгранных матчей, что getStoredOverviewData ниже
-  // покажет как "recentMatches" — если эту выборку изменить в одном месте,
-  // нужно менять и в другом. Для предстоящих матчей запрос не делается
-  // вовсе (зональных рейтингов ещё физически не существует) — там всегда
-  // NEUTRAL_FAN_EXPECTATION при чтении.
+  // -- overviewFanExpectations (см. чат "Заменить расчётный индикатор
+  // ожиданий на реальные данные CHPP, если найдутся") — РЕАЛЬНОЕ поле
+  // Hattrick (fans.xml → FanMatchExpectation), не наша прежняя эвристика
+  // (разница "Индекса силы" по matchdetails.xml, см. git-историю) — один
+  // запрос сразу даёт ожидания и для сыгранных, и для предстоящих матчей
+  // (см. src/lib/fanExpectation.ts). НЕ проверено на живых данных этого
+  // аккаунта — полная диагностика сырого ответа пишется всегда, а не
+  // только при ошибке. Матчи, не попавшие в тройку с каждой стороны у
+  // Hattrick (у нас показывается по OVERVIEW_MATCHES_COUNT=4) — честно без
+  // записи, getStoredOverviewData подставит NEUTRAL_FAN_EXPECTATION сам.
   try {
-    const recentFinished = (parsedMatches ?? [])
-      .filter((m) => m.status === "FINISHED" && m.ourScore !== null && m.oppScore !== null && m.matchId)
-      .slice(0, OVERVIEW_MATCHES_COUNT);
-    const results = await Promise.all(
-      recentFinished.map((m) => resolveMatchFanExpectation(tokens, m.matchId, teamId)),
+    const { byMatchId, rawDump, error: fansError } = await resolveFanExpectations(tokens);
+    if (fansError) throw new Error(fansError);
+    const displayedRecentIds = new Set(
+      (parsedMatches ?? [])
+        .filter((m) => m.status === "FINISHED" && m.ourScore !== null && m.oppScore !== null && m.matchId)
+        .slice(0, OVERVIEW_MATCHES_COUNT)
+        .map((m) => m.matchId),
     );
-    const byMatchId: Record<string, FanExpectation> = {};
-    recentFinished.forEach((m, i) => {
-      byMatchId[m.matchId] = results[i];
-    });
+    const displayedUpcomingIds = new Set(
+      (parsedMatches ?? [])
+        .filter((m) => m.status === "UPCOMING" && m.matchId)
+        .slice(0, OVERVIEW_MATCHES_COUNT)
+        .map((m) => m.matchId),
+    );
+    const matchedRecent = [...displayedRecentIds].filter((id) => byMatchId[id]).length;
+    const matchedUpcoming = [...displayedUpcomingIds].filter((id) => byMatchId[id]).length;
+    sectionErrors.push(
+      `Ожидания болельщиков (диагностика — fans.xml): всего записей — ${Object.keys(byMatchId).length}. ` +
+        `Из показанных на Обзоре матчей нашлось: сыгранных ${matchedRecent}/${displayedRecentIds.size}, предстоящих ${matchedUpcoming}/${displayedUpcomingIds.size}. ${rawDump}`,
+    );
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.overviewFanExpectations, byMatchId);
     anySucceeded = true;
   } catch (err) {
     await saveSnapshotError(
       hattrickUserId,
       DATA_KEYS.overviewFanExpectations,
-      `Индикатор ожиданий болельщиков (matchdetails): ${errorMessage(err)}`,
+      `Ожидания болельщиков (fans): ${errorMessage(err)}`,
     );
     anyFailed = true;
   }

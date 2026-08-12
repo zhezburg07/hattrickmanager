@@ -437,7 +437,7 @@ export interface MatchAnalysisResult {
   error: string | null;
 }
 
-export const MATCH_DETAILS_VERSION = "3.1";
+const MATCH_DETAILS_VERSION = "3.1";
 const MATCH_LINEUP_VERSION = "2.1";
 
 function asArray(value: unknown): Record<string, unknown>[] {
@@ -455,7 +455,7 @@ function teamSideOf(teamId: string, homeTeamId: string): "home" | "away" | null 
   return teamId === homeTeamId ? "home" : "away";
 }
 
-export function parseZoneRatings(team: Record<string, unknown> | undefined): MatchZoneRatings | null {
+function parseZoneRatings(team: Record<string, unknown> | undefined): MatchZoneRatings | null {
   if (!team) return null;
   const zones: MatchZoneRatings = {
     midfield: numOrNull(team.RatingMidfield),
@@ -487,7 +487,7 @@ export function parseZoneRatings(team: Record<string, unknown> | undefined): Mat
 //   атака=240, коэффициент=1.25) так, чтобы жёстко получалось 0-100.
 // Считается только если ВСЕ 7 зон пришли реальными числами — при частичных
 // данных честно null, а не расчёт на угадываемых нулях.
-export function computePowerIndex(zones: MatchZoneRatings | null): number | null {
+function computePowerIndex(zones: MatchZoneRatings | null): number | null {
   if (!zones) return null;
   const { leftDef, midDef, rightDef, midfield, leftAtt, midAtt, rightAtt } = zones;
   if ([leftDef, midDef, rightDef, midfield, leftAtt, midAtt, rightAtt].some((v) => v === null)) return null;
