@@ -315,36 +315,36 @@ function ThumbsUpIcon({ title }: { title: string }) {
 // Статус игрока — "в составе"/"в основе" (здоров, ничего особенного)
 // показываем иконкой вместо текста, с общей подсказкой "Готов" (одна и та
 // же иконка для обоих статусов — незачем показывать разный текст); "в
-// запасе" — текстовой меткой. "Травмирован" текстом не показываем вовсе —
-// статус травмы виден по значку InjuryIcon ниже. isInjured передаётся
-// отдельно от status: игрок может числиться "в составе"/"в основе" и при
-// этом иметь травму (injuryWeeksRemaining задан) — раньше в этом случае
-// показывались ОБА значка (👍 и травма) одновременно, теперь травма
-// полностью вытесняет 👍, как единственный актуальный статус.
-function StatusIndicator({ status, isInjured }: { status: PlayerStatus; isInjured: boolean }) {
-  if (isInjured) {
-    return null;
+// запасе" — текстовой меткой. Травма (InjuryIcon) и 👍 взаимоисключающие —
+// обе идут через ОДНУ и ту же функцию (эта), а не через отдельные условные
+// блоки в разных местах разметки: раньше InjuryIcon рендерился отдельным
+// блоком ПОСЛЕ специализации в StatusRow, из-за чего у травмированного
+// игрока порядок значков в столбце "Статус" отличался от здорового (значок
+// травмы оказывался вторым, а не первым) — фиксированный порядок (статус →
+// специализация → карточки) требует ровно одного места для 1-й позиции.
+function StatusIndicator({ player }: { player: SquadPlayer }) {
+  if (player.injuryWeeksRemaining !== undefined) {
+    return <InjuryIcon weeksRemaining={player.injuryWeeksRemaining} />;
   }
-  if (status === "starting" || status === "squad") {
+  if (player.status === "starting" || player.status === "squad") {
     return <ThumbsUpIcon title="Готов" />;
   }
-  if (status === "injured") {
+  if (player.status === "injured") {
     return null;
   }
-  return <StatusTag status={status} />;
+  return <StatusTag status={player.status} />;
 }
 
-// Компактный ряд значков в столбце "Статус": базовый статус (👍/в запасе,
-// либо значок травмы вместо 👍, если игрок травмирован) + специализация
-// (если есть) + значок травмы по сроку восстановления + карточки (жёлтые с
-// числом предупреждений в сезоне, красная — при дисквалификации).
+// Компактный ряд значков в столбце "Статус" — ФИКСИРОВАННЫЙ порядок позиций
+// (1 — готовность/травма, 2 — специализация, 3 — карточки), не зависящий от
+// того, какие именно значки есть у конкретного игрока: отсутствующая позиция
+// просто пропускается, а не сдвигает следующие. См. StatusIndicator выше про
+// то, почему готовность и травма — это ОДНА позиция, а не две.
 export function StatusRow({ player }: { player: SquadPlayer }) {
-  const isInjured = player.injuryWeeksRemaining !== undefined;
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "nowrap" }}>
-      <StatusIndicator status={player.status} isInjured={isInjured} />
+      <StatusIndicator player={player} />
       {player.specialty && <SpecialtyIcon specialty={player.specialty} label={specialtyLabel[player.specialty]} />}
-      {isInjured && <InjuryIcon weeksRemaining={player.injuryWeeksRemaining as number} />}
       {player.isSuspended && <CardIcon color="red" />}
       {!player.isSuspended && player.yellowCards !== undefined && player.yellowCards > 0 && (
         <CardIcon color="yellow" count={player.yellowCards} />
