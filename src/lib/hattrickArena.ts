@@ -252,14 +252,30 @@ export function filterRecentArenaMatches(matches: RealMatch[], limit = 10): Aren
 // в интерфейсе.
 export const TOURNAMENT_LIST_VERSION = "1.0";
 
+// ИСПРАВЛЕНО (см. чат "Трофеи/Турниры прямо сейчас показывают пустоту,
+// хотя пользователь реально ещё участвует") — живая диагностика
+// подтвердила: IsMatchesOngoing означает "матч идёт прямо в эту секунду"
+// (буквально в момент запроса), а НЕ "турнир ещё не завершён" — у обоих
+// турниров пользователя IsMatchesOngoing=0, хотя NextMatchRoundDate у
+// обоих указывает на реальную будущую дату (пользователь подтвердил, что
+// всё ещё участвует). Теперь "турнир ещё активен для нас" определяется
+// присутствием НЕ-пустой, не-заглушечной NextMatchRoundDate — это прямо
+// подтверждено на живых данных, в отличие от прежнего IsMatchesOngoing.
+function hasUpcomingMatchRound(raw: unknown): boolean {
+  const s = String(raw ?? "").trim();
+  if (!s) return false;
+  // Hattrick отдаёт "нет даты" как дату-заглушку из нулей/минимальную дату
+  // (тот же приём уже использовался в проекте для похожих полей) — не
+  // проверено конкретно для NextMatchRoundDate на живых данных этого
+  // аккаунта (у обоих турниров дата была реальной), но защититься от такой
+  // заглушки безопаснее, чем считать любую непустую строку за реальную дату.
+  return !s.startsWith("0000-00-00") && !s.startsWith("0001-01-01");
+}
+
 export interface TournamentListEntry {
   tournamentId: string;
   name: string;
-  // IsMatchesOngoing — подтверждённое поле независимого клиента (Tournament
-  // struct, tournamentlist.xml/tournamentdetails.xml переиспользуют одну и
-  // ту же схему), не проверено на живых данных этого проекта конкретно для
-  // этого поля (в отличие от самого списка турниров и результатов матчей,
-  // которые уже подтверждены). Используется как "турнир идёт прямо сейчас".
+  // "Турнир идёт прямо сейчас" (для нас) — см. hasUpcomingMatchRound выше.
   isOngoing: boolean;
 }
 
@@ -273,7 +289,7 @@ export function parseTournamentListXml(xml: string): TournamentListEntry[] {
   return tournaments.map((t) => ({
     tournamentId: String(t.TournamentId ?? t.TournamentID ?? ""),
     name: String(t.Name ?? `Турнир #${t.TournamentId ?? t.TournamentID ?? "?"}`),
-    isOngoing: String(t.IsMatchesOngoing ?? "").toLowerCase() === "true",
+    isOngoing: hasUpcomingMatchRound(t.NextMatchRoundDate),
   }));
 }
 
