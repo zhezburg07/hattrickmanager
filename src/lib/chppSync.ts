@@ -48,6 +48,7 @@ import {
   parseTournamentListXml,
   parseTournamentFixturesXml,
   parseTournamentDetailsXml,
+  debugTournamentDetailsFullResponse,
   debugTournamentFixturesRawStructure,
   buildArenaTournamentSummaries,
   parseLadderListXml,
@@ -1441,6 +1442,20 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
             if (detailsRaw.httpStatus >= 200 && detailsRaw.httpStatus < 300) {
               try {
                 entry = parseTournamentDetailsXml(detailsRaw.rawXml);
+                // ДИАГНОСТИКА (см. чат "Титаны 2007: 63 матча раньше, 0 сейчас
+                // + isOngoing застрял на true") — раньше при разовой проверке
+                // этого конкретного турнира сюда же дампился ПОЛНЫЙ сырой
+                // ответ tournamentdetails.xml; при переносе на постоянный
+                // механизм этот дамп был убран, из-за чего сейчас нет
+                // видимости, какое именно значение NextMatchRoundDate
+                // реально определяет entry.isOngoing — hasUpcomingMatchRound
+                // (hattrickArena.ts) проверена только на 2 ЖИВЫХ турнирах с
+                // реальными будущими датами, ни разу — на заведомо
+                // завершённом историческом турнире, так что её плейсхолдер-
+                // логика тут не подтверждена, а не заведомо верна.
+                tournamentDiagnostics.push(
+                  `Исторический турнир "${k.name}" #${k.tournamentId}: tournamentdetails.xml — isOngoing=${entry?.isOngoing}. ${debugTournamentDetailsFullResponse(detailsRaw.rawXml)}`,
+                );
               } catch (err) {
                 tournamentDiagnostics.push(`Исторический турнир "${k.name}" #${k.tournamentId}: ошибка разбора tournamentdetails — ${errorMessage(err)}`);
               }
@@ -1457,10 +1472,26 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
               tournamentDiagnostics.push(`Исторический турнир "${entry.name}" #${k.tournamentId}: tournamentfixtures.xml — HTTP ${fixturesRaw.httpStatus}.`);
               return;
             }
+            // ДИАГНОСТИКА — та же связка, что уже применяется для АКТИВНЫХ
+            // турниров чуть выше в этой функции: сырой счётчик <Match> в
+            // тексте ответа (напрямую сравнимо с "63 матча", которые видели
+            // при разовой проверке этого же ID раньше — та проверка считала
+            // ИМЕННО эти сырые теги, а не матчи именно нашей команды) +
+            // debugTournamentFixturesRawStructure, который дампит ПОЛНОЕ
+            // первое найденное сырое совпадение (все поля, включая
+            // HomeTeamId/AwayTeamId) — чтобы увидеть, встречается ли наш
+            // TeamID вообще среди присланных матчей, или же tournamentfixtures.xml
+            // без явного параметра раунда/страницы возвращает какой-то один
+            // срез (например, только последний раунд многотысячной сетки),
+            // в котором нашей команды заведомо уже нет.
+            const rawMatchTagCount = (fixturesRaw.rawXml.match(/<Match>/g) ?? []).length;
+            tournamentDiagnostics.push(
+              `Исторический турнир "${entry.name}" #${k.tournamentId}: сырых тегов <Match> в тексте — ${rawMatchTagCount}. ${debugTournamentFixturesRawStructure(fixturesRaw.rawXml)}`,
+            );
             try {
               const matches = parseTournamentFixturesXml(fixturesRaw.rawXml, teamId, k.tournamentId, entry.name);
               historicalMatchesByTournamentId.set(k.tournamentId, matches);
-              tournamentDiagnostics.push(`Исторический турнир "${entry.name}" #${k.tournamentId}: наших сыгранных матчей — ${matches.length}.`);
+              tournamentDiagnostics.push(`Исторический турнир "${entry.name}" #${k.tournamentId}: наших сыгранных матчей — ${matches.length} (наш teamId=${teamId}).`);
             } catch (err) {
               tournamentDiagnostics.push(`Исторический турнир "${entry.name}" #${k.tournamentId}: ошибка разбора tournamentfixtures — ${errorMessage(err)}`);
             }
