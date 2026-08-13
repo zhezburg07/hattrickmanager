@@ -19,7 +19,7 @@ import ReducedDashboard from "@/components/dashboard/ReducedDashboard";
 import SyncFailedScreen from "@/components/dashboard/SyncFailedScreen";
 import { redirect } from "next/navigation";
 import { getStoredHattrickTokens, getStoredAccountId, getStoredHattrickUserId } from "@/lib/hattrickApi";
-import { ensureSynced, getStoredOverviewData, getAchievementsData } from "@/lib/chppSync";
+import { ensureSynced, getStoredOverviewData, getAchievementsData, getStoredSquadData } from "@/lib/chppSync";
 import { defaultCurrency } from "@/data/dashboard";
 import { resolveWeeklyTsiHighlights } from "@/lib/playerHistoryDb";
 import { resolveHofPlayers } from "@/lib/hofPlayers";
@@ -86,8 +86,15 @@ export default async function DashboardPage({
   const data = hattrickUserId
     ? await getStoredOverviewData(hattrickUserId)
     : { currencyLabel: defaultCurrency.label, errors: [] };
+  // "Изменения TSI" сравнивает текущий состав с сохранённым недельным
+  // снимком (см. чат "Изменения TSI на Обзоре находят гораздо меньше
+  // реальных изменений, чем есть на самом деле") — тот же getStoredSquadData,
+  // что и у "Состав"/"Расстановка", а не отдельный, более узкий источник.
+  const squadData = hattrickUserId
+    ? await getStoredSquadData(hattrickUserId)
+    : { players: null, error: null, trainerPlayerId: undefined };
   const [weeklyTsi, hof, achievements, supporters] = await Promise.all([
-    resolveWeeklyTsiHighlights(hattrickUserId),
+    resolveWeeklyTsiHighlights(hattrickUserId, squadData.players),
     SHOW_HOF_SECTION ? resolveHofPlayers(tokens) : Promise.resolve({ players: null, error: null }),
     hattrickUserId ? getAchievementsData(hattrickUserId) : Promise.resolve({ data: null, error: null }),
     SHOW_SUPPORTERS_SECTION

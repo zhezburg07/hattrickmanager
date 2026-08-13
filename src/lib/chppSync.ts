@@ -30,7 +30,7 @@ import {
   tacticTypeLabel,
   type OpponentAnalysisResult,
 } from "./opponentAnalysis";
-import { trainingWeekKey, saveCurrentWeekSnapshot, saveWeeklyTsiSnapshot } from "./playerHistoryDb";
+import { trainingWeekKey, saveCurrentWeekSnapshot } from "./playerHistoryDb";
 import { resolveFanExpectations, NEUTRAL_FAN_EXPECTATION, type FanExpectation } from "./fanExpectation";
 import { parseArenaDetailsXml, type RealArenaCapacity } from "./arena";
 import { parseTrainingXml, type RealTraining } from "./training";
@@ -705,12 +705,16 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     // делалось при КАЖДОМ визите на Состав/Расстановку (см. историю
     // playerHistoryDb.ts, resolvePlayerHistory), теперь один раз здесь,
     // поскольку именно сейчас у нас свежие данные CHPP. Стрелки роста/падения
-    // на Составе/Расстановке читают предыдущий снимок отдельно, при рендере
-    // страницы (getPreviousWeekSnapshots) — см. squad/page.tsx, lineup/page.tsx.
+    // на Составе/Расстановке И "Изменения TSI" на Обзоре читают этот же
+    // снимок отдельно, при рендере страницы (getPreviousWeekSnapshots) — см.
+    // squad/page.tsx, lineup/page.tsx, dashboard/page.tsx. Раньше здесь была
+    // ещё и saveWeeklyTsiSnapshot (отдельная, более строгая параллельная
+    // таблица только для Обзора) — убрана вместе с переписанным
+    // resolveWeeklyTsiHighlights (см. чат "Изменения TSI на Обзоре находят
+    // гораздо меньше реальных изменений, чем есть на самом деле").
     try {
       const currentWeek = trainingWeekKey(new Date());
       await saveCurrentWeekSnapshot(hattrickUserId, currentWeek, players);
-      await saveWeeklyTsiSnapshot(hattrickUserId, players);
     } catch {
       // История навыков — не должна ронять саму синхронизацию.
     }

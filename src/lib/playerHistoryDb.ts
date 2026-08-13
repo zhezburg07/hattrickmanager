@@ -129,53 +129,11 @@ export async function saveCurrentWeekSnapshot(
 // И сразу же сохраняла текущий за один вызов, вызывалась при КАЖДОМ визите
 // на Состав/Расстановку. После перехода этих вкладок на чтение сохранённых
 // данных (см. src/lib/chppSync.ts) свежие данные CHPP появляются только во
-// время синхронизации — поэтому запись снимка (saveCurrentWeekSnapshot +
-// saveWeeklyTsiSnapshot) теперь происходит там же, один раз за
-// синхронизацию, а страницы делают только чтение (getPreviousWeekSnapshots
-// напрямую) при отрисовке стрелок роста/падения.
-
-let weeklyTableEnsured = false;
-
-async function ensureWeeklyTable(): Promise<void> {
-  if (weeklyTableEnsured) return;
-  const db = sql();
-  await db`
-    CREATE TABLE IF NOT EXISTS player_weekly_tsi (
-      hattrick_user_id TEXT NOT NULL,
-      player_id BIGINT NOT NULL,
-      week_start DATE NOT NULL,
-      name TEXT NOT NULL,
-      position_group TEXT NOT NULL,
-      tsi INTEGER NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      PRIMARY KEY (hattrick_user_id, player_id, week_start)
-    )
-  `;
-  weeklyTableEnsured = true;
-}
-
-// Отдельная от player_stat_snapshots таблица (а не переиспользование той же):
-// player_stat_snapshots хранит РОВНО один снимок на игрока (перезаписывается
-// при каждом визите) — этого достаточно для "было → стало с прошлого раза",
-// но недостаточно для "было → стало РОВНО неделю назад" (два визита в один
-// день стёрли бы вчерашнее значение). Здесь — одна строка на игрока за
-// календарную неделю (week_start = начало недели по date_trunc), которая
-// просто обновляется актуальным значением при каждом визите на этой неделе.
-export async function saveWeeklyTsiSnapshot(hattrickUserId: string, players: SquadPlayer[]): Promise<void> {
-  await ensureWeeklyTable();
-  const db = sql();
-
-  await Promise.all(
-    players.map(
-      (p) => db`
-        INSERT INTO player_weekly_tsi (hattrick_user_id, player_id, week_start, name, position_group, tsi, updated_at)
-        VALUES (${hattrickUserId}, ${p.id}, date_trunc('week', now())::date, ${p.name}, ${p.positionGroup}, ${p.tsi}, now())
-        ON CONFLICT (hattrick_user_id, player_id, week_start)
-        DO UPDATE SET name = EXCLUDED.name, position_group = EXCLUDED.position_group, tsi = EXCLUDED.tsi, updated_at = now()
-      `,
-    ),
-  );
-}
+// время синхронизации — поэтому запись снимка (saveCurrentWeekSnapshot)
+// теперь происходит там же, один раз за синхронизацию, а страницы делают
+// только чтение (getPreviousWeekSnapshots напрямую) при отрисовке стрелок
+// роста/падения — то же самое чтение теперь переиспользует и "Изменения
+// TSI" на Обзоре (resolveWeeklyTsiHighlights ниже).
 
 // Момент последнего сохранённого снимка навыков игроков для этого
 // пользователя — реальный факт из базы (см. UpdatesSection.tsx), а не
@@ -221,43 +179,45 @@ const emptyWeeklyResult: WeeklyTsiResult = {
   topLosers: [],
 };
 
-// Сравнивает снимок TSI текущей календарной недели со снимком недели,
-// начавшейся ровно 7 дней назад — если для пользователя ещё нет снимка той,
-// более ранней недели (например, это первая неделя использования сайта или
-// он ни разу не заходил на Состав/Расстановку неделю назад), сравнивать не с
-// чем — честно возвращается hasEnoughHistory: false.
-export async function resolveWeeklyTsiHighlights(hattrickUserId: string | null): Promise<WeeklyTsiResult> {
-  if (!hattrickUserId) return emptyWeeklyResult;
+// ПЕРЕПИСАНО (см. чат "Изменения TSI на Обзоре находят гораздо меньше
+// реальных изменений, чем есть на самом деле") — раньше здесь была
+// отдельная, более строгая таблица (player_weekly_tsi) с точным ISO-
+// календарным сравнением "эта неделя vs ровно 7 дней назад" через INNER
+// JOIN: любой игрок без строки ровно в ОБОИХ этих двух конкретных
+// недельных бакетах молча выпадал из сравнения — то же самое несоответствие
+// понедельник-недель против пятничных "тренировочных недель", которое уже
+// когда-то заставило завести player_weekly_stat_snapshots/trainingWeekKey
+// отдельно от простого date_trunc('week', ...). Теперь "Изменения TSI"
+// переиспользует ТОТ ЖЕ устойчивый к пропускам механизм, что уже работает
+// на Составе/Расстановке (getPreviousWeekSnapshots — берёт САМЫЙ СВЕЖИЙ
+// доступный предыдущий снимок для игрока, а не требует снимок ровно в
+// заданную неделю) — players передаётся вызывающим кодом (см.
+// dashboard/page.tsx, getStoredSquadData) для имени/позиции, которых сам
+// снимок навыков не хранит.
+export async function resolveWeeklyTsiHighlights(
+  hattrickUserId: string | null,
+  players: SquadPlayer[] | null,
+): Promise<WeeklyTsiResult> {
+  if (!hattrickUserId || !players || players.length === 0) return emptyWeeklyResult;
 
   try {
-    await ensureWeeklyTable();
-    const db = sql();
-    const rows = await db`
-      WITH cur AS (
-        SELECT player_id, name, position_group, tsi
-        FROM player_weekly_tsi
-        WHERE hattrick_user_id = ${hattrickUserId} AND week_start = date_trunc('week', now())::date
-      ),
-      prev AS (
-        SELECT player_id, tsi
-        FROM player_weekly_tsi
-        WHERE hattrick_user_id = ${hattrickUserId}
-          AND week_start = (date_trunc('week', now())::date - interval '7 days')::date
-      )
-      SELECT cur.player_id, cur.name, cur.position_group, cur.tsi AS tsi_now, prev.tsi AS tsi_prev
-      FROM cur JOIN prev ON cur.player_id = prev.player_id
-    `;
+    const prevByPlayerId = await getPreviousWeekSnapshots(hattrickUserId, trainingWeekKey(new Date()));
 
-    if (rows.length === 0) return emptyWeeklyResult;
+    const entries: WeeklyTsiEntry[] = [];
+    for (const p of players) {
+      const prev = prevByPlayerId[p.id];
+      if (!prev) continue; // нет предыдущего снимка для этого игрока — сравнивать не с чем
+      entries.push({
+        playerId: p.id,
+        name: p.name,
+        positionGroup: p.positionGroup,
+        tsiNow: p.tsi,
+        tsiWeekAgo: prev.tsi,
+        delta: p.tsi - prev.tsi,
+      });
+    }
 
-    const entries: WeeklyTsiEntry[] = rows.map((row) => ({
-      playerId: Number(row.player_id),
-      name: row.name,
-      positionGroup: row.position_group as PositionGroup,
-      tsiNow: row.tsi_now,
-      tsiWeekAgo: row.tsi_prev,
-      delta: row.tsi_now - row.tsi_prev,
-    }));
+    if (entries.length === 0) return emptyWeeklyResult;
 
     const byDeltaDesc = [...entries].sort((a, b) => b.delta - a.delta);
     const byDeltaAsc = [...entries].sort((a, b) => a.delta - b.delta);
