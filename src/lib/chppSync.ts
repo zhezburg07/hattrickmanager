@@ -1957,9 +1957,14 @@ export async function getStoredOverviewData(hattrickUserId: string): Promise<Ove
         date: m.date,
         home: m.home,
         opponent: m.opponent,
-        // Предстоящий матч ещё не сыгран — зональных рейтингов физически не
-        // существует, всегда честный нейтральный индикатор (см. fanExpectation.ts).
-        fanExpectation: NEUTRAL_FAN_EXPECTATION,
+        // ИСПРАВЛЕНО (см. чат "Предстоящие матчи: все три показывают ⬜") —
+        // раньше здесь стоял захардкоженный NEUTRAL_FAN_EXPECTATION,
+        // оставшийся от прежней эвристики по зональным рейтингам (для
+        // которой это было правдой — их у ещё не сыгранного матча
+        // действительно не существует). fans.xml даёт реальный прогноз и
+        // для предстоящих матчей тоже (см. fanExpectation.ts) — тот же
+        // поиск по matchId, что и у recentMatches выше.
+        fanExpectation: fanExpectations[m.matchId] ?? NEUTRAL_FAN_EXPECTATION,
         // Эмодзи-кубок вместо текстовой подписи "Официальный матч" — по запросу.
         competition: isFriendlyMatchType(m.matchType) ? undefined : "🏆",
       }));
