@@ -69,28 +69,6 @@ function asArray(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? (value as Record<string, unknown>[]) : value ? [value as Record<string, unknown>] : [];
 }
 
-// ДИАГНОСТИКА — полный сырой дамп fans.xml (все ключи Team + количество и
-// первая запись каждого из PlayedMatches/UpcomingMatches), тот же приём, что
-// уже применялся для других файлов, впервые подключаемых в этом проекте.
-export function debugFansFullResponse(xml: string): string {
-  const parser = new XMLParser();
-  const data = parser.parse(xml);
-  const root = data?.HattrickData as Record<string, unknown> | undefined;
-  if (!root) return "root (HattrickData) не найден — либо другой корневой тег, либо XML не разобрался";
-
-  const team = root.Team as Record<string, unknown> | undefined;
-  if (!team) return `Ключи HattrickData: [${Object.keys(root).join(", ")}]. <Team> не найден.`;
-
-  const played = asArray((team.PlayedMatches as Record<string, unknown> | undefined)?.Match);
-  const upcoming = asArray((team.UpcomingMatches as Record<string, unknown> | undefined)?.Match);
-
-  return (
-    `Ключи <Team>: [${Object.keys(team).join(", ")}]. FanMood=${JSON.stringify(team.FanMood)}, FanSeasonExpectation=${JSON.stringify(team.FanSeasonExpectation)}. ` +
-    `PlayedMatches: ${played.length} эл.${played.length > 0 ? ` первый=${JSON.stringify(played[0])}` : ""}. ` +
-    `UpcomingMatches: ${upcoming.length} эл.${upcoming.length > 0 ? ` первый=${JSON.stringify(upcoming[0])}` : ""}.`
-  );
-}
-
 // Чистый разбор fans.xml (вынесен отдельно от запроса — тот же приём, что и
 // у остальных parseXxxXml в проекте, для проверки на тестовом XML без
 // живого запроса) — FanMatchExpectation И для уже сыгранных, И для
@@ -122,17 +100,16 @@ export function parseFansXml(xml: string): Record<string, FanExpectation> {
 // запрос вместо прежних отдельных matchdetails.xml на каждый матч.
 export async function resolveFanExpectations(
   tokens: StoredHattrickTokens,
-): Promise<{ byMatchId: Record<string, FanExpectation>; rawDump: string; error: string | null }> {
+): Promise<{ byMatchId: Record<string, FanExpectation>; error: string | null }> {
   try {
     const raw = await requestChppXmlRaw("fans", { version: FANS_VERSION }, tokens);
     if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
       throw new Error(`HTTP ${raw.httpStatus}: ${raw.rawXml.slice(0, 200)}`);
     }
-    const rawDump = debugFansFullResponse(raw.rawXml);
     const byMatchId = parseFansXml(raw.rawXml);
-    return { byMatchId, rawDump, error: null };
+    return { byMatchId, error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
-    return { byMatchId: {}, rawDump: "", error: `Ожидания болельщиков (fans): ${message}` };
+    return { byMatchId: {}, error: `Ожидания болельщиков (fans): ${message}` };
   }
 }

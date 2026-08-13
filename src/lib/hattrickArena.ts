@@ -444,6 +444,60 @@ export function debugTournamentFixturesRawStructure(xml: string): string {
   return `Ключи HattrickData: [${rootKeys.join(", ")}]. ${summary}`;
 }
 
+// ДИАГНОСТИКА (см. чат "Наша команда не найдена среди 63 матчей") —
+// проверяет ДВЕ гипотезы сразу, не делая новых запросов (данные уже есть в
+// ответе tournamentfixtures.xml):
+//   1) Мог ли наш TeamID когда-то отличаться (пересоздание/переименование
+//      команды — тот же класс ситуации, что уже встречался у трансферов) —
+//      ищем совпадение по НАЗВАНИЮ команды среди HomeTeamName/AwayTeamName,
+//      независимо от TeamID; если найдётся матч по имени, но не по ID, это
+//      прямое подтверждение гипотезы.
+//   2) Мог ли ответ быть ограничен одним раундом/срезом огромной турнирной
+//      сетки (без явного параметра раунда/страницы в запросе) — гистограмма
+//      значений MatchRound среди присланных матчей: если все матчи из ОДНОГО
+//      раунда, это подтверждает, что мы видим лишь часть истории турнира.
+export function debugHistoricalTournamentMatchScope(xml: string, ourTeamId: string, ourTeamName: string): string {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData as Record<string, unknown> | undefined;
+  if (!root) return "root (HattrickData) не найден — либо другой корневой тег, либо XML не разобрался";
+
+  const rawMatches = asArray((root.Matches as Record<string, unknown> | undefined)?.Match);
+  if (rawMatches.length === 0) return "матчей в ответе нет вовсе (root.Matches.Match пуст).";
+
+  const roundCounts = new Map<string, number>();
+  for (const m of rawMatches) {
+    const round = String(m.MatchRound ?? "(нет поля MatchRound)");
+    roundCounts.set(round, (roundCounts.get(round) ?? 0) + 1);
+  }
+  const roundHistogram = [...roundCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([round, count]) => `раунд ${round}: ${count}`)
+    .join(", ");
+
+  const idMatches = rawMatches.filter((m) => {
+    const homeId = String(m.HomeTeamId ?? m.HomeTeamID ?? "");
+    const awayId = String(m.AwayTeamId ?? m.AwayTeamID ?? "");
+    return homeId === ourTeamId || awayId === ourTeamId;
+  });
+
+  const nameNeedle = ourTeamName.trim().toLowerCase();
+  const nameMatches = nameNeedle
+    ? rawMatches.filter((m) => {
+        const homeName = String(m.HomeTeamName ?? "").toLowerCase();
+        const awayName = String(m.AwayTeamName ?? "").toLowerCase();
+        return homeName.includes(nameNeedle) || awayName.includes(nameNeedle);
+      })
+    : [];
+
+  return (
+    `Всего сырых матчей: ${rawMatches.length}. Гистограмма по MatchRound (все ли из одного раунда/среза?): ${roundHistogram || "(поле MatchRound не найдено ни у одного матча)"}. ` +
+    `Найдено по нашему TeamID=${ourTeamId || "?"}: ${idMatches.length}. ` +
+    `Найдено по названию команды "${ourTeamName || "?"}" (без учёта регистра, частичное совпадение): ${nameMatches.length}` +
+    `${nameMatches.length > 0 ? ` — пример: ${JSON.stringify(nameMatches[0]).slice(0, 400)}` : ""}.`
+  );
+}
+
 // ИСПРАВЛЕНО (см. чат "Наконец нашли точную причину!") — путь контейнера
 // (root.Matches.Match) с самого начала был верным, 28 матчей реально
 // находились; проблема была в статусе. Подтверждено на реальных данных:

@@ -8,7 +8,7 @@ import { requestChppXmlRaw, type ChppRawResponse, type StoredHattrickTokens } fr
 import { isChppAuthError, assertNoChppError } from "./chppError";
 import { parseTeamDetailsXml } from "./teamDetails";
 import { parseLeagueDetailsXml, type RealLeagueStandingRow } from "./leagueDetails";
-import { parseLeagueFixturesXml, debugLeagueFixturesRawStructure } from "./leagueFixtures";
+import { parseLeagueFixturesXml } from "./leagueFixtures";
 import { buildRealLeagueMatrix } from "./realLeagueMatrix";
 import { parseMatchesXml, isFriendlyMatchType, type RealMatch } from "./matches";
 import { parseEconomyXml, type RealEconomy } from "./economy";
@@ -17,7 +17,7 @@ import { parsePlayersXml, type RealSquadSummary } from "./players";
 import { parsePlayersDetailedXml, PLAYERS_XML_VERSION } from "./squadPlayers";
 import { parseWorldLeagueInfoXml, type WorldLeagueInfo, type HomeCountryInfo } from "./worldCurrency";
 import { getCountryIdLookup } from "./worldCountries";
-import { parseAchievementsXml, debugAchievementsFullResponse, ACHIEVEMENTS_VERSION, type AchievementsResult } from "./achievements";
+import { parseAchievementsXml, ACHIEVEMENTS_VERSION, type AchievementsResult } from "./achievements";
 import {
   parseMatchLineupRatings,
   RECENT_MATCH_COUNT,
@@ -50,6 +50,7 @@ import {
   parseTournamentDetailsXml,
   debugTournamentDetailsFullResponse,
   debugTournamentFixturesRawStructure,
+  debugHistoricalTournamentMatchScope,
   buildArenaTournamentSummaries,
   parseLadderListXml,
   debugLadderListRawStructure,
@@ -70,10 +71,8 @@ import {
   dedupeMatches,
   filterTrainingRelevantMatches,
   debugRawMatchFields,
-  debugRawCupTypeMatchFields,
   parseArchiveEchoedRange,
   CUP_MATCH_TYPE,
-  LADDER_MATCH_TYPE,
 } from "./matches";
 import type { SeasonMatch } from "@/data/matches";
 import { resolveOurCupPath, resolvePastCupPath, fetchCupMeta, type OurCupPathResult } from "./cupMatches";
@@ -82,8 +81,6 @@ import {
   parseTransfersTeamXml,
   accumulateTransferHistory,
   mergeTransferHistory,
-  debugTransferPartyFields,
-  debugSelfCounterpartMismatches,
   TRANSFERS_TEAM_VERSION,
   type TransferHistoryResult,
 } from "./transferMarket";
@@ -466,64 +463,22 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
 
     // Таблица появляется только после старта сезона — в межсезонье standings
     // пуст, тогда сетку результатов тоже не считаем (нечего сопоставлять).
-    // ДИАГНОСТИКА (см. чат "Обзор: не видно переключателя Все/Домашние/
-    // Гостевые") — раньше этот блок молча проглатывал ЛЮБУЮ причину пустой
-    // сетки (LeagueLevelUnitID не определён → leaguefixtures вообще не
-    // запрашивался; HTTP-ошибка; 0 сыгранных матчей в leaguefixtures.xml;
-    // TeamID из leaguedetails.xml не совпадает с TeamID из leaguefixtures.xml
-    // → 0 заполненных ячеек, хотя сыгранные матчи есть). Toggle "Все игры/
-    // Домашние/Гостевые" на LeagueTable.tsx рендерится ТОЛЬКО когда
-    // matrixTeams/resultsMatrix реально заполнены (см. showResultsMatrix
-    // там же) — то есть пропадает вместе с сеткой при любой из этих причин,
-    // никак не из-за SHOW_RESULTS_GRID (тот вообще не гейтит toggle, только
-    // саму сетку под таблицей, и сейчас включён).
-    if (league.standings.length > 0) {
-      if (!leagueLevelUnitId) {
-        sectionErrors.push(
-          "Сетка результатов лиги: LeagueLevelUnitID не определён (teamdetails) — leaguefixtures.xml вообще не запрашивался, поэтому переключатель Все/Домашние/Гостевые не показывается.",
-        );
-      } else if (!raw.leaguefixtures) {
-        sectionErrors.push(
-          `Сетка результатов лиги: LeagueLevelUnitID=${leagueLevelUnitId} есть, но raw.leaguefixtures отсутствует — запрос не выполнился.`,
-        );
-      } else {
-        try {
-          assertOkStatus(raw.leaguefixtures);
-          const fixtures = parseLeagueFixturesXml(raw.leaguefixtures.rawXml);
-          const playedCount = fixtures.filter((f) => f.homeGoals !== null && f.awayGoals !== null).length;
-          const { teams, matrix } = buildRealLeagueMatrix(league.standings, fixtures);
-          const filledCells = matrix.reduce((sum, row) => sum + row.filter((c) => c !== null).length, 0);
-          sectionErrors.push(
-            `Сетка результатов лиги: LeagueLevelUnitID=${leagueLevelUnitId}, HTTP ${raw.leaguefixtures.httpStatus}, матчей в leaguefixtures.xml — ${fixtures.length}, из них сыгранных — ${playedCount}, заполненных ячеек сетки — ${filledCells}.`,
-          );
-          // ДИАГНОСТИКА (см. чат "Сетка результатов лиги: HTTP 200, но 0
-          // матчей") — сырая структура ответа выводится ВСЕГДА, а не только
-          // при 0 матчах, чтобы сразу подтвердить (или опровергнуть) новый
-          // путь root.Match на реальном ответе, а не молча надеяться, что
-          // логика анонимного встраивания верна и на этот раз.
-          sectionErrors.push(
-            `Сетка результатов лиги (сырая структура ответа): ${debugLeagueFixturesRawStructure(raw.leaguefixtures.rawXml)}`,
-          );
-          if (filledCells > 0) {
-            stored.resultsMatrixTeams = teams;
-            stored.resultsMatrix = matrix;
-          } else if (playedCount > 0) {
-            // Сыгранные матчи есть, но ни один не сопоставился с командой из
-            // таблицы — похоже на несовпадение TeamID между leaguedetails.xml
-            // и leaguefixtures.xml. Примеры обоих источников — увидеть
-            // реальный формат/значения, а не гадать.
-            const standingsIds = league.standings.slice(0, 5).map((s) => `${s.teamName}=${s.teamId}`).join(", ");
-            const fixtureIds = fixtures
-              .slice(0, 5)
-              .map((f) => `${f.homeTeamName}=${f.homeTeamId}/${f.awayTeamName}=${f.awayTeamId}`)
-              .join(", ");
-            sectionErrors.push(
-              `Сетка результатов лиги: 0 заполненных ячеек при ${playedCount} сыгранных матчах — похоже на несовпадение TeamID. Из таблицы (leaguedetails.xml): [${standingsIds}]. Из календаря (leaguefixtures.xml): [${fixtureIds}].`,
-            );
-          }
-        } catch (err) {
-          sectionErrors.push(`Сетка результатов лиги: ошибка — ${errorMessage(err)}`);
+    // Сетка подтверждена рабочей (см. чат "Уборка диагностики") —
+    // подробная диагностика убрана, осталась только сама функциональная
+    // логика заполнения stored.resultsMatrixTeams/resultsMatrix.
+    if (league.standings.length > 0 && leagueLevelUnitId && raw.leaguefixtures) {
+      try {
+        assertOkStatus(raw.leaguefixtures);
+        const fixtures = parseLeagueFixturesXml(raw.leaguefixtures.rawXml);
+        const { teams, matrix } = buildRealLeagueMatrix(league.standings, fixtures);
+        const filledCells = matrix.reduce((sum, row) => sum + row.filter((c) => c !== null).length, 0);
+        if (filledCells > 0) {
+          stored.resultsMatrixTeams = teams;
+          stored.resultsMatrix = matrix;
         }
+      } catch {
+        // Сетка результатов — необязательное дополнение к таблице лиги, не
+        // должна ронять остальную синхронизацию.
       }
     }
 
@@ -547,15 +502,9 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // видимости, а не только внутри блока "matchesCalendar", специально ради
   // этого переиспользования.
   let mergedSeasonMatches: RealMatch[] | null = null;
-  // ВРЕМЕННАЯ диагностика (см. чат "Кубки: реальные текущие матчи Kazakhstan
-  // Cup не получают CupID") — сырые поля Cup*/Context* КАЖДОГО кубкового
-  // матча прямо из matches.xml (текущий сезон), не только уже вычисленный
-  // cupId — см. debugRawCupTypeMatchFields в matches.ts.
-  let rawCupTypeMatchFieldsDump: Record<string, unknown>[] = [];
   try {
     assertOkStatus(raw.matches);
     parsedMatches = parseMatchesXml(raw.matches.rawXml, teamId);
-    rawCupTypeMatchFieldsDump = debugRawCupTypeMatchFields(raw.matches.rawXml);
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.matches, parsedMatches);
     anySucceeded = true;
   } catch (err) {
@@ -575,7 +524,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // вернуть 3+3") — матч, не попавший в эту тройку, честно без записи,
   // getStoredOverviewData подставит NEUTRAL_FAN_EXPECTATION сам.
   try {
-    const { byMatchId, rawDump, error: fansError } = await resolveFanExpectations(tokens);
+    const { byMatchId, error: fansError } = await resolveFanExpectations(tokens);
     if (fansError) throw new Error(fansError);
     // Та же сортировка, что и в getStoredOverviewData ниже (см. чат "Матчи
     // на Обзоре: устаревший последний сыгранный матч") — без неё эта
@@ -599,7 +548,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     const matchedUpcoming = [...displayedUpcomingIds].filter((id) => byMatchId[id]).length;
     sectionErrors.push(
       `Ожидания болельщиков (диагностика — fans.xml): всего записей — ${Object.keys(byMatchId).length}. ` +
-        `Из показанных на Обзоре матчей нашлось: сыгранных ${matchedRecent}/${displayedRecentIds.size}, предстоящих ${matchedUpcoming}/${displayedUpcomingIds.size}. ${rawDump}`,
+        `Из показанных на Обзоре матчей нашлось: сыгранных ${matchedRecent}/${displayedRecentIds.size}, предстоящих ${matchedUpcoming}/${displayedUpcomingIds.size}.`,
     );
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.overviewFanExpectations, byMatchId);
     anySucceeded = true;
@@ -727,11 +676,8 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   try {
     assertOkStatus(raw.achievements);
     const achievements: AchievementsResult = parseAchievementsXml(raw.achievements.rawXml);
-    // ВРЕМЕННАЯ диагностика (см. чат "Ещё раз попробовать найти данные
-    // трофеев Арены до того как сдаваться") — ищем среди достижений
-    // менеджера скрытый сигнал о победе в HTO-турнире (ID турнира в сыром
-    // поле, не только уже разобранные Title/Text/CategoryID).
-    sectionErrors.push(`Достижения (диагностика — поиск трофеев турниров): ${debugAchievementsFullResponse(raw.achievements.rawXml)}`);
+    // Полный дамп достижений (искали скрытый сигнал о трофеях турниров,
+    // не нашли — вопрос закрыт, см. чат "Уборка диагностики") убран.
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.achievements, achievements);
     anySucceeded = true;
   } catch (err) {
@@ -860,18 +806,11 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     }
     if (youthError) sectionErrors.push(youthError);
     else if (youthRawCount === 0) sectionErrors.push(`Юношеская команда: youthplayerlist.xml успешно ответил, но игроков академии в нём 0.`);
-    // ДИАГНОСТИКА (см. чат "Юношеская команда: национальность и возраст
-    // всё ещё не отображаются") — та же диагностика уже была на debug-
-    // панели /dashboard/youth, дублируем в sectionErrors, чтобы она была
-    // видна на "Обновления" сразу после синхронизации, без отдельного
-    // захода на вкладку "Юношеская команда" — тем же способом, что уже
-    // используется для Кубков.
-    if (rawFieldsSample.length > 0) {
-      const dump = rawFieldsSample
-        .map((p) => `${p.name}: ${p.ageLikeFields}; ${p.countryLikeFields}`)
-        .join(" || ");
-      sectionErrors.push(`Юношеская команда (сырые поля Age*/Country*/Nation* из youthplayerlist.xml): ${dump}`);
-    }
+    // Старая диагностика по youthplayerlist.xml убрана (см. чат "Уборка
+    // диагностики") — рабочий источник youthplayerdetails.xml уже
+    // подтверждён и используется, дамп ниже оставлен только для него.
+    // rawFieldsSample по-прежнему собирается и хранится в StoredYouthPlayersData
+    // — используется отдельной debug-панелью /dashboard/youth, не здесь.
     if (detailsRawFieldsSample.length > 0) {
       sectionErrors.push(
         `Юношеская команда (те же поля из youthplayerdetails.xml — альтернативный источник): ${detailsRawFieldsSample.join(" || ")}`,
@@ -986,12 +925,9 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
 
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.transferHistory, transferHistory);
     anySucceeded = true;
-    const partyDebug = debugTransferPartyFields(raw.transfersteam.rawXml, 5);
-    sectionErrors.push(`Трансферы (диагностика Buyer/Seller TeamID, наш TeamID=${teamId || "?"}): ${partyDebug}`);
-    const selfMismatchDebug = debugSelfCounterpartMismatches(raw.transfersteam.rawXml, teamId, ourTeamName, 10);
-    sectionErrors.push(
-      `Трансферы (диагностика — сделки, где по ИМЕНИ мы участник, но ни один TeamID не совпал, наша команда="${ourTeamName || "?"}"): ${selfMismatchDebug}`,
-    );
+    // Построчный дамп Buyer/Seller TeamID и дамп сделок-по-имени убраны
+    // (см. чат "Уборка диагностики") — механизм подтверждён рабочим, оставлена
+    // только краткая сводка.
     sectionErrors.push(
       `Трансферы (диагностика): HTTP ${httpStatus}, команда "${transferHistory.teamName || "?"}", всего за карьеру куплено ${transferHistory.numberOfBuys}/продано ${transferHistory.numberOfSales}, в снимке ${transferHistory.transfers.length} сделок (продаж среди них: ${transferHistory.transfers.filter((t) => t.transferType === "sale").length}) (${pageLog.join("; ")}) — снимок сохранён.`,
     );
@@ -1241,56 +1177,13 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // матчей"). Отдельного CHPP-файла для результатов Arena нет — выделяем
   // такие матчи из уже собранного mergedSeasonMatches (matches.xml +
   // matchesarchive.xml, см. секцию "matchesCalendar" выше) по
-  // MatchType === LADDER_MATCH_TYPE (62, см. matches.ts — значение из
-  // независимого CHPP-клиента, НЕ проверенное на живых данных этого
-  // аккаунта). Диагностика (сколько всего сыгранных матчей просканировано и
-  // сколько попало под этот тип) пишется всегда, а не только при ошибке —
-  // 0 совпадений может значить и "команда давно не играла через Arena", и
-  // "предположение о MatchType неверное", отличить их можно только по
-  // числу просканированных сыгранных матчей рядом.
+  // MatchType === LADDER_MATCH_TYPE (62, см. matches.ts). Полный список
+  // сыгранных матчей и разбивка по MatchType (искали матчи лестницы —
+  // подтверждённо не связаны с этим MatchType, вопрос закрыт) убраны — см.
+  // чат "Уборка диагностики".
   {
     const scanSource = mergedSeasonMatches ?? parsedMatches ?? [];
-    const finishedMatches = scanSource.filter((m) => m.status === "FINISHED");
     const ladderResults = filterRecentArenaMatches(scanSource, ARENA_MATCHES_SHOWN);
-    sectionErrors.push(
-      `Hattrick Arena (диагностика — лестница): просканировано сыгранных матчей ${finishedMatches.length}, из них с MatchType=${LADDER_MATCH_TYPE} (подтверждённо ненадёжный признак — см. ниже) — ${ladderResults.length}.`,
-    );
-    // ДИАГНОСТИКА (см. чат "0 из 61 сыгранных матчей имеют MatchType=62 —
-    // гипотеза не подтвердилась") — пользователь попросил полный список
-    // реальных значений MatchType среди сыгранных матчей С ПОДСЧЁТОМ, а не
-    // очередное предположение вслепую. Гистограмма по убыванию частоты —
-    // сопоставить с реально известными типами (лига/кубок/обычные
-    // товарищеские/возможно Arena), либо честно убедиться, что 0 — это
-    // правильный результат (команда просто не играла через Arena).
-    const typeCounts = new Map<string, number>();
-    for (const m of finishedMatches) {
-      const key = m.matchType || "(пусто)";
-      typeCounts.set(key, (typeCounts.get(key) ?? 0) + 1);
-    }
-    const histogram = [...typeCounts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([type, count]) => `MatchType=${type}: ${count}`)
-      .join(", ");
-    sectionErrors.push(
-      `Hattrick Arena (диагностика — все реальные значения MatchType среди ${finishedMatches.length} сыгранных матчей): ${histogram || "(сыгранных матчей не найдено)"}.`,
-    );
-
-    // ДИАГНОСТИКА (см. чат "у меня десятки матчей Ладдер/Турнир на
-    // hattrick.org, но их нет вообще ни под каким MatchType в выборке") —
-    // полный построчный список ВСЕХ просканированных сыгранных матчей
-    // (дата/тип/соперник/счёт), а не только агрегированная гистограмма —
-    // чтобы можно было напрямую сверить по датам с реальными матчами Ладдер/
-    // Турнир с hattrick.org и увидеть, действительно ли их там нет вообще,
-    // а не просто под неожиданным MatchType.
-    const fullDump = finishedMatches
-      .map(
-        (m) =>
-          `${m.date} MatchType=${m.matchType || "?"} ${m.home ? "дома" : "гости"} vs ${m.opponent} ${m.ourScore}:${m.oppScore}`,
-      )
-      .join(" || ");
-    sectionErrors.push(
-      `Hattrick Arena (диагностика — полный список всех ${finishedMatches.length} сыгранных матчей): ${fullDump || "(нет матчей)"}.`,
-    );
 
     // ПОДТВЕРЖДЁННЫЙ РАБОЧИЙ ИСТОЧНИК (см. чат "Отличная новость по
     // Турнирам") — tournamentlist.xml реально отдаёт турниры именно нашей
@@ -1442,23 +1335,30 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
             }
             const { detailsRaw, fixturesRaw } = result.value;
 
+            // ИСПРАВЛЕНО (см. чат "Противоречие в статусе 'идёт сейчас'") —
+            // раньше isOngoing для исторических турниров брался из
+            // parseTournamentDetailsXml (hasUpcomingMatchRound по
+            // NextMatchRoundDate) и на практике дал isOngoing=true для
+            // турнира 2007 года при сыром IsMatchesOngoing=0 — эта проверка
+            // была подтверждена только на 2 ЖИВЫХ турнирах с реальными
+            // будущими датами, ни разу на заведомо завершённом историческом,
+            // и оказалась там ненадёжной (формат/значение NextMatchRoundDate
+            // у настолько старых турниров не распознаётся текущими
+            // заглушками "0000-00-00"/"0001-01-01"). Вместо повторного
+            // гадания — используем уже имеющийся АВТОРИТЕТНЫЙ сигнал: сам
+            // факт, что турнир обрабатывается в этой ветке, означает, что
+            // его больше нет в живом tournamentlist.xml — то есть команда
+            // ТОЧНО не участвует в нём "прямо сейчас", какие бы поля
+            // tournamentdetails.xml ни возвращал. isOngoing здесь ВСЕГДА
+            // false — честно и без зависимости от непроверенной эвристики.
             let entry: TournamentListEntry | null = null;
             if (detailsRaw.httpStatus >= 200 && detailsRaw.httpStatus < 300) {
               try {
-                entry = parseTournamentDetailsXml(detailsRaw.rawXml);
-                // ДИАГНОСТИКА (см. чат "Титаны 2007: 63 матча раньше, 0 сейчас
-                // + isOngoing застрял на true") — раньше при разовой проверке
-                // этого конкретного турнира сюда же дампился ПОЛНЫЙ сырой
-                // ответ tournamentdetails.xml; при переносе на постоянный
-                // механизм этот дамп был убран, из-за чего сейчас нет
-                // видимости, какое именно значение NextMatchRoundDate
-                // реально определяет entry.isOngoing — hasUpcomingMatchRound
-                // (hattrickArena.ts) проверена только на 2 ЖИВЫХ турнирах с
-                // реальными будущими датами, ни разу — на заведомо
-                // завершённом историческом турнире, так что её плейсхолдер-
-                // логика тут не подтверждена, а не заведомо верна.
+                const parsed = parseTournamentDetailsXml(detailsRaw.rawXml);
+                entry = parsed ? { ...parsed, isOngoing: false } : null;
                 tournamentDiagnostics.push(
-                  `Исторический турнир "${k.name}" #${k.tournamentId}: tournamentdetails.xml — isOngoing=${entry?.isOngoing}. ${debugTournamentDetailsFullResponse(detailsRaw.rawXml)}`,
+                  `Исторический турнир "${k.name}" #${k.tournamentId}: tournamentdetails.xml — isOngoing принудительно false (турнир вне живого tournamentlist.xml); ` +
+                    `для справки, НЕ используется: hasUpcomingMatchRound(NextMatchRoundDate)=${parsed?.isOngoing}. ${debugTournamentDetailsFullResponse(detailsRaw.rawXml)}`,
                 );
               } catch (err) {
                 tournamentDiagnostics.push(`Исторический турнир "${k.name}" #${k.tournamentId}: ошибка разбора tournamentdetails — ${errorMessage(err)}`);
@@ -1467,8 +1367,8 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
               tournamentDiagnostics.push(`Исторический турнир "${k.name}" #${k.tournamentId}: tournamentdetails.xml — HTTP ${detailsRaw.httpStatus}.`);
             }
             // tournamentdetails не ответил/не разобрался — используем уже
-            // известное имя из known_tournaments, isOngoing=false (турнир
-            // выпал из живого списка, других сигналов у нас нет).
+            // известное имя из known_tournaments, isOngoing=false (тот же
+            // авторитетный сигнал — турнир вне живого списка).
             if (!entry) entry = { tournamentId: k.tournamentId, name: k.name, isOngoing: false };
             historicalEntries.push(entry);
 
@@ -1491,6 +1391,14 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
             const rawMatchTagCount = (fixturesRaw.rawXml.match(/<Match>/g) ?? []).length;
             tournamentDiagnostics.push(
               `Исторический турнир "${entry.name}" #${k.tournamentId}: сырых тегов <Match> в тексте — ${rawMatchTagCount}. ${debugTournamentFixturesRawStructure(fixturesRaw.rawXml)}`,
+            );
+            // ДИАГНОСТИКА (см. чат "Наша команда не найдена среди 63
+            // матчей") — проверяет и "TeamID мог измениться" (поиск по
+            // названию команды среди присланных матчей), и "ответ ограничен
+            // одним раундом/срезом турнирной сетки" (гистограмма MatchRound),
+            // без дополнительных запросов.
+            tournamentDiagnostics.push(
+              `Исторический турнир "${entry.name}" #${k.tournamentId}: ${debugHistoricalTournamentMatchScope(fixturesRaw.rawXml, teamId, ourTeamName)}`,
             );
             try {
               const matches = parseTournamentFixturesXml(fixturesRaw.rawXml, teamId, k.tournamentId, entry.name);
@@ -1658,13 +1566,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
           lastCandidateMatch.ourScore !== null &&
           lastCandidateMatch.oppScore !== null &&
           lastCandidateMatch.ourScore < lastCandidateMatch.oppScore;
-        if (eliminated) {
-          sectionErrors.push(
-            `Кубки: CupID ${debug.matchesCupId} отклонён как "текущий" через matchesCupId — последний матч ` +
-              `под этим CupID (MatchID ${lastCandidateMatch.matchId}, ${lastCandidateMatch.date}) проигран ` +
-              `${lastCandidateMatch.ourScore}:${lastCandidateMatch.oppScore}, команда уже выбыла из этого кубка.`,
-          );
-        } else {
+        if (!eliminated) {
           cupId = debug.matchesCupId;
           cupIdSource = "matchesCupId (проверен — не выбыли)";
         }
@@ -1683,10 +1585,6 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     if (!cupId && previousLastReliableCupId) {
       cupId = previousLastReliableCupId;
       cupIdSource = "lastReliableCupId (запасной из прошлой синхронизации)";
-      sectionErrors.push(
-        `Кубки: teamDetailsCupId/clubCupId пусты, matchesCupId не прошёл проверку — используем последний ` +
-          `надёжный CupID из прошлой синхронизации: ${previousLastReliableCupId}.`,
-      );
     }
 
     // Новый lastReliableCupId — только из уровня 1/2 этой синхронизации;
@@ -1703,11 +1601,6 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       currentCupPath = await resolveOurCupPath(tokens, cupId, teamId, ourTeamName);
       debug.pathDebug = currentCupPath.debug;
       if (currentCupPath.error) errors.push(currentCupPath.error);
-      // Раунды/даты текущего кубка по cupmatches.xml — та же диагностика,
-      // что и debug.pathDebug выше (скрытая панель /dashboard/cup сейчас
-      // выключена, см. чат "Кубки: лишняя информация"), но нужна видимой
-      // именно сейчас — сверить даты и раунды АКТИВНОГО кубка с hattrick.org.
-      sectionErrors.push(`Кубки (текущий кубок CupID=${cupId}, проход по раундам cupmatches.xml): ${currentCupPath.debug.join(" | ")}`);
     }
 
     // Другие CupID среди сыгранных кубковых матчей сезона — кубки, из
@@ -1743,46 +1636,19 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     // другому сезону.
     const currentSeason = currentCupPath?.season ?? null;
 
+    // Построение карточки каждого прошлого кубка — исключительно обходом
+    // раундов cupmatches.xml (resolvePastCupPath, тот же надёжный приём,
+    // что и для активного кубка выше) — подтверждено рабочим, построчная
+    // диагностика убрана (см. чат "Уборка диагностики").
     const pastCupPaths = (
       await Promise.all(
         pastCupIds.map(async (id) => {
           const meta = await fetchCupMeta(tokens, id);
-          if (currentSeason !== null && meta && meta.season !== currentSeason) {
-            sectionErrors.push(
-              `Кубки: CupID ${id} ("${meta.cupName}") исключён из каскада — его сезон=${meta.season}, ` +
-                `а текущий сезон=${currentSeason} (данные из прошлого сезона).`,
-            );
-            return null;
-          }
-          // ИСПРАВЛЕНО (см. чат "Кубки: упрощаем и делаем надёжнее"): любая
-          // карточка кубка этого сезона (текущая или уже пройденная)
-          // строится ИСКЛЮЧИТЕЛЬНО обходом раундов cupmatches.xml
-          // (resolvePastCupPath — тот же приём, что уже доказанно надёжно
-          // работает для АКТИВНОГО кубка, resolveOurCupPath) — ищет наш
-          // матч среди всех матчей раунда напрямую по TeamID, вообще не
-          // завися от того, проставил ли matches.xml/matchesarchive.xml
-          // CupID конкретному матчу. Сборка из уже известных матчей
-          // (pastCupPathFromMatches) — тот самый способ, который путал
-          // сезоны/раунды, — больше не используется вовсе, даже как
-          // запасной вариант: если обход раундов не нашёл ни одного нашего
-          // матча, кандидат просто не попадает в каскад (с диагностикой), а
-          // не рискует подсунуть перепутанные данные.
+          if (currentSeason !== null && meta && meta.season !== currentSeason) return null;
           const walkSeason = meta?.season ?? currentSeason;
-          if (walkSeason === null) {
-            sectionErrors.push(`Кубки: CupID ${id} пропущен — не удалось определить сезон для обхода раундов.`);
-            return null;
-          }
+          if (walkSeason === null) return null;
           const walked = await resolvePastCupPath(tokens, id, teamId, walkSeason, ourTeamName);
-          if (!walked.error && walked.path.length > 0) {
-            sectionErrors.push(
-              `Кубки: CupID ${id} ("${walked.cupName}") построен обходом раундов cupmatches.xml — ${walked.path.length} раунд(ов).`,
-            );
-            return walked;
-          }
-          sectionErrors.push(
-            `Кубки: CupID ${id} — обход раундов не нашёл ни одного нашего матча (${walked.error ?? "путь пуст"}), кубок пропущен в этой синхронизации.`,
-          );
-          return null;
+          return !walked.error && walked.path.length > 0 ? walked : null;
         }),
       )
     ).filter((p): p is OurCupPathResult => p !== null);
@@ -1807,74 +1673,14 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     if (errors.length === 0) anySucceeded = true;
     else anyFailed = true;
     if (errors.length > 0) sectionErrors.push(...errors.map((e) => `Кубки: ${e}`));
+    // Подробный "сырой пул кандидатов" и разбивка по каждому источнику CupID
+    // убраны (см. чат "Уборка диагностики") — система работает надёжно,
+    // оставлена только итоговая сводка.
     sectionErrors.push(
       `Кубки (диагностика TeamID): наша команда — teamId="${teamId || "(пусто!)"}" ` +
         `teamName="${ourTeamName || "(пусто!)"}", итоговый CupID="${cupId ?? "(не найден)"}", ` +
         `кубков в каскаде=${cupPaths.length}.`,
     );
-    // ДИАГНОСТИКА (см. чат "Кубки: система считает текущим Kazakhstan Cup,
-    // хотя мы уже выбыли, а Sapphire Challenger пропал целиком") — раскрываем
-    // ВСЕ кандидаты на "текущий CupID" по отдельности, а не только итог.
-    // Порядок выбора: teamDetailsCupId, если пусто — clubCupId, если и он
-    // пусто — matchesCupId (ПЕРВЫЙ ненулевой cupId среди matchesForCup В
-    // ПОРЯДКЕ МАССИВА, НЕ по дате!). Если teamDetailsCupId сейчас пуст (см.
-    // stillInCup ниже — CHPP теоретически мог ещё не успеть проставить новый
-    // активный кубок сразу после вылета из предыдущего), matchesCupId
-    // ВСЕГДА найдёт CupID уже сыгранного (то есть прошлого) кубка раньше,
-    // чем ещё не сыгранного текущего — у которого пока попросту нет ни
-    // одного матча с проставленным CupID. Это и есть подозреваемый механизм
-    // того, как "172" (Kazakhstan Cup, уже пройден) попадает в chosenCupId
-    // вместо "865" (Sapphire Challenger, играется сейчас).
-    sectionErrors.push(
-      `Кубки (разбивка кандидатов на "текущий" CupID): stillInCup=${stillInCup === null ? "недоступно" : stillInCup} | ` +
-        `teamDetailsCupId=${cupIdFromTeamDetails ?? "(пусто)"} (${cupNameFromTeamDetails ?? "имя недоступно"}) | ` +
-        `clubCupId=${parsedClub?.cupId ?? "(пусто)"} | matchesCupId=${debug.matchesCupId ?? "(пусто)"} | ` +
-        `итог chosenCupId=${cupId ?? "(не найден)"}.`,
-    );
-
-    // ВРЕМЕННАЯ диагностика (см. чат "Кубки: реально другие/устаревшие
-    // данные, не совпадающие с hattrick.org по датам") — проверяем гипотезу
-    // "matchesarchive.xml подмешивает матчи ПРОШЛОГО сезона с тем же самым
-    // CupID" (у отдельного матча нигде не сохраняется номер сезона — только
-    // дата и CupID, см. RealMatch в matches.ts — поэтому раньше эту гипотезу
-    // нечем было проверить). Группируем ВЕСЬ сырой пул кубковых матчей нашей
-    // же команды (matches.xml+matchesarchive.xml, MatchType=3) по CupID и
-    // печатаем все даты подряд — если под одним и тем же CupID окажутся
-    // даты из разных сезонов (например, и декабрь/апрель, и июль/август),
-    // это будет видно сразу, без сравнения с hattrick.org вручную.
-    const cupTypeMatches = matchesForCup.filter((m) => Number(m.matchType) === CUP_MATCH_TYPE);
-    const byCupId = new Map<string, { date: string; opponent: string }[]>();
-    for (const m of cupTypeMatches) {
-      const key = m.cupId ?? "(без CupID)";
-      if (!byCupId.has(key)) byCupId.set(key, []);
-      byCupId.get(key)!.push({ date: m.date, opponent: m.opponent });
-    }
-    const candidatePoolDump = [...byCupId.entries()]
-      .map(([id, ms]) => {
-        const sorted = [...ms].sort((a, b) => a.date.localeCompare(b.date));
-        const dates = sorted.map((m) => `${m.date} (@${m.opponent})`).join("; ");
-        return `CupID ${id}: ${ms.length} матч(ей) — ${dates}`;
-      })
-      .join(" || ");
-    sectionErrors.push(
-      `Кубки (сырой пул кандидатов, MatchType=3, из matches+matchesarchive нашей команды): ${candidatePoolDump || "(пусто)"}`,
-    );
-    const cupIdToName = [
-      ...pastCupPaths.map((p) => `CupID ${p.cupId} = "${p.cupName || "(имя не определено)"}"`),
-      currentCupPath ? `CupID ${currentCupPath.cupId} = "${currentCupPath.cupName || "(имя не определено)"}" (текущий)` : null,
-    ].filter((x): x is string => x !== null);
-    sectionErrors.push(`Кубки (соответствие CupID → название): ${cupIdToName.join("; ") || "(нет данных)"}`);
-
-    const rawCupFieldsDump = rawCupTypeMatchFieldsDump
-      .map(
-        (m) =>
-          `MatchID ${m.MatchID} (${m.MatchDate}, ${m.homeTeamName ?? "?"} vs ${m.awayTeamName ?? "?"}): ${m.cupLikeFields}`,
-      )
-      .join(" || ");
-    sectionErrors.push(
-      `Кубки (сырые Cup*/Context* поля каждого кубкового матча из matches.xml — не matchesarchive): ${rawCupFieldsDump || "(кубковых матчей в matches.xml не найдено)"}`,
-    );
-
   }
 
   const finalStatus: SyncResult["status"] = anyFailed && !anySucceeded ? "failed" : anyFailed ? "partial" : "ok";

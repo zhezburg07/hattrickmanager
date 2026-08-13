@@ -70,29 +70,6 @@ export function parseAchievementsXml(xml: string): AchievementsResult {
   };
 }
 
-// ДИАГНОСТИКА (см. чат "Ещё раз попробовать найти данные трофеев Арены до
-// того как сдаваться") — дампит ПОЛНЫЙ список достижений со ВСЕМИ сырыми
-// полями, а не только уже разобранные Title/Text/CategoryID/Points: ищем
-// скрытую привязку к конкретному турниру/матчу (например TournamentId) у
-// достижений, которые по названию/тексту могут означать победу в
-// HTO-турнире Hattrick Arena — тот же приём, что уже применялся для
-// tournamentlist.xml (debugTournamentListFullResponse).
-export function debugAchievementsFullResponse(xml: string): string {
-  const parser = new XMLParser();
-  const data = parser.parse(xml);
-  const root = data?.HattrickData as Record<string, unknown> | undefined;
-  if (!root) return "root (HattrickData) не найден — либо другой корневой тег, либо XML не разобрался";
-
-  const achievementList = root.AchievementList as Record<string, unknown> | undefined;
-  const rawAchievements = asArray(achievementList?.Achievement);
-  const fullDump = rawAchievements.map((a) => JSON.stringify(a)).join(" || ");
-
-  return (
-    `Ключи HattrickData: [${Object.keys(root).join(", ")}]. Всего достижений: ${rawAchievements.length}. ` +
-    `Полный дамп каждого достижения (все поля как есть): ${fullDump || "(достижений нет)"}.`
-  );
-}
-
 export async function resolveAchievements(
   tokens: StoredHattrickTokens,
 ): Promise<{ data: AchievementsResult | null; error: string | null }> {
