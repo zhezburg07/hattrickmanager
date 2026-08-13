@@ -1275,6 +1275,18 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
           tournamentDiagnostics.push(
             `tournamentfixtures.xml [${t.name}] сырая структура: HTTP ${raw.httpStatus}, тегов <Match> в тексте — ${rawMatchTagCount}. ${structureDump}`,
           );
+          // ДИАГНОСТИКА (см. чат "Подтверди, что для активных турниров
+          // tournamentfixtures.xml отдаёт все раунды с начала") — у
+          // исторического турнира на 3064 команды гистограмма MatchRound
+          // показала только финальные раунды 9-14 (63 матча), не полную
+          // историю с раунда 1 — проверяем ту же гистограмму здесь, для
+          // ЭТИХ (умеренных по размеру, 8-32 команды) активных турниров,
+          // чтобы подтвердить или опровергнуть гипотезу "ограничение
+          // масштабируется с размером турнира", а не считать её доказанной
+          // без проверки на контрольной группе.
+          tournamentDiagnostics.push(
+            `tournamentfixtures.xml [${t.name}] охват раундов: ${debugHistoricalTournamentMatchScope(raw.rawXml, teamId, ourTeamName)}`,
+          );
           if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
             return;
           }
