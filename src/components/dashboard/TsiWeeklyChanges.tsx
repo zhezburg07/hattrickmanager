@@ -48,14 +48,14 @@ export default function TsiWeeklyChanges({
       {hasEnoughHistory ? (
         <div className={styles.tsiCols}>
           <div>
-            <div className={styles.matchesColTitle}>Топ-3 прогресса</div>
+            <div className={styles.matchesColTitle}>Топ-8 прогресса</div>
             {topGainers.map((entry) => (
               <TsiRow key={entry.playerId} entry={entry} />
             ))}
           </div>
 
           <div>
-            <div className={styles.matchesColTitle}>Топ-3 регресса</div>
+            <div className={styles.matchesColTitle}>Топ-8 регресса</div>
             {topLosers.map((entry) => (
               <TsiRow key={entry.playerId} entry={entry} />
             ))}

@@ -40,6 +40,12 @@ const SHOW_SUPPORTERS_SECTION = false;
 // выключен.
 const SHOW_HOF_SECTION = false;
 
+// Временно скрыт по запросу — "Герой недели" убран с экрана Обзора (см. чат
+// "Переработать раскладку блоков на Обзоре"), код не удалён. Данные
+// (resolveWeeklyTsiHighlights) всё равно нужны для "Изменения TSI" рядом,
+// поэтому сам запрос не гасим флагом — только рендер этого конкретного блока.
+const SHOW_WEEKLY_HIGHLIGHTS_SECTION = false;
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -150,6 +156,10 @@ export default async function DashboardPage({
                 )}
               </div>
             )}
+            {/* Первый ряд: Состав / Рейтинг силы / Достижения (см. чат
+                "Переработать раскладку блоков на Обзоре") — все три обычные
+                панели 1/3 ширины сетки (Достижения раньше стояли отдельным
+                блоком во всю ширину контейнера — здесь втрое уже). */}
             {data.squadInjured !== undefined && data.squadAvgForm !== undefined && (
               <SquadSummaryPanel
                 totalPlayers={data.squadTotal}
@@ -157,6 +167,14 @@ export default async function DashboardPage({
                 avgForm={data.squadAvgForm}
               />
             )}
+            {data.powerRatingValue !== undefined && (
+              <PowerRatingPanel value={data.powerRatingValue} worldRank={data.powerRatingWorldRank} />
+            )}
+            <AchievementsSection data={achievements.data} error={achievements.error} />
+
+            {/* Второй ряд: Финансы / Болельщики / Персонал — Персонал раньше
+                занимал 2/3 ширины (styles.span2 в StaffSection.tsx), теперь
+                обычная панель 1/3, как и остальные две в этом ряду. */}
             {data.balance !== undefined && data.totalIncome !== undefined && data.totalExpense !== undefined && (
               <FinanceSummary
                 balance={data.balance}
@@ -165,15 +183,15 @@ export default async function DashboardPage({
                 currencyLabel={data.currencyLabel}
               />
             )}
-            {(data.realStaff || data.coachName) && (
-              <StaffSection realStaff={data.realStaff} coachName={data.coachName} coachLeadership={data.coachLeadership} />
-            )}
             {data.fanMood !== undefined && data.fanClubSize !== undefined && (
               <FansSection mood={data.fanMood} clubSize={data.fanClubSize} />
             )}
-            {data.powerRatingValue !== undefined && (
-              <PowerRatingPanel value={data.powerRatingValue} worldRank={data.powerRatingWorldRank} />
+            {(data.realStaff || data.coachName) && (
+              <StaffSection realStaff={data.realStaff} coachName={data.coachName} coachLeadership={data.coachLeadership} />
             )}
+
+            {/* Третий ряд: Изменения TSI, во всю ширину (styles.span3, как и
+                раньше) — топ-8 с каждой стороны вместо топ-3. */}
             <TsiWeeklyChanges
               topGainers={weeklyTsi.topGainers}
               topLosers={weeklyTsi.topLosers}
@@ -181,19 +199,17 @@ export default async function DashboardPage({
             />
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <WeeklyHighlights gainer={weeklyTsi.gainer} hasEnoughHistory={weeklyTsi.hasEnoughHistory} />
-          </div>
+          {SHOW_WEEKLY_HIGHLIGHTS_SECTION && (
+            <div style={{ marginTop: 12 }}>
+              <WeeklyHighlights gainer={weeklyTsi.gainer} hasEnoughHistory={weeklyTsi.hasEnoughHistory} />
+            </div>
+          )}
 
           {SHOW_HOF_SECTION && (
             <div style={{ marginTop: 12 }}>
               <HofPlayersSection players={hof.players} error={hof.error} />
             </div>
           )}
-
-          <div style={{ marginTop: 12 }}>
-            <AchievementsSection data={achievements.data} error={achievements.error} />
-          </div>
 
           {SHOW_SUPPORTERS_SECTION && (
             <div style={{ marginTop: 12 }}>

@@ -48,7 +48,7 @@ export default function StaffSection({
   const hiredStaff = realStaff ? realStaffLabels.filter(({ key }) => realStaff[key] > 0) : [];
 
   return (
-    <div className={`${styles.panel} ${styles.span2}`}>
+    <div className={styles.panel}>
       <div className={styles.panelTitle}>Персонал</div>
 
       <div className={styles.rowList}>

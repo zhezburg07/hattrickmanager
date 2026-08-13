@@ -192,6 +192,10 @@ export async function getLatestSkillSnapshotAt(hattrickUserId: string): Promise<
   return latest ? new Date(latest) : null;
 }
 
+// Сколько игроков показывать с каждой стороны в "Изменения TSI" на Обзоре
+// (см. чат "Переработать раскладку блоков на Обзоре") — было 3.
+const WEEKLY_TSI_TOP_N = 8;
+
 export interface WeeklyTsiEntry {
   playerId: number;
   name: string;
@@ -262,8 +266,8 @@ export async function resolveWeeklyTsiHighlights(hattrickUserId: string | null):
       hasEnoughHistory: true,
       gainer: byDeltaDesc[0] ?? null,
       loser: byDeltaAsc[0] ?? null,
-      topGainers: byDeltaDesc.slice(0, 3),
-      topLosers: byDeltaAsc.slice(0, 3),
+      topGainers: byDeltaDesc.slice(0, WEEKLY_TSI_TOP_N),
+      topLosers: byDeltaAsc.slice(0, WEEKLY_TSI_TOP_N),
     };
   } catch {
     return emptyWeeklyResult;
