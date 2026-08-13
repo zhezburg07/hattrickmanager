@@ -118,15 +118,21 @@ export default function MatchesSection({
 
           <div>
             {upcomingMatches.map((m) => {
+              // Счёта нет — отдельная раскладка (.matchRowUpcoming): дата
+              // слева как обычно, а название+индикатор идут единой группой,
+              // отцентрованной в оставшемся месте строки (см. чат "Матчи на
+              // Обзоре: три колонки / центровка предстоящих").
               const { shortDate } = formatMatchDateTime(m.date);
               return (
-                <div className={styles.matchRow} key={m.id}>
+                <div className={styles.matchRowUpcoming} key={m.id}>
                   <span className={styles.matchDate}>{shortDate}</span>
-                  <span className={styles.matchOpponent}>
-                    {matchupLabel(m.home, ourTeamName, m.opponent)}
-                    {m.competition ? ` ${m.competition}` : ""}
-                  </span>
-                  <FanExpectationBadge expectation={m.fanExpectation} />
+                  <div className={styles.matchRowUpcomingContent}>
+                    <span className={styles.matchOpponent}>
+                      {matchupLabel(m.home, ourTeamName, m.opponent)}
+                      {m.competition ? ` ${m.competition}` : ""}
+                    </span>
+                    <FanExpectationBadge expectation={m.fanExpectation} />
+                  </div>
                 </div>
               );
             })}

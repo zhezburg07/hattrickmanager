@@ -106,11 +106,14 @@ const MAX_EXTRA_TRANSFER_PAGE_FETCHES = 100;
 const ARENA_MATCHES_SHOWN = 10;
 
 // Сколько сыгранных / предстоящих матчей показывать в блоке "Матчи" на
-// Обзоре (см. чат "Матчи на Обзоре: 4 с каждой стороны + индикатор
-// ожиданий") — единая константа и для отбора матчей, для которых сразу на
-// синхронизации считается "Индекс силы" (см. ниже), и для чтения в
-// getStoredOverviewData, чтобы они не могли разойтись между собой.
-const OVERVIEW_MATCHES_COUNT = 4;
+// Обзоре — ВОЗВРАЩЕНО на 3+3 (см. чат "Матчи на Обзоре: вернуть 3+3") после
+// перехода на реальное поле Hattrick FanMatchExpectation (fans.xml), которое
+// само физически даёт данные только на 3 сыгранных и 3 предстоящих матча —
+// 4-й с любой стороны показывал бы индикатор ожиданий, который никогда не
+// сможет быть реальным (честный нейтральный ⬜ навсегда, не временная
+// заглушка). Единая константа и для отбора матчей на синхронизации, и для
+// чтения в getStoredOverviewData, чтобы они не могли разойтись между собой.
+const OVERVIEW_MATCHES_COUNT = 3;
 
 // Сколько ИСТОРИЧЕСКИХ турниров (уже выпавших из живого tournamentlist.xml,
 // см. known_tournaments) опрашивать НАПРЯМУЮ (tournamentdetails.xml +
@@ -566,9 +569,10 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // запрос сразу даёт ожидания и для сыгранных, и для предстоящих матчей
   // (см. src/lib/fanExpectation.ts). НЕ проверено на живых данных этого
   // аккаунта — полная диагностика сырого ответа пишется всегда, а не
-  // только при ошибке. Матчи, не попавшие в тройку с каждой стороны у
-  // Hattrick (у нас показывается по OVERVIEW_MATCHES_COUNT=4) — честно без
-  // записи, getStoredOverviewData подставит NEUTRAL_FAN_EXPECTATION сам.
+  // только при ошибке. OVERVIEW_MATCHES_COUNT=3 намеренно совпадает с
+  // тройкой, которую реально даёт fans.xml (см. чат "Матчи на Обзоре:
+  // вернуть 3+3") — матч, не попавший в эту тройку, честно без записи,
+  // getStoredOverviewData подставит NEUTRAL_FAN_EXPECTATION сам.
   try {
     const { byMatchId, rawDump, error: fansError } = await resolveFanExpectations(tokens);
     if (fansError) throw new Error(fansError);
