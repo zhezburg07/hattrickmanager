@@ -576,15 +576,21 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   try {
     const { byMatchId, rawDump, error: fansError } = await resolveFanExpectations(tokens);
     if (fansError) throw new Error(fansError);
+    // Та же сортировка, что и в getStoredOverviewData ниже (см. чат "Матчи
+    // на Обзоре: устаревший последний сыгранный матч") — без неё эта
+    // диагностика считала бы совпадения не для тех матчей, что реально
+    // показываются на Обзоре после исправления.
     const displayedRecentIds = new Set(
       (parsedMatches ?? [])
         .filter((m) => m.status === "FINISHED" && m.ourScore !== null && m.oppScore !== null && m.matchId)
+        .sort((a, b) => b.date.localeCompare(a.date))
         .slice(0, OVERVIEW_MATCHES_COUNT)
         .map((m) => m.matchId),
     );
     const displayedUpcomingIds = new Set(
       (parsedMatches ?? [])
         .filter((m) => m.status === "UPCOMING" && m.matchId)
+        .sort((a, b) => a.date.localeCompare(b.date))
         .slice(0, OVERVIEW_MATCHES_COUNT)
         .map((m) => m.matchId),
     );
@@ -1915,8 +1921,19 @@ export async function getStoredOverviewData(hattrickUserId: string): Promise<Ove
   const matches = snapshots[DATA_KEYS.matches]?.data as RealMatch[] | null;
   const fanExpectations = (snapshots[DATA_KEYS.overviewFanExpectations]?.data as Record<string, FanExpectation> | null) ?? {};
   if (matches) {
+    // ИСПРАВЛЕНО (см. чат "Матчи на Обзоре: устаревший последний сыгранный
+    // матч") — raw matches.xml не гарантирует хронологический порядок
+    // элементов (тот же порядок "как есть", что и во всех остальных местах
+    // проекта, где это уже было явно замечено — см. сортировку в
+    // toSeasonMatches, matches.ts), а .slice(0, N) без сортировки брал
+    // первые N элементов В ЭТОМ порядке, а не N реально самых свежих/
+    // ближайших матчей. Та же сортировка по дате, что уже применяется в
+    // toSeasonMatches — по убыванию для сыгранных (самый свежий первым), по
+    // возрастанию для предстоящих (ближайший первым) — теперь и здесь,
+    // перед обрезкой лимитом.
     data.recentMatches = matches
       .filter((m) => m.status === "FINISHED" && m.ourScore !== null && m.oppScore !== null)
+      .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, OVERVIEW_MATCHES_COUNT)
       .map((m) => ({
         id: m.matchId,
@@ -1933,6 +1950,7 @@ export async function getStoredOverviewData(hattrickUserId: string): Promise<Ove
       }));
     data.upcomingMatches = matches
       .filter((m) => m.status === "UPCOMING")
+      .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, OVERVIEW_MATCHES_COUNT)
       .map((m) => ({
         id: m.matchId,
