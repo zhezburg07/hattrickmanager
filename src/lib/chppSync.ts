@@ -74,6 +74,7 @@ import {
   CUP_MATCH_TYPE,
   mergeMatchHistory,
   walkMatchArchiveHistory,
+  SEASON_PRE_ROUND1_BUFFER_DAYS,
   type SeasonAnchor,
 } from "./matches";
 import type { SeasonMatch } from "@/data/matches";
@@ -1242,6 +1243,23 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       if (!currentSeasonAnchor) {
         debugCounts.push(
           "номер сезона: якорь (Season + дата 1-го тура из leaguefixtures.xml) ещё не получен ни разу для этого аккаунта — у всех матчей season=null.",
+        );
+      } else {
+        // Диагностика (см. чат "Граница между сезонами: первый матч
+        // текущего сезона в предыдущем") — сам якорь раньше нигде не
+        // выводился, что мешало проверить, действительно ли граница сдвинута
+        // правильно на живых данных. Показывает и якорь, и получившуюся
+        // границу с учётом недельного буфера (см. SEASON_PRE_ROUND1_BUFFER_DAYS
+        // в matches.ts) — если жалоба на смещение границы повторится, здесь
+        // сразу видно фактическую дату отсечки, а не только вычисленный номер.
+        const dayMs = 24 * 60 * 60 * 1000;
+        const anchorMs = Date.parse(currentSeasonAnchor.seasonStartDate.replace(" ", "T") + "Z");
+        const boundaryStr = Number.isNaN(anchorMs)
+          ? "?"
+          : new Date(anchorMs - SEASON_PRE_ROUND1_BUFFER_DAYS * dayMs).toISOString().slice(0, 19).replace("T", " ");
+        debugCounts.push(
+          `номер сезона: якорь — сезон ${currentSeasonAnchor.season}, round 1 лиги ${currentSeasonAnchor.seasonStartDate} ` +
+            `→ граница сезона (с недельным буфером под кубковые матчи перед round 1) — ${boundaryStr}.`,
         );
       }
       calendarWarning = [archiveWarning, filterWarning].filter(Boolean).join(" ") || null;

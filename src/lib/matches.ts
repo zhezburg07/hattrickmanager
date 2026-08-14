@@ -442,15 +442,31 @@ export interface SeasonAnchor {
   seasonStartDate: string;
 }
 
+// ИСПРАВЛЕНО (см. чат "Граница между сезонами: первый матч текущего сезона
+// в предыдущем") — anchor.seasonStartDate это дата round 1 ЛИГИ (единственное,
+// что отдаёт leaguefixtures.xml), а не официальная дата старта сезона.
+// Официальная вики Hattrick (wiki.hattrick.org/wiki/Season) прямо говорит:
+// "The first day of a season is the Sunday before round 1 of series. In the
+// week before the first competitive match, the first Cup match is held" —
+// то есть и официальный первый день сезона, и первый кубковый матч сезона
+// лежат ДО round 1, в пределах той же недели. Из-за этого кубковые (и
+// вероятно товарищеские) матчи начала сезона попадали в offset=-1
+// (предыдущий сезон), хотя по факту уже относятся к текущему. Буфер сдвигает
+// эффективную границу на неделю раньше round 1 — РАВНОМЕРНО для всех
+// сезонов (не только текущего), так как та же неделя кубковых матчей перед
+// round 1 повторяется на каждом переходе сезона, не только на последнем.
+export const SEASON_PRE_ROUND1_BUFFER_DAYS = 7;
+
 // Номер сезона Hattrick, вычисленный по дате матча относительно якоря — см.
 // SeasonAnchor выше. offset может быть отрицательным (матч раньше начала
 // сезона-якоря) — Math.floor корректно уходит в более старые сезоны.
 export function computeSeasonNumber(matchDate: string, anchor: SeasonAnchor): number | null {
   const dayMs = 24 * 60 * 60 * 1000;
-  const start = Date.parse(anchor.seasonStartDate.replace(" ", "T") + "Z");
+  const roundOneStart = Date.parse(anchor.seasonStartDate.replace(" ", "T") + "Z");
   const d = Date.parse(matchDate.replace(" ", "T") + "Z");
-  if (Number.isNaN(start) || Number.isNaN(d)) return null;
-  const offset = Math.floor((d - start) / dayMs / SEASON_LENGTH_DAYS);
+  if (Number.isNaN(roundOneStart) || Number.isNaN(d)) return null;
+  const seasonBoundary = roundOneStart - SEASON_PRE_ROUND1_BUFFER_DAYS * dayMs;
+  const offset = Math.floor((d - seasonBoundary) / dayMs / SEASON_LENGTH_DAYS);
   return anchor.season + offset;
 }
 
