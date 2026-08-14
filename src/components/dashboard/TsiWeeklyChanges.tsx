@@ -6,14 +6,25 @@ function fmt(n: number): string {
   return n.toLocaleString("ru-RU");
 }
 
+// Процент изменения — отношение изменения к ТЕКУЩЕМУ (итоговому) TSI
+// игрока, не к прошлому недельному значению (по запросу). toFixed вместо
+// toLocaleString — ru-RU даёт запятую как разделитель дробной части
+// ("8,2"), а нужна точка ("8.2"), как в примере формата.
+function fmtPercent(delta: number, tsiNow: number): string {
+  if (!tsiNow) return "0.0";
+  return Math.abs((delta / tsiNow) * 100).toFixed(1);
+}
+
 function TsiRow({ entry }: { entry: WeeklyTsiEntry }) {
   const isUp = entry.delta >= 0;
+  const sign = isUp ? "+" : "−";
   return (
     <div className={styles.tsiRow}>
       <div className={styles.tsiRowTop}>
         <span className={styles.tsiName}>{entry.name}</span>
         <span className={isUp ? styles.tsiUp : styles.tsiDown}>
-          {isUp ? "▲" : "▼"} {isUp ? "+" : "−"}
+          {sign}
+          {fmtPercent(entry.delta, entry.tsiNow)}% {isUp ? "▲" : "▼"} {sign}
           {fmt(Math.abs(entry.delta))}
         </span>
       </div>
