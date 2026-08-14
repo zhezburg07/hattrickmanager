@@ -219,15 +219,21 @@ export async function resolveWeeklyTsiHighlights(
 
     if (entries.length === 0) return emptyWeeklyResult;
 
-    const byDeltaDesc = [...entries].sort((a, b) => b.delta - a.delta);
-    const byDeltaAsc = [...entries].sort((a, b) => a.delta - b.delta);
+    // Сортировка по ПРОЦЕНТУ изменения (delta относительно текущего TSI
+    // игрока), а не по абсолютной величине — по запросу (см. чат "Изменения
+    // TSI: шрифт процента + сортировка по проценту"). tsiNow===0 не должно
+    // встречаться на реальных данных, но 0 вместо деления на 0 — честнее
+    // NaN/Infinity, которые сломали бы сортировку.
+    const percentOf = (e: WeeklyTsiEntry) => (e.tsiNow ? e.delta / e.tsiNow : 0);
+    const byPercentDesc = [...entries].sort((a, b) => percentOf(b) - percentOf(a));
+    const byPercentAsc = [...entries].sort((a, b) => percentOf(a) - percentOf(b));
 
     return {
       hasEnoughHistory: true,
-      gainer: byDeltaDesc[0] ?? null,
-      loser: byDeltaAsc[0] ?? null,
-      topGainers: byDeltaDesc.slice(0, WEEKLY_TSI_TOP_N),
-      topLosers: byDeltaAsc.slice(0, WEEKLY_TSI_TOP_N),
+      gainer: byPercentDesc[0] ?? null,
+      loser: byPercentAsc[0] ?? null,
+      topGainers: byPercentDesc.slice(0, WEEKLY_TSI_TOP_N),
+      topLosers: byPercentAsc.slice(0, WEEKLY_TSI_TOP_N),
     };
   } catch {
     return emptyWeeklyResult;

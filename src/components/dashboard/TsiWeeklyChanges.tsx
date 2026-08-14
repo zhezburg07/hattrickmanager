@@ -23,8 +23,11 @@ function TsiRow({ entry }: { entry: WeeklyTsiEntry }) {
       <div className={styles.tsiRowTop}>
         <span className={styles.tsiName}>{entry.name}</span>
         <span className={isUp ? styles.tsiUp : styles.tsiDown}>
-          {sign}
-          {fmtPercent(entry.delta, entry.tsiNow)}% {isUp ? "▲" : "▼"} {sign}
+          <span className={styles.tsiPercent}>
+            {sign}
+            {fmtPercent(entry.delta, entry.tsiNow)}%
+          </span>{" "}
+          {isUp ? "▲" : "▼"} {sign}
           {fmt(Math.abs(entry.delta))}
         </span>
       </div>
