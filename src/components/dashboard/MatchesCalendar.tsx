@@ -6,13 +6,6 @@ import MatchDetailAnalysis from "./MatchDetailAnalysis";
 import MatchTypeIcon from "./MatchTypeIcon";
 import styles from "./Matches.module.css";
 
-// Постраничный вывод ВНУТРИ сезона (см. чат "Официальные матчи: та же
-// архитектура, что и у Трансферов") — синхронизация хранит ВСЮ накопленную
-// историю без кэпа (см. chppSync.ts, StoredMatchesCalendar.matchHistory), а
-// разбивка на сезоны (см. ниже) и на страницы внутри сезона — на фронтенде,
-// тем же паттерном, что и на "Трансферах" (см. PAGE_SIZE в TransfersSection.tsx).
-const PAGE_SIZE = 30;
-
 // Ключ группы сезона в SEASON_UNKNOWN_KEY — матчи с season=null (якорь
 // текущего сезона, см. computeSeasonNumber в matches.ts, ещё ни разу не был
 // получен для этого аккаунта — leaguefixtures.xml не отдал нужных полей ни
@@ -53,10 +46,12 @@ function groupBySeason(matches: SeasonMatch[]): { key: string; season: number | 
 // РАЗБИТО ПО СЕЗОНАМ (см. чат "Матчи по сезонам") — по аналогии с
 // hattrick.org: переключатель "‹ Сезон N | Сезон N+1 ›" ПОД списком (см.
 // чат "Переключатель сезонов: порядок циклов") вместо единого списка со
-// сквозной постраничной прокруткой; внутри сезона — та же сортировка
-// (новые сверху) и та же постраничная прокрутка по 30, если в сезоне
-// матчей больше. По умолчанию выбран самый новый сезон, "›" уводит глубже
-// в историю (70 → 69 → 68 → …), "‹" — обратно к более новым.
+// сквозной постраничной прокруткой. По умолчанию выбран самый новый сезон,
+// "›" уводит глубже в историю (70 → 69 → 68 → …), "‹" — обратно к более
+// новым. Постраничная прокрутка ВНУТРИ сезона убрана (см. чат "Убрать
+// постраничное ограничение внутри сезона") — раз список уже разбит по
+// сезонам, дополнительное деление больше не нужно: каждый сезон
+// показывается целиком.
 export default function MatchesCalendar({
   matches,
   ourTeamName,
@@ -65,7 +60,6 @@ export default function MatchesCalendar({
   ourTeamName: string;
 }) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [page, setPage] = useState(1);
   const [seasonIndex, setSeasonIndex] = useState(0);
 
   const seasonGroups = useMemo(() => groupBySeason(matches), [matches]);
@@ -74,15 +68,9 @@ export default function MatchesCalendar({
   const matchList = currentGroup?.matches ?? [];
 
   // Список пришёл заново (обновление данных) — вернуться к самому свежему
-  // сезону и странице 1, иначе можно оказаться на несуществующей
-  // странице/сезоне, если история изменилась (тот же приём, что и на
-  // "Трансферах").
+  // сезону, иначе можно оказаться на несуществующем сезоне, если история
+  // изменилась (тот же приём, что и на "Трансферах").
   useEffect(() => setSeasonIndex(0), [matches]);
-  useEffect(() => setPage(1), [safeSeasonIndex, matches]);
-
-  const totalPages = Math.max(1, Math.ceil(matchList.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const shown = matchList.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const seasonLabel = (g: { season: number | null } | undefined) =>
     !g ? "" : g.season === null ? "Сезон не определён" : `Сезон ${g.season}`;
@@ -111,7 +99,7 @@ export default function MatchesCalendar({
       )}
 
       <div className={styles.matchListWrap}>
-        {shown.map((m) => {
+        {matchList.map((m) => {
           const isExpanded = expandedId === m.id;
           const isWin = (m.ourScore ?? 0) > (m.oppScore ?? 0);
           const isLoss = (m.ourScore ?? 0) < (m.oppScore ?? 0);
@@ -163,32 +151,6 @@ export default function MatchesCalendar({
           );
         })}
       </div>
-
-      {totalPages > 1 && (
-        <div className={styles.pagination}>
-          <button type="button" className={styles.pageBtn} disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>
-            ‹
-          </button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
-            <button
-              key={n}
-              type="button"
-              className={`${styles.pageBtn} ${n === safePage ? styles.pageBtnActive : ""}`}
-              onClick={() => setPage(n)}
-            >
-              {n}
-            </button>
-          ))}
-          <button
-            type="button"
-            className={styles.pageBtn}
-            disabled={safePage === totalPages}
-            onClick={() => setPage(safePage + 1)}
-          >
-            ›
-          </button>
-        </div>
-      )}
 
       {seasonGroups.length > 1 && (
         <div className={styles.pagination}>
