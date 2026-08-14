@@ -71,8 +71,9 @@ import {
   dedupeMatches,
   filterTrainingRelevantMatches,
   debugRawMatchFields,
-  parseArchiveEchoedRange,
   CUP_MATCH_TYPE,
+  mergeMatchHistory,
+  walkMatchArchiveHistory,
 } from "./matches";
 import type { SeasonMatch } from "@/data/matches";
 import { resolveOurCupPath, resolvePastCupPath, fetchCupMeta, type OurCupPathResult } from "./cupMatches";
@@ -94,6 +95,18 @@ import {
 // другой причине. С запасом на рост истории команды за пределы уже
 // известных 28 страниц (322+356=678 сделок на момент написания).
 const MAX_EXTRA_TRANSFER_PAGE_FETCHES = 100;
+
+// Та же архитектура "полная история один раз, дальше только довесок" — теперь
+// и для Официальных матчей (см. чат "Официальные матчи: та же архитектура,
+// что и у Трансферов"). Защитный предел глубины обхода matchesarchive.xml по
+// 45-дневным окнам пакетами по 6 (walkMatchArchiveHistory сам остановится
+// раньше, как только пакет окон подряд не даст ни одного матча — этот лимит
+// нужен только на случай аномально длинной истории команды или зацикливания).
+// 60 окон × 45 дней ≈ 2700 дней (~7.4 года) вглубь — заведомо больше, чем
+// длится история почти любой команды Hattrick.
+const MAX_ARCHIVE_WINDOWS = 60;
+const ARCHIVE_WINDOW_DAYS = 45;
+const ARCHIVE_BATCH_SIZE = 6;
 
 // Сколько последних сыгранных матчей Арены (лестница + все турниры вместе)
 // показывать на закладке "Арена" (см. чат "Матчи Арены: слишком мало
@@ -224,6 +237,18 @@ export interface StoredYouthPlayersData {
 
 export interface StoredMatchesCalendar {
   matches: SeasonMatch[] | null;
+  // Полная накопленная история официальных матчей (RealMatch[], без фильтра
+  // "тренировочно значимых") — см. чат "Официальные матчи: та же
+  // архитектура, что и у Трансферов". Хранится ОТДЕЛЬНО от matches
+  // (готового к показу SeasonMatch[]) специально ради дальнейших
+  // инкрементальных слияний (mergeMatchHistory) и переиспользования в
+  // "cupInfo"/"arenaResults" ниже — merge обязан идти по RealMatch[], а
+  // toSeasonMatches применяется только один раз, в самом конце. Отсутствие
+  // этого поля у СТАРОГО (до этого изменения) снимка — единственный и
+  // достаточный признак "нет ещё накопленной истории", запускающий полный
+  // обход при следующей синхронизации (без отдельного явного флага, тот же
+  // приём self-healing, что и у Трансферов).
+  matchHistory: RealMatch[] | null;
   ourTeamName: string;
   error: string | null;
   warning: string | null;
@@ -1016,17 +1041,27 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
 
   // -- matchesCalendar (Матчи: список + история прошлых сезонов через
   // matchesarchive) — teamId и текущий сезон (parsedMatches/raw.matches) уже
-  // получены выше для секции "matches", здесь только добавляем историю через
-  // 6 окон matchesarchive (см. комментарий в исходном matches/page.tsx про
-  // причины именно такого разбиения) и собираем финальный список. Ошибка и
-  // предупреждение хранятся ВНУТРИ объекта (как и раньше на странице), а не
-  // через error-колонку — независимых частичных причин несколько.
+  // получены выше для секции "matches". Ошибка и предупреждение хранятся
+  // ВНУТРИ объекта (как и раньше на странице), а не через error-колонку —
+  // независимых частичных причин несколько.
+  // ОПТИМИЗАЦИЯ (см. чат "Официальные матчи: та же архитектура, что и у
+  // Трансферов") — полный обход всей истории через matchesarchive
+  // (walkMatchArchiveHistory) нужен только ОДИН раз, пока для этого аккаунта
+  // ещё нет накопленной matchHistory. На каждой следующей синхронизации
+  // запрашивается только текущий сезон (matches.xml, и так уже получен для
+  // других секций) плюс одно САМОЕ СВЕЖЕЕ окно matchesarchive (на случай
+  // матчей, только что перешедших в архив на границе сезона) — новые записи
+  // сливаются с уже сохранённой полной историей (mergeMatchHistory,
+  // дедупликация по matchId, свежее побеждает). Снимок читается ДО того, как
+  // его перезапишет текущая синхронизация (тот же приём, что и у
+  // transferHistory выше).
   {
     const debugCounts: string[] = [];
     let debugRaw: Record<string, unknown>[] = [];
     let calendarError: string | null = null;
     let calendarWarning: string | null = null;
     let shownMatches: SeasonMatch[] | null = null;
+    let storedMatchHistory: RealMatch[] | null = null;
 
     try {
       if (!teamId) throw new Error("Не определена наша команда (teamdetails).");
@@ -1051,79 +1086,70 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
       };
 
-      const ARCHIVE_WINDOW_DAYS = 45;
-      const ARCHIVE_WINDOW_COUNT = 6;
-      const dayMs = 24 * 60 * 60 * 1000;
-      const now = new Date();
-      const archiveWindows = Array.from({ length: ARCHIVE_WINDOW_COUNT }, (_, i) => {
-        const last = new Date(now.getTime() - i * ARCHIVE_WINDOW_DAYS * dayMs);
-        const first = new Date(last.getTime() - ARCHIVE_WINDOW_DAYS * dayMs);
-        return { firstMatchDate: toHattrickTimeString(first), lastMatchDate: toHattrickTimeString(last) };
-      });
+      const previousCalendarSnapshot = await getSnapshot<StoredMatchesCalendar>(hattrickUserId, DATA_KEYS.matchesCalendar);
+      const priorMatchHistory = previousCalendarSnapshot?.data?.matchHistory ?? null;
+      const hasPriorHistory = !!priorMatchHistory && priorMatchHistory.length > 0;
 
-      let archiveMatches: RealMatch[] = [];
+      let matchHistory: RealMatch[];
       let archiveWarning: string | null = null;
-      const archiveResults = await Promise.allSettled(
-        archiveWindows.map((w) =>
-          requestChppXmlRaw("matchesarchive", { FirstMatchDate: w.firstMatchDate, LastMatchDate: w.lastMatchDate }, tokens),
-        ),
-      );
 
-      let anyArchiveSuccess = false;
-      let clampedWindowCount = 0;
-      archiveResults.forEach((result, i) => {
-        const w = archiveWindows[i];
-        const windowLabel = `окно ${i + 1}/${ARCHIVE_WINDOW_COUNT} (${w.firstMatchDate}..${w.lastMatchDate})`;
-        if (result.status !== "fulfilled") {
-          const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
-          debugCounts.push(`matchesarchive.xml [${windowLabel}]: ошибка запроса — ${message}`);
-          return;
-        }
-        const archiveRaw = result.value;
-        if (archiveRaw.httpStatus < 200 || archiveRaw.httpStatus >= 300) {
-          debugCounts.push(`matchesarchive.xml [${windowLabel}]: HTTP ${archiveRaw.httpStatus}`);
-          return;
-        }
+      if (hasPriorHistory) {
+        const dayMs = 24 * 60 * 60 * 1000;
+        const now = new Date();
+        const first = toHattrickTimeString(new Date(now.getTime() - ARCHIVE_WINDOW_DAYS * dayMs));
+        const last = toHattrickTimeString(now);
+        let latestArchiveMatches: RealMatch[] = [];
         try {
-          const windowMatches = parseMatchesXml(archiveRaw.rawXml, teamId, { isArchive: true });
-          archiveMatches.push(...windowMatches);
-          anyArchiveSuccess = true;
-          const echoed = parseArchiveEchoedRange(archiveRaw.rawXml);
-          const clamped = echoed.firstMatchDate !== null && echoed.firstMatchDate !== w.firstMatchDate;
-          if (clamped) clampedWindowCount += 1;
-          debugCounts.push(
-            `matchesarchive.xml [${windowLabel}]: ${windowMatches.length} матчей` +
-              (clamped ? ` ⚠ CHPP применил другой диапазон: ${echoed.firstMatchDate}..${echoed.lastMatchDate}` : ""),
-          );
+          const archiveRaw = await requestChppXmlRaw("matchesarchive", { FirstMatchDate: first, LastMatchDate: last }, tokens);
+          if (archiveRaw.httpStatus >= 200 && archiveRaw.httpStatus < 300) {
+            latestArchiveMatches = parseMatchesXml(archiveRaw.rawXml, teamId, { isArchive: true });
+            debugCounts.push(`matchesarchive.xml [самое свежее окно, ${first}..${last}]: ${latestArchiveMatches.length} матчей`);
+          } else {
+            debugCounts.push(`matchesarchive.xml [самое свежее окно]: HTTP ${archiveRaw.httpStatus}`);
+          }
         } catch (err) {
-          debugCounts.push(`matchesarchive.xml [${windowLabel}]: ошибка разбора — ${errorMessage(err)}`);
+          debugCounts.push(`matchesarchive.xml [самое свежее окно]: ошибка запроса — ${errorMessage(err)}`);
         }
-      });
 
-      if (!anyArchiveSuccess) {
-        archiveWarning = "Полная история прошлых сезонов (matchesarchive) недоступна — показан только текущий сезон (matches).";
-      } else if (clampedWindowCount > 0) {
-        archiveWarning = `CHPP подрезал запрошенный диапазон дат в ${clampedWindowCount} из ${ARCHIVE_WINDOW_COUNT} запросов к matchesarchive — история может быть неполной несмотря на попытку.`;
+        const freshMatches = dedupeMatches([...currentSeasonMatches, ...latestArchiveMatches]);
+        matchHistory = mergeMatchHistory(priorMatchHistory!, freshMatches);
+        debugCounts.push(
+          `инкрементально (уже была история из ${priorMatchHistory!.length} матчей): + ${freshMatches.length} свежих → после слияния/дедупликации всего ${matchHistory.length}`,
+        );
+      } else {
+        const walkResult = await walkMatchArchiveHistory(
+          teamId,
+          (firstMatchDate, lastMatchDate) => requestChppXmlRaw("matchesarchive", { FirstMatchDate: firstMatchDate, LastMatchDate: lastMatchDate }, tokens),
+          toHattrickTimeString,
+          { windowDays: ARCHIVE_WINDOW_DAYS, batchSize: ARCHIVE_BATCH_SIZE, maxWindows: MAX_ARCHIVE_WINDOWS },
+        );
+        debugCounts.push(...walkResult.windowLog);
+        debugCounts.push(`matchesarchive.xml — всего собрано из всех окон: ${walkResult.matches.length} матчей`);
+
+        const anyArchiveSuccess = walkResult.windowLog.some((l) => /: \d+ матчей(\s|$)/.test(l));
+        if (!anyArchiveSuccess) {
+          archiveWarning = "Полная история прошлых сезонов (matchesarchive) недоступна — показан только текущий сезон (matches).";
+        }
+
+        matchHistory = dedupeMatches([...currentSeasonMatches, ...walkResult.matches]);
+        debugCounts.push(`после объединения и удаления дублей (первая синхронизация, полный обход): ${matchHistory.length}`);
       }
-      debugCounts.push(`matchesarchive.xml — всего собрано из всех окон: ${archiveMatches.length} матчей`);
 
-      const merged = dedupeMatches([...currentSeasonMatches, ...archiveMatches]);
-      debugCounts.push(`после объединения и удаления дублей: ${merged.length}`);
-      mergedSeasonMatches = merged;
+      mergedSeasonMatches = matchHistory;
+      storedMatchHistory = matchHistory;
 
-      if (merged.length === 0) {
-        const archiveNote = archiveMatches.length === 0 ? " и matchesarchive" : "";
+      if (matchHistory.length === 0) {
         throw new Error(
-          `Матчи (matches${archiveNote}): запрос выполнился (HTTP ${raw.matches.httpStatus}), но вернул пустой список матчей — либо у команды ещё нет ни одного матча в ответе CHPP, либо структура ответа отличается от ожидаемой (см. RealMatch в src/lib/matches.ts).`,
+          `Матчи (matches и matchesarchive): запрос выполнился (HTTP ${raw.matches.httpStatus}), но вернул пустой список матчей — либо у команды ещё нет ни одного матча в ответе CHPP, либо структура ответа отличается от ожидаемой (см. RealMatch в src/lib/matches.ts).`,
         );
       }
 
-      let trainingRelevant = filterTrainingRelevantMatches(merged);
+      let trainingRelevant = filterTrainingRelevantMatches(matchHistory);
       debugCounts.push(`после строгого фильтра (сыграно + основная команда): ${trainingRelevant.length}`);
 
-      if (merged.length !== trainingRelevant.length) {
+      if (matchHistory.length !== trainingRelevant.length) {
         const passedIds = new Set(trainingRelevant.map((m) => m.matchId));
-        const excluded = merged.filter((m) => !passedIds.has(m.matchId));
+        const excluded = matchHistory.filter((m) => !passedIds.has(m.matchId));
         let notFinished = 0;
         let missingScore = 0;
         let youth = 0;
@@ -1144,7 +1170,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       }
       let filterWarning: string | null = null;
       if (trainingRelevant.length === 0) {
-        trainingRelevant = merged.filter((m) => m.status === "FINISHED" && m.ourScore !== null && m.oppScore !== null);
+        trainingRelevant = matchHistory.filter((m) => m.status === "FINISHED" && m.ourScore !== null && m.oppScore !== null);
         debugCounts.push(`после мягкого фильтра (только "сыграно"): ${trainingRelevant.length}`);
         if (trainingRelevant.length > 0) {
           filterWarning =
@@ -1152,8 +1178,10 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         }
       }
 
-      const MAX_MATCHES_SHOWN = 25;
-      shownMatches = toSeasonMatches(trainingRelevant).slice(0, MAX_MATCHES_SHOWN);
+      // Кэп MAX_MATCHES_SHOWN убран (см. чат "Официальные матчи: та же
+      // архитектура, что и у Трансферов") — полный список хранится в
+      // снимке, разбивка на страницы теперь на фронтенде (MatchesCalendar.tsx).
+      shownMatches = toSeasonMatches(trainingRelevant);
       calendarWarning = [archiveWarning, filterWarning].filter(Boolean).join(" ") || null;
       anySucceeded = true;
     } catch (err) {
@@ -1163,6 +1191,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
 
     const stored: StoredMatchesCalendar = {
       matches: shownMatches,
+      matchHistory: storedMatchHistory,
       ourTeamName,
       error: calendarError,
       warning: calendarWarning,

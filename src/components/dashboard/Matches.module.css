@@ -348,3 +348,42 @@
   padding: 2px 10px;
   margin-left: 8px;
 }
+
+/* Постраничный переключатель списка матчей (MatchesCalendar) — тот же
+   паттерн/классы, что уже используются на "Трансферах" (см. Transfers.module.css,
+   чат "Официальные матчи: та же архитектура, что и у Трансферов"). */
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.pageBtn {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 30px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.pageBtn:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.pageBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pageBtnActive {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg-darker);
+}

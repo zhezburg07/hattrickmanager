@@ -1,10 +1,17 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { SeasonMatch } from "@/data/matches";
 import MatchDetailAnalysis from "./MatchDetailAnalysis";
 import MatchTypeIcon from "./MatchTypeIcon";
 import styles from "./Matches.module.css";
+
+// Постраничный вывод (см. чат "Официальные матчи: та же архитектура, что и
+// у Трансферов") — синхронизация теперь хранит ВСЮ накопленную историю без
+// кэпа (см. chppSync.ts, StoredMatchesCalendar.matchHistory), поэтому список
+// режется на страницы здесь, а не на сервере, тем же паттерном, что и на
+// "Трансферах" (см. PAGE_SIZE в TransfersSection.tsx).
+const PAGE_SIZE = 30;
 
 // Список содержит только уже сыгранные матчи основной команды, реально
 // учитываемые Hattrick для тренировки игроков (лига/кубок/товарищеские) —
@@ -23,18 +30,27 @@ export default function MatchesCalendar({
 }) {
   const matchList = matches;
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+
+  const totalPages = Math.max(1, Math.ceil(matchList.length / PAGE_SIZE));
+  // Список пришёл заново (обновление данных) — вернуться на страницу 1,
+  // иначе можно оказаться на несуществующей странице, если история стала
+  // короче (тот же приём, что и на "Трансферах").
+  useEffect(() => setPage(1), [matchList.length]);
+  const safePage = Math.min(page, totalPages);
+  const shown = matchList.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <div className={styles.card}>
       <div className={styles.cardTitle}>Сыгранные матчи</div>
       <p className={styles.hint}>
-        Последние {matchList.length === 25 ? "25" : matchList.length} матчей основной команды, влияющие на тренировку
-        игроков — лига, кубок и товарищеские, от недавних к самым старым. Предстоящие матчи, юношеская команда и
-        Hattrick Arena/Masters/лестницы сюда не входят. Нажмите на матч, чтобы открыть полный анализ.
+        Всего {matchList.length} матчей основной команды, влияющие на тренировку игроков — лига, кубок и
+        товарищеские, от недавних к самым старым. Предстоящие матчи, юношеская команда и Hattrick Arena/Masters/
+        лестницы сюда не входят. Нажмите на матч, чтобы открыть полный анализ.
       </p>
 
       <div className={styles.matchListWrap}>
-        {matchList.map((m) => {
+        {shown.map((m) => {
           const isExpanded = expandedId === m.id;
           const isWin = (m.ourScore ?? 0) > (m.oppScore ?? 0);
           const isLoss = (m.ourScore ?? 0) < (m.oppScore ?? 0);
@@ -86,6 +102,32 @@ export default function MatchesCalendar({
           );
         })}
       </div>
+
+      {totalPages > 1 && (
+        <div className={styles.pagination}>
+          <button type="button" className={styles.pageBtn} disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>
+            ‹
+          </button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={`${styles.pageBtn} ${n === safePage ? styles.pageBtnActive : ""}`}
+              onClick={() => setPage(n)}
+            >
+              {n}
+            </button>
+          ))}
+          <button
+            type="button"
+            className={styles.pageBtn}
+            disabled={safePage === totalPages}
+            onClick={() => setPage(safePage + 1)}
+          >
+            ›
+          </button>
+        </div>
+      )}
 
       <div className={styles.legend}>
         <span>Сыграно матчей: {matchList.length}</span>

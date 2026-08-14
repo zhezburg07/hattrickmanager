@@ -301,6 +301,100 @@ export function dedupeMatches(matches: RealMatch[]): RealMatch[] {
   return [...seen.values()];
 }
 
+// Инкрементальное обновление истории официальных матчей — та же
+// архитектура, что уже подтверждена для Трансферов (mergeTransferHistory в
+// transferMarket.ts, см. чат "Официальные матчи: та же архитектура, что и у
+// Трансферов"): сливает уже сохранённую (полную, накопленную за все
+// синхронизации) историю с новыми матчами, дедуплицируя по matchId. Новые
+// записи ПОБЕЖДАЮТ при конфликте (latest wins) — тот же принцип, что и у
+// трансферов, полезно, если статус/счёт матча уточнился между
+// синхронизациями (например, "предстоящий" стал "сыгран"). Результат снова
+// явно сортируется по дате по убыванию.
+export function mergeMatchHistory(previous: RealMatch[], latest: RealMatch[]): RealMatch[] {
+  const byId = new Map<string, RealMatch>();
+  for (const m of previous) {
+    if (m.matchId) byId.set(m.matchId, m);
+  }
+  for (const m of latest) {
+    if (m.matchId) byId.set(m.matchId, m);
+  }
+  return [...byId.values()].sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export interface MatchArchiveWindowFetchResult {
+  httpStatus: number;
+  rawXml: string;
+}
+
+// Обходит matchesarchive.xml ПАКЕТАМИ окон дат (не по одному — чтобы
+// сохранить параллелизм внутри пакета, как и раньше при фиксированных 6
+// окнах) вглубь истории команды, пока очередной пакет не даст 0 новых
+// матчей вообще (сигнал "дальше истории нет") или не упрётся в защитный
+// лимит числа окон (options.maxWindows) — тот же приём "полный обход один
+// раз", что уже подтверждён для Трансферов (accumulateTransferHistory),
+// применённый здесь к другому виду пагинации (скользящее окно дат, а не
+// номер страницы). fetchWindow/toHattrickTimeString передаются параметрами
+// (а не вызываются напрямую) специально ради тестируемости — вызывающая
+// сторона (chppSync.ts) передаёт настоящий requestChppXmlRaw, проверка на
+// mock-данных — свою функцию.
+export async function walkMatchArchiveHistory(
+  teamId: string,
+  fetchWindow: (firstMatchDate: string, lastMatchDate: string) => Promise<MatchArchiveWindowFetchResult>,
+  toHattrickTimeString: (d: Date) => string,
+  options: { windowDays: number; batchSize: number; maxWindows: number },
+): Promise<{ matches: RealMatch[]; windowLog: string[] }> {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const allMatches: RealMatch[] = [];
+  const windowLog: string[] = [];
+  let windowsFetched = 0;
+
+  while (windowsFetched < options.maxWindows) {
+    const batchCount = Math.min(options.batchSize, options.maxWindows - windowsFetched);
+    const batch = Array.from({ length: batchCount }, (_, i) => {
+      const windowIndex = windowsFetched + i;
+      const last = new Date(now.getTime() - windowIndex * options.windowDays * dayMs);
+      const first = new Date(last.getTime() - options.windowDays * dayMs);
+      return { windowIndex, firstMatchDate: toHattrickTimeString(first), lastMatchDate: toHattrickTimeString(last) };
+    });
+
+    const results = await Promise.allSettled(batch.map((w) => fetchWindow(w.firstMatchDate, w.lastMatchDate)));
+
+    let batchMatchCount = 0;
+    results.forEach((result, i) => {
+      const w = batch[i];
+      const label = `окно ${w.windowIndex + 1} (${w.firstMatchDate}..${w.lastMatchDate})`;
+      if (result.status !== "fulfilled") {
+        windowLog.push(`${label}: запрос не выполнился — ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+        return;
+      }
+      const raw = result.value;
+      if (raw.httpStatus < 200 || raw.httpStatus >= 300) {
+        windowLog.push(`${label}: HTTP ${raw.httpStatus}`);
+        return;
+      }
+      try {
+        const windowMatches = parseMatchesXml(raw.rawXml, teamId, { isArchive: true });
+        allMatches.push(...windowMatches);
+        batchMatchCount += windowMatches.length;
+        windowLog.push(`${label}: ${windowMatches.length} матчей`);
+      } catch (err) {
+        windowLog.push(`${label}: ошибка разбора — ${err instanceof Error ? err.message : "неизвестная ошибка"}`);
+      }
+    });
+
+    windowsFetched += batch.length;
+    if (batchMatchCount === 0) {
+      windowLog.push(
+        `пакет из ${batch.length} окон подряд дал 0 матчей — останавливаем обход вглубь истории (дошли до начала истории команды или до лимита данных CHPP).`,
+      );
+      break;
+    }
+  }
+
+  return { matches: allMatches, windowLog };
+}
+
 // Приводит реальные матчи к тому же виду, что и полный календарь сезона
 // (SeasonMatch) — для страницы "Матчи". Сортировка — от новых/ближайших к
 // старым (сверху вниз), а не наоборот. CHPP не даёт номер тура лиги —
