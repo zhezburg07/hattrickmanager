@@ -379,6 +379,13 @@ export interface MatchTimelineEntry {
   text: string;
   kind: MatchTimelineKind;
   teamSide: "home" | "away" | null;
+  // Только для kind="sub" (см. чат "Хронология: подсказка 'Игрок А на
+  // Игрок Б' для замены") — сырые SubjectPlayerID/ObjectPlayerID события,
+  // используются ТОЛЬКО чтобы собрать text в формате "замена — А на Б" (см.
+  // resolveSubstitutionTexts ниже), после чего значения этих полей уже не
+  // нужны получателю. null — поле не пришло в этом событии.
+  subjectPlayerId?: number | null;
+  objectPlayerId?: number | null;
 }
 
 export interface MatchAnalysisResult {
@@ -927,18 +934,96 @@ function parseSubstitutionsFromEventList(
       if (!SUBSTITUTION_EVENT_IDS.has(typeId) && !SUBSTITUTION_PATTERN.test(text)) continue;
       const teamId = String(e.SubjectTeamID ?? e.SubjectTeamId ?? "");
       const minute = Number(e.Minute ?? NaN);
+      // SubjectPlayerID/ObjectPlayerID — официально подтверждены только для
+      // голов/моментов (см. комментарий у GOAL_ZONE_LEFT выше, chpp/
+      // file_matchdetails.go: "For other events, usually indicates the
+      // primarily active player" / ObjectPlayerID описан только для голов).
+      // Для замен их значение НЕ задокументировано официально — извлекаются
+      // здесь как гипотеза, подтверждается или отклоняется по факту (см.
+      // resolveSubstitutionTexts ниже — сверка с реальным текстом события),
+      // а не как готовый факт.
+      const subjectPlayerIdRaw = Number(e.SubjectPlayerID ?? e.SubjectPlayerId ?? NaN);
+      const objectPlayerIdRaw = Number(e.ObjectPlayerID ?? e.ObjectPlayerId ?? NaN);
       entries.push({
         minute: Number.isNaN(minute) ? 0 : minute,
         matchPart: Number(e.MatchPart ?? 0) || 0,
         text,
         kind: "sub",
         teamSide: teamSideOf(teamId, homeTeamId),
+        subjectPlayerId: Number.isNaN(subjectPlayerIdRaw) || subjectPlayerIdRaw === 0 ? null : subjectPlayerIdRaw,
+        objectPlayerId: Number.isNaN(objectPlayerIdRaw) || objectPlayerIdRaw === 0 ? null : objectPlayerIdRaw,
       });
     } catch {
       // Пропускаем один нестандартный элемент, не теряя остальные.
     }
   }
   return { entries, rawCount: rawEvents.length };
+}
+
+// Собирает text замены в формате "замена — [выходит] на [выходит на замену]"
+// (см. чат "Хронология: подсказка 'Игрок А на Игрок Б' для замены") —
+// ПОСЛЕ того, как получены рейтинги обеих команд (matchlineup.xml, нужны
+// имена по PlayerID). Гипотеза "SubjectPlayerID = выходящий НА замену"
+// (тот, о ком говорит EventText, например "Sayat Barkenov вступил в игру")
+// ПРОВЕРЯЕТСЯ на каждом событии отдельно — имя, разрешённое по
+// SubjectPlayerID, должно реально встретиться в исходном EventText; если
+// нет (гипотеза не подтвердилась, ID не пришли, или имя не нашлось в
+// matchlineup) — исходный текст события НЕ трогаем и оставляем честный след
+// в debug, вместо того чтобы гадать, кто есть кто.
+function resolveSubstitutionTexts(
+  timeline: MatchTimelineEntry[],
+  homeRatings: MatchPlayerRating[],
+  awayRatings: MatchPlayerRating[],
+  debug: string[],
+): void {
+  const nameById = new Map<number, string>();
+  for (const r of [...homeRatings, ...awayRatings]) {
+    if (r.playerId) nameById.set(r.playerId, r.name);
+  }
+
+  const subEntries = timeline.filter((ev) => ev.kind === "sub");
+  if (subEntries.length === 0) return;
+
+  let resolvedCount = 0;
+  const unresolvedSamples: string[] = [];
+
+  for (const ev of subEntries) {
+    const subjectId = ev.subjectPlayerId ?? null;
+    const objectId = ev.objectPlayerId ?? null;
+    if (!subjectId || !objectId) {
+      if (unresolvedSamples.length < 3) unresolvedSamples.push(`"${ev.text}" (SubjectPlayerID/ObjectPlayerID не пришли)`);
+      continue;
+    }
+    const subjectName = nameById.get(subjectId);
+    const objectName = nameById.get(objectId);
+    if (!subjectName || !objectName) {
+      if (unresolvedSamples.length < 3) {
+        unresolvedSamples.push(
+          `"${ev.text}" (ID есть, но имя не нашлось в matchlineup: subject=${subjectId}, object=${objectId})`,
+        );
+      }
+      continue;
+    }
+    if (ev.text.includes(subjectName)) {
+      ev.text = `замена — ${objectName} на ${subjectName}`;
+      resolvedCount++;
+    } else if (ev.text.includes(objectName)) {
+      if (unresolvedSamples.length < 3) {
+        unresolvedSamples.push(
+          `"${ev.text}" (совпало имя ObjectPlayerID=${objectId} "${objectName}", а не SubjectPlayerID — гипотеза не подтвердилась для этого события)`,
+        );
+      }
+    } else if (unresolvedSamples.length < 3) {
+      unresolvedSamples.push(
+        `"${ev.text}" (ни SubjectPlayerID=${subjectId} "${subjectName}", ни ObjectPlayerID=${objectId} "${objectName}" не встретились в тексте)`,
+      );
+    }
+  }
+
+  debug.push(
+    `Замены — сборка "Игрок А на Игрок Б": из ${subEntries.length} событий уверенно собрано ${resolvedCount}` +
+      (unresolvedSamples.length > 0 ? `; не собрано (оставлен исходный текст события): ${unresolvedSamples.join(" | ")}` : ""),
+  );
 }
 
 // Подтверждённая реальная схема matchlineup.xml (независимый CHPP-клиент
@@ -1289,6 +1374,12 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
         ? "Рейтинги игроков (matchlineup) вернулись пустыми для обеих команд."
         : null;
   debug.push(`matchlineup — рейтинги: наша сторона ${homeRatings.length}, соперник ${awayRatings.length}`);
+
+  // Собрать text замены в формате "замена — А на Б" (см. чат "Хронология:
+  // подсказка 'Игрок А на Игрок Б' для замены") — только теперь, после того
+  // как получены имена игроков (matchlineup.xml выше); до этого момента
+  // subEntries.text содержал только исходный EventText.
+  if (timeline) resolveSubstitutionTexts(timeline, homeRatings, awayRatings, debug);
 
   // Долгосрочное обезличенное логирование в match_research_log (см.
   // src/lib/matchResearchDb.ts) — "по требованию", побочным эффектом уже
