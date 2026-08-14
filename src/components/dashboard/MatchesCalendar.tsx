@@ -51,10 +51,12 @@ function groupBySeason(matches: SeasonMatch[]): { key: string; season: number | 
 // иконкой слева (см. MatchTypeIcon).
 //
 // РАЗБИТО ПО СЕЗОНАМ (см. чат "Матчи по сезонам") — по аналогии с
-// hattrick.org: переключатель "‹ Сезон N | Сезон N+1 ›" сверху вместо
-// единого списка со сквозной постраничной прокруткой; внутри сезона — та
-// же сортировка (новые сверху) и та же постраничная прокрутка по 30, если
-// в сезоне матчей больше.
+// hattrick.org: переключатель "‹ Сезон N | Сезон N+1 ›" ПОД списком (см.
+// чат "Переключатель сезонов: порядок циклов") вместо единого списка со
+// сквозной постраничной прокруткой; внутри сезона — та же сортировка
+// (новые сверху) и та же постраничная прокрутка по 30, если в сезоне
+// матчей больше. По умолчанию выбран самый новый сезон, "›" уводит глубже
+// в историю (70 → 69 → 68 → …), "‹" — обратно к более новым.
 export default function MatchesCalendar({
   matches,
   ourTeamName,
@@ -84,8 +86,14 @@ export default function MatchesCalendar({
 
   const seasonLabel = (g: { season: number | null } | undefined) =>
     !g ? "" : g.season === null ? "Сезон не определён" : `Сезон ${g.season}`;
-  const prevGroup = seasonGroups[safeSeasonIndex + 1]; // индекс+1 — сезон СТАРШЕ (список отсортирован по убыванию)
-  const nextGroup = seasonGroups[safeSeasonIndex - 1]; // индекс-1 — сезон НОВЕЕ
+  // ИСПРАВЛЕНО (см. чат "Переключатель сезонов: порядок циклов") — раньше
+  // "‹" вёл к более СТАРОМУ сезону, а "›" к более НОВОМУ — противоположно
+  // ожидаемому. По умолчанию выбран самый новый сезон (index 0, список
+  // отсортирован по убыванию), а "›" ("вперёд"/"далее") должен уводить
+  // ГЛУБЖЕ в историю (70 → 69 → 68 → …), как и обычная постраничная
+  // прокрутка ниже (страница 1 → 2 → 3…) — то же направление, что и там.
+  const olderGroup = seasonGroups[safeSeasonIndex + 1]; // индекс+1 — сезон СТАРШЕ (список отсортирован по убыванию)
+  const newerGroup = seasonGroups[safeSeasonIndex - 1]; // индекс-1 — сезон НОВЕЕ
 
   return (
     <div className={styles.card}>
@@ -100,32 +108,6 @@ export default function MatchesCalendar({
           Номер сезона для этих матчей ещё не определён — потребуется ещё одна успешная синхронизация, пока сезон в
           лиге не начался или данные о нём не были получены.
         </p>
-      )}
-
-      {seasonGroups.length > 1 && (
-        <div className={styles.pagination} style={{ marginTop: 0, marginBottom: 16 }}>
-          <button
-            type="button"
-            className={styles.pageBtn}
-            disabled={!prevGroup}
-            onClick={() => setSeasonIndex(safeSeasonIndex + 1)}
-            title={prevGroup ? seasonLabel(prevGroup) : undefined}
-          >
-            ‹ {prevGroup ? seasonLabel(prevGroup) : ""}
-          </button>
-          <span className={`${styles.pageBtn} ${styles.pageBtnActive}`} style={{ cursor: "default" }}>
-            {seasonLabel(currentGroup)}
-          </span>
-          <button
-            type="button"
-            className={styles.pageBtn}
-            disabled={!nextGroup}
-            onClick={() => setSeasonIndex(safeSeasonIndex - 1)}
-            title={nextGroup ? seasonLabel(nextGroup) : undefined}
-          >
-            {nextGroup ? seasonLabel(nextGroup) : ""} ›
-          </button>
-        </div>
       )}
 
       <div className={styles.matchListWrap}>
@@ -204,6 +186,32 @@ export default function MatchesCalendar({
             onClick={() => setPage(safePage + 1)}
           >
             ›
+          </button>
+        </div>
+      )}
+
+      {seasonGroups.length > 1 && (
+        <div className={styles.pagination}>
+          <button
+            type="button"
+            className={styles.pageBtn}
+            disabled={!newerGroup}
+            onClick={() => setSeasonIndex(safeSeasonIndex - 1)}
+            title={newerGroup ? seasonLabel(newerGroup) : undefined}
+          >
+            ‹ {newerGroup ? seasonLabel(newerGroup) : ""}
+          </button>
+          <span className={`${styles.pageBtn} ${styles.pageBtnActive}`} style={{ cursor: "default" }}>
+            {seasonLabel(currentGroup)}
+          </span>
+          <button
+            type="button"
+            className={styles.pageBtn}
+            disabled={!olderGroup}
+            onClick={() => setSeasonIndex(safeSeasonIndex + 1)}
+            title={olderGroup ? seasonLabel(olderGroup) : undefined}
+          >
+            {olderGroup ? seasonLabel(olderGroup) : ""} ›
           </button>
         </div>
       )}
