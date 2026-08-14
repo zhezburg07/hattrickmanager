@@ -338,9 +338,18 @@ function computeAttackZoneBreakdown(
     ["Голы (сумма по зонам)", stats.goals, goalsLeft + goalsCenter + goalsRight + goalsSpecial + goalsOther],
     ["Нереализовано (сумма по зонам)", stats.missed, missedLeft + missedCenter + missedRight + missedSpecial + missedOther],
   ];
+  // Расхождение считается как computed − real (см. чат "Разбивка по зонам:
+  // диагностика для конкретного матча") — знак сразу показывает направление:
+  // "+1" значит по EventList насчитали на 1 БОЛЬШЕ, чем в официальном итоге
+  // (лишнее/задвоенное событие или неверно классифицированный код),
+  // "-1" — на 1 МЕНЬШЕ (пропущенное событие или неопознанный код, см.
+  // "нераспознанных кодов" ниже — типичная причина недостачи).
   const mismatches = checks
     .filter(([, real, computed]) => real !== null && real !== computed)
-    .map(([label, real, computed]) => `${label}: официально ${real}, по EventList ${computed}`);
+    .map(([label, real, computed]) => {
+      const delta = computed - (real as number);
+      return `${label}: официально ${real}, по EventList ${computed} (расхождение ${delta > 0 ? "+" : ""}${delta})`;
+    });
 
   debug.push(
     `Разбивка по зонам (${sideLabel}) из EventList: голы Л/Ц/П/Спец/Друг=${goalsLeft}/${goalsCenter}/${goalsRight}/${goalsSpecial}/${goalsOther}, ` +
@@ -348,7 +357,9 @@ function computeAttackZoneBreakdown(
       `нераспознанных кодов в диапазоне гола/непопадания (100-299)=${unclassified}. ` +
       (mismatches.length === 0
         ? "сходится со всеми официальными итогами — показываем в таблице."
-        : `НЕ сходится (${mismatches.join("; ")}) — не показываем, оставляем честные прочерки в таблице.`),
+        : `НЕ сходится (${mismatches.join("; ")}) — не показываем ни "Голы", ни "Нереализованные моменты" по зонам для этой команды ` +
+          `(проверка "всё или ничего": одной несошедшейся категории достаточно, чтобы обнулить ОБЕ строки, см. computeAttackZoneBreakdown) — ` +
+          `оставляем честные прочерки в таблице, "Всего моментов" (готовое поле matchdetails, не из EventList) не затронуто.`),
   );
 
   if (mismatches.length > 0) return EMPTY_ZONE_BREAKDOWN;
