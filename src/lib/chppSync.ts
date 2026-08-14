@@ -1125,6 +1125,17 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         );
         debugCounts.push(...walkResult.windowLog);
         debugCounts.push(`matchesarchive.xml — всего собрано из всех окон: ${walkResult.matches.length} матчей`);
+        // Диагностика глубины обхода (см. чат "Насколько глубоко реально уходит
+        // полный обход") — показывает честно, упёрлись ли мы в защитный лимит
+        // MAX_ARCHIVE_WINDOWS (реальная глубина истории команды ЕЩЁ НЕ
+        // подтверждена как исчерпанная, лимит можно поднимать) или остановились
+        // раньше сами, потому что CHPP перестал отдавать матчи (это и есть
+        // реальный предел данных официального API, дальше запрашивать нечего).
+        debugCounts.push(
+          `глубина полного обхода: запрошено окон ${walkResult.windowsFetched}/${MAX_ARCHIVE_WINDOWS}, ` +
+            `остановка — ${walkResult.stoppedReason === "max-windows-reached" ? "упёрлись в лимит MAX_ARCHIVE_WINDOWS (глубина истории ЕЩЁ НЕ подтверждена как исчерпанная)" : "сам CHPP перестал отдавать матчи (пакет окон подряд вернул 0 — это и есть реальный предел данных API)"}, ` +
+            `самая ранняя дата матча из реально полученных: ${walkResult.earliestMatchDate ?? "нет ни одного полученного матча"}`,
+        );
 
         const anyArchiveSuccess = walkResult.windowLog.some((l) => /: \d+ матчей(\s|$)/.test(l));
         if (!anyArchiveSuccess) {

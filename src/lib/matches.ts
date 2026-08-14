@@ -342,12 +342,28 @@ export async function walkMatchArchiveHistory(
   fetchWindow: (firstMatchDate: string, lastMatchDate: string) => Promise<MatchArchiveWindowFetchResult>,
   toHattrickTimeString: (d: Date) => string,
   options: { windowDays: number; batchSize: number; maxWindows: number },
-): Promise<{ matches: RealMatch[]; windowLog: string[] }> {
+): Promise<{
+  matches: RealMatch[];
+  windowLog: string[];
+  windowsFetched: number;
+  // "empty-batch" — обход остановился сам, потому что пакет окон подряд не
+  // дал ни одного матча (естественный конец истории команды либо предел
+  // данных, которые вообще отдаёт CHPP); "max-windows-reached" — обход
+  // упёрся в защитный лимит options.maxWindows, реальная глубина истории
+  // ЕЩЁ НЕ подтверждена как исчерпанная (см. чат "Насколько глубоко реально
+  // уходит полный обход").
+  stoppedReason: "empty-batch" | "max-windows-reached";
+  // Дата самого старого матча среди реально полученных — тот же формат, что
+  // и RealMatch.date ("YYYY-MM-DD HH:MM:SS", лексикографически сортируемый),
+  // null если обход вообще не вернул ни одного матча.
+  earliestMatchDate: string | null;
+}> {
   const dayMs = 24 * 60 * 60 * 1000;
   const now = new Date();
   const allMatches: RealMatch[] = [];
   const windowLog: string[] = [];
   let windowsFetched = 0;
+  let stoppedReason: "empty-batch" | "max-windows-reached" = "max-windows-reached";
 
   while (windowsFetched < options.maxWindows) {
     const batchCount = Math.min(options.batchSize, options.maxWindows - windowsFetched);
@@ -388,11 +404,17 @@ export async function walkMatchArchiveHistory(
       windowLog.push(
         `пакет из ${batch.length} окон подряд дал 0 матчей — останавливаем обход вглубь истории (дошли до начала истории команды или до лимита данных CHPP).`,
       );
+      stoppedReason = "empty-batch";
       break;
     }
   }
 
-  return { matches: allMatches, windowLog };
+  let earliestMatchDate: string | null = null;
+  for (const m of allMatches) {
+    if (m.date && (earliestMatchDate === null || m.date < earliestMatchDate)) earliestMatchDate = m.date;
+  }
+
+  return { matches: allMatches, windowLog, windowsFetched, stoppedReason, earliestMatchDate };
 }
 
 // Приводит реальные матчи к тому же виду, что и полный календарь сезона
