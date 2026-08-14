@@ -578,11 +578,25 @@ export function parseTournamentFixturesXml(
 // учитывается сравнением счёта). Если у турнира вообще нет матчей с
 // isPlayoffMatch (турнир не плей-офф формата, а круговой/лиговый) — трофей
 // не определяется вообще (не гадаем про круговые турниры без плей-офф).
+//
+// resultUnknown (см. чат "Подтверди масштабирование ограничения размером
+// турнира" — ПОДТВЕРЖДЕНО живыми данными) — отдельно от "не выиграли":
+// tournamentfixtures.xml для очень крупных турниров (тысячи команд, см.
+// "Titans of 2007 Trophy" на 3064 команды) отдаёт не полную историю с
+// раунда 1, а только финальный "срез" сетки (там — раунды 9-14, 63 матча);
+// если наша команда выбыла РАНЬШЕ этого среза, среди присланных матчей нет
+// ни одного нашего — matches.length === 0 не потому, что мы точно не дошли
+// до финала (это как раз wonTrophy=false без resultUnknown), а потому, что
+// у нас физически нет данных, чтобы это утверждать. Для турниров разумного
+// размера (проверено на живых данных: 32 и 8 команд — полный охват с
+// раунда 1) это не проблема, там matches.length===0 у неучаствовавшего
+// турнира просто не возникает.
 export interface ArenaTournamentSummary {
   tournamentId: string;
   name: string;
   isOngoing: boolean;
   wonTrophy: boolean;
+  resultUnknown: boolean;
 }
 
 function didWinTournament(matches: ArenaRecentMatch[]): boolean {
@@ -602,6 +616,7 @@ export function buildArenaTournamentSummaries(
       name: t.name,
       isOngoing: t.isOngoing,
       wonTrophy: !t.isOngoing && didWinTournament(matches),
+      resultUnknown: !t.isOngoing && matches.length === 0,
     };
   });
 }

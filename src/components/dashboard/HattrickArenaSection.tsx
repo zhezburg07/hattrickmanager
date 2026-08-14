@@ -28,6 +28,13 @@ export default function HattrickArenaSection({
 }) {
   const wonTournaments = arenaTournaments.filter((t) => t.wonTrophy);
   const ongoingTournaments = arenaTournaments.filter((t) => t.isOngoing);
+  // ПОДТВЕРЖДЕНО живыми данными (см. чат "Подтверди масштабирование
+  // ограничения размером турнира") — для очень крупных турниров (тысячи
+  // команд) tournamentfixtures.xml отдаёт не полную историю с раунда 1, а
+  // только финальный "срез" сетки; если команда выбыла раньше этого среза,
+  // наших матчей среди присланных нет вообще — это НЕ то же самое, что
+  // "сыграли и не выиграли" (см. resultUnknown в hattrickArena.ts).
+  const unknownResultTournaments = arenaTournaments.filter((t) => t.resultUnknown);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
@@ -62,6 +69,29 @@ export default function HattrickArenaSection({
             CHPP не даёт официального флага "турнир выигран" — это предположение по результату последнего сыгранного
             матча плей-офф стадии турнира, а не подтверждённый факт от Hattrick.
           </p>
+
+          {unknownResultTournaments.length > 0 && (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 700, marginTop: 16, marginBottom: 8 }}>
+                Результат не определён
+              </div>
+              <ul className={styles.trophyList}>
+                {unknownResultTournaments.map((t) => (
+                  <li key={t.tournamentId} className={styles.trophyItem}>
+                    {t.name}
+                  </li>
+                ))}
+              </ul>
+              <p className={styles.hint} style={{ marginTop: 8, marginBottom: 0 }}>
+                Подтверждённое ограничение CHPP, а не ошибка синхронизации: для турниров с очень большим числом
+                команд (тысячи участников) tournamentfixtures.xml отдаёт не полную историю с первого раунда, а
+                только финальный "срез" турнирной сетки. Если команда выбыла раньше этого среза, среди присланных
+                данных нет ни одного её матча — значит, не "точно не выиграли", а честно "нечем подтвердить".
+                Для турниров разумного размера (проверено на живых данных) это не проблема — там полная история
+                доступна с первого раунда, и результат определяется надёжно.
+              </p>
+            </>
+          )}
         </div>
 
         <div>

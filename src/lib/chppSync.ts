@@ -1437,7 +1437,18 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         tournamentSummaries = buildArenaTournamentSummaries(combinedTournamentEntries, combinedMatchesByTournamentId);
         tournamentDiagnostics.push(
           `Трофеи/текущие турниры (эвристика, не официальный флаг CHPP; включая исторические): ${tournamentSummaries
-            .map((s) => `"${s.name}" — ${s.isOngoing ? "идёт сейчас" : s.wonTrophy ? "выигран (предположительно)" : "завершён, не выигран/не определено"}`)
+            .map(
+              (s) =>
+                `"${s.name}" — ${
+                  s.isOngoing
+                    ? "идёт сейчас"
+                    : s.wonTrophy
+                      ? "выигран (предположительно)"
+                      : s.resultUnknown
+                        ? "результат не определён (0 матчей — вероятно, слишком крупный турнир, см. tournamentfixtures.xml)"
+                        : "завершён, не выигран"
+                }`,
+            )
             .join("; ") || "(турниров нет)"}.`,
         );
       }
