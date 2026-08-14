@@ -841,6 +841,57 @@ function parseSpecialEventsFromEventList(
 // но узнаваемым текстом.
 const SUBSTITUTION_EVENT_IDS = new Set([350, 351, 352]);
 
+// ВРЕМЕННАЯ диагностика (см. чат "Хронология: замены не отображаются на
+// временной шкале") — прямая проверка гипотезы SUBSTITUTION_EVENT_IDS
+// (350/351/352, из HattrickOrganizer) на реальном ответе: отдельно
+// показывает (1) сколько раз именно эти три кода реально встретились и с
+// каким текстом, и (2) есть ли события с ДРУГИМ EventTypeID, чей текст всё
+// же похож на замену по SUBSTITUTION_PATTERN — это был бы настоящий код,
+// если гипотеза 350/351/352 неверна для этого аккаунта/языка. Если оба
+// списка пусты — в этом матче либо действительно не было замен, либо
+// EventList не содержит для неё узнаваемого текста вообще (тогда нужно
+// вручную сверяться с общим дампом debugEventTypeBreakdown выше).
+function debugSubstitutionCandidates(match: Record<string, unknown>): string {
+  const eventList = match.EventList as Record<string, unknown> | undefined;
+  const events = asArray(eventList?.Event);
+  if (events.length === 0) return "EventList пуст — сравнение кодов невозможно.";
+
+  const byGuessedCode = new Map<string, { count: number; samples: string[] }>();
+  const byTextMatchOtherCode = new Map<string, { count: number; samples: string[] }>();
+
+  for (const e of events) {
+    const typeId = Number(e.EventTypeID ?? NaN);
+    const text = stripHtml(String(e.EventText ?? "")).slice(0, 90);
+    const isGuessedCode = SUBSTITUTION_EVENT_IDS.has(typeId);
+    const isTextMatch = SUBSTITUTION_PATTERN.test(text);
+    if (isGuessedCode) {
+      const key = String(typeId);
+      const entry = byGuessedCode.get(key) ?? { count: 0, samples: [] };
+      entry.count += 1;
+      if (entry.samples.length < 3 && text && !entry.samples.includes(text)) entry.samples.push(text);
+      byGuessedCode.set(key, entry);
+    } else if (isTextMatch) {
+      const key = String(Number.isNaN(typeId) ? "?" : typeId);
+      const entry = byTextMatchOtherCode.get(key) ?? { count: 0, samples: [] };
+      entry.count += 1;
+      if (entry.samples.length < 3 && text && !entry.samples.includes(text)) entry.samples.push(text);
+      byTextMatchOtherCode.set(key, entry);
+    }
+  }
+
+  const fmt = (m: Map<string, { count: number; samples: string[] }>) =>
+    m.size === 0
+      ? "нет"
+      : [...m.entries()]
+          .map(([id, { count, samples }]) => `#${id}×${count} [${samples.map((s) => `"${s}"`).join(", ")}]`)
+          .join(", ");
+
+  return (
+    `коды-гипотеза 350/351/352 в ответе: ${fmt(byGuessedCode)} | ` +
+    `другие коды с текстом, похожим на замену: ${fmt(byTextMatchOtherCode)}`
+  );
+}
+
 function parseSubstitutionsFromEventList(
   match: Record<string, unknown>,
   homeTeamId: string,
@@ -1176,6 +1227,7 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
         `нереализованных моментов по коду события (200-299, без спецсобытий): ${missRawCount}, ` +
         `специальных событий по коду (голы+непопадания): ${specialRawCount})`,
     );
+    debug.push(`Замены — прямая проверка кодов: ${debugSubstitutionCandidates(match)}`);
 
     const merged = [...goalsCardsEntries, ...injuryEntries, ...subEntries, ...missEntries, ...specialEntries].sort(
       (a, b) => a.minute - b.minute,
