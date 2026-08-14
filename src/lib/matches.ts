@@ -417,15 +417,54 @@ export async function walkMatchArchiveHistory(
   return { matches: allMatches, windowLog, windowsFetched, stoppedReason, earliestMatchDate };
 }
 
+// Официальная длина сезона Hattrick — 112 дней (16 недель), см.
+// wiki.hattrick.org/wiki/Season. ПОДТВЕРЖДЕНО стабильной для "современной"
+// истории игры, НО диагностика (см. чат "Матчи по сезонам") нашла
+// расхождение ~19-20 сезонов при сверке даты запуска Hattrick (~1997-08-30) и
+// официально указанного текущего глобального номера сезона на другой
+// момент времени — значит темп смены сезонов НЕ был равномерным в первые
+// годы игры (вероятно, короткие "тестовые" сезоны при запуске). Поэтому
+// SEASON_LENGTH_DAYS даёт точный результат только вблизи ЯКОРЯ (см.
+// computeSeasonNumber ниже) — для очень старых архивных матчей это
+// вычисленное приближение, а не гарантия.
+const SEASON_LENGTH_DAYS = 112;
+
+export interface SeasonAnchor {
+  // Номер сезона на момент, когда был получен якорь (см. ниже).
+  season: number;
+  // Дата самого раннего матча ЭТОГО сезона (round 1) — HattrickTime
+  // ("YYYY-MM-DD HH:MM:SS"), взята как min(MatchDate) по ВСЕМ матчам сезона
+  // из уже запрашиваемого leaguefixtures.xml (см. parseLeagueFixturesSeasonInfo
+  // в leagueFixtures.ts) — leaguefixtures.xml отдаёт номер сезона
+  // (HattrickData/Season), matches.xml/matchesarchive.xml — нет (см. тот же
+  // чат, диагностика по официальной вики CHPP и независимому клиенту
+  // lucianoq/hattrick подтвердила отсутствие Season в обоих файлах).
+  seasonStartDate: string;
+}
+
+// Номер сезона Hattrick, вычисленный по дате матча относительно якоря — см.
+// SeasonAnchor выше. offset может быть отрицательным (матч раньше начала
+// сезона-якоря) — Math.floor корректно уходит в более старые сезоны.
+export function computeSeasonNumber(matchDate: string, anchor: SeasonAnchor): number | null {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const start = Date.parse(anchor.seasonStartDate.replace(" ", "T") + "Z");
+  const d = Date.parse(matchDate.replace(" ", "T") + "Z");
+  if (Number.isNaN(start) || Number.isNaN(d)) return null;
+  const offset = Math.floor((d - start) / dayMs / SEASON_LENGTH_DAYS);
+  return anchor.season + offset;
+}
+
 // Приводит реальные матчи к тому же виду, что и полный календарь сезона
 // (SeasonMatch) — для страницы "Матчи". Сортировка — от новых/ближайших к
 // старым (сверху вниз), а не наоборот. CHPP не даёт номер тура лиги —
-// round всегда null.
+// round всегда null. seasonAnchor — опционален (null, пока якорь ни разу не
+// получен для этого аккаунта, см. SeasonAnchor выше) — тогда season у всех
+// матчей null, честно "не определён", а не выдуманное число.
 //
 // Соревнование (только подпись/значок, на список матчей не влияет — см.
 // filterTrainingRelevantMatches, там MatchType вообще не проверяется, и
 // competitionOf/isFriendlyMatchType/CUP_MATCH_TYPE у начала файла).
-export function toSeasonMatches(matches: RealMatch[]): SeasonMatch[] {
+export function toSeasonMatches(matches: RealMatch[], seasonAnchor: SeasonAnchor | null = null): SeasonMatch[] {
   const sorted = [...matches].sort((a, b) => b.date.localeCompare(a.date));
   return sorted.map((m, i) => {
     // По запросу — только дата, без точного времени начала матча.
@@ -440,6 +479,7 @@ export function toSeasonMatches(matches: RealMatch[]): SeasonMatch[] {
       home: m.home,
       ourScore: m.status === "FINISHED" ? m.ourScore : null,
       oppScore: m.status === "FINISHED" ? m.oppScore : null,
+      season: seasonAnchor ? computeSeasonNumber(m.date, seasonAnchor) : null,
     };
   });
 }

@@ -64,4 +64,10 @@ export interface SeasonMatch {
   home: boolean;
   ourScore: number | null; // null — матч ещё не сыгран
   oppScore: number | null;
+  // Номер сезона Hattrick (см. чат "Матчи по сезонам") — ВЫЧИСЛЕННОЕ
+  // приближение по дате матча (CHPP не отдаёт Season ни для одного матча в
+  // matches.xml/matchesarchive.xml, см. src/lib/matches.ts, computeSeasonNumber),
+  // не официальное поле. null — якорь (текущий сезон + дата его старта из
+  // leaguefixtures.xml) ещё не был получен ни разу для этого аккаунта.
+  season: number | null;
 }

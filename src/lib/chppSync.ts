@@ -8,7 +8,7 @@ import { requestChppXmlRaw, type ChppRawResponse, type StoredHattrickTokens } fr
 import { isChppAuthError, assertNoChppError } from "./chppError";
 import { parseTeamDetailsXml } from "./teamDetails";
 import { parseLeagueDetailsXml, type RealLeagueStandingRow } from "./leagueDetails";
-import { parseLeagueFixturesXml } from "./leagueFixtures";
+import { parseLeagueFixturesXml, parseLeagueFixturesSeasonInfo } from "./leagueFixtures";
 import { buildRealLeagueMatrix } from "./realLeagueMatrix";
 import { parseMatchesXml, isFriendlyMatchType, type RealMatch } from "./matches";
 import { parseEconomyXml, type RealEconomy } from "./economy";
@@ -74,6 +74,7 @@ import {
   CUP_MATCH_TYPE,
   mergeMatchHistory,
   walkMatchArchiveHistory,
+  type SeasonAnchor,
 } from "./matches";
 import type { SeasonMatch } from "@/data/matches";
 import { resolveOurCupPath, resolvePastCupPath, fetchCupMeta, type OurCupPathResult } from "./cupMatches";
@@ -200,6 +201,16 @@ export interface StoredLeagueData {
   leagueRows: LeagueTableRow[];
   resultsMatrixTeams?: MatrixTeamMeta[];
   resultsMatrix?: (string | null)[][];
+  // Якорь для вычисления номера сезона по дате матча (см. чат "Матчи по
+  // сезонам", SeasonAnchor/computeSeasonNumber в matches.ts) — только эти
+  // два поля, не весь SeasonAnchor целиком, чтобы не тащить лишний тип сюда;
+  // собираются в SeasonAnchor на месте использования (matchesCalendar ниже).
+  // null — leaguefixtures.xml в эту синхронизацию не запрашивался (сезон ещё
+  // не начался — league.standings пуст, см. блок "league" ниже) или не
+  // вернул нужных полей; тогда season у матчей остаётся null до следующей
+  // успешной синхронизации.
+  currentSeason?: number | null;
+  currentSeasonStartDate?: string | null;
 }
 
 export interface StoredPlayersData {
@@ -466,6 +477,13 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     await saveSnapshotError(hattrickUserId, DATA_KEYS.worldCurrency, errorMessage(err));
   }
 
+  // Якорь для вычисления номера сезона по дате матча (см. чат "Матчи по
+  // сезонам") — заполняется ниже в блоке "league", если leaguefixtures.xml
+  // запрашивался и вернул и Season, и хотя бы одну дату матча. Используется
+  // позже в блоке "matchesCalendar" — держим в этой более широкой области
+  // видимости по той же причине, что и mergedSeasonMatches выше.
+  let currentSeasonAnchor: SeasonAnchor | null = null;
+
   // -- league (leaguedetails +, если сезон начался, leaguefixtures/матрица) --
   try {
     assertOkStatus(raw.leaguedetails);
@@ -501,9 +519,33 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
           stored.resultsMatrixTeams = teams;
           stored.resultsMatrix = matrix;
         }
+
+        const seasonInfo = parseLeagueFixturesSeasonInfo(raw.leaguefixtures.rawXml);
+        if (seasonInfo.season !== null && seasonInfo.earliestMatchDate !== null) {
+          stored.currentSeason = seasonInfo.season;
+          stored.currentSeasonStartDate = seasonInfo.earliestMatchDate;
+          currentSeasonAnchor = { season: seasonInfo.season, seasonStartDate: seasonInfo.earliestMatchDate };
+        }
       } catch {
-        // Сетка результатов — необязательное дополнение к таблице лиги, не
-        // должна ронять остальную синхронизацию.
+        // Сетка результатов/якорь сезона — необязательное дополнение к
+        // таблице лиги, не должно ронять остальную синхронизацию.
+      }
+    }
+
+    // Якорь сезона не получен в ЭТУ синхронизацию (межсезонье — standings
+    // пуст, или leaguefixtures.xml не вернул нужных полей) — переносим
+    // предыдущий уже сохранённый якорь вперёд, а не теряем его до следующей
+    // синхронизации, где сезон снова успешно начался. Снимок читается ДО
+    // того, как его перезапишет saveSnapshotSuccess ниже (тот же приём, что
+    // и у lastReliableCupId/transferHistory/matchesCalendar в этом файле).
+    if (stored.currentSeason == null || stored.currentSeasonStartDate == null) {
+      const previousLeague = await getSnapshot<StoredLeagueData>(hattrickUserId, DATA_KEYS.league);
+      const prevSeason = previousLeague?.data?.currentSeason ?? null;
+      const prevStart = previousLeague?.data?.currentSeasonStartDate ?? null;
+      if (prevSeason !== null && prevStart !== null) {
+        stored.currentSeason = prevSeason;
+        stored.currentSeasonStartDate = prevStart;
+        currentSeasonAnchor = { season: prevSeason, seasonStartDate: prevStart };
       }
     }
 
@@ -1192,7 +1234,16 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       // Кэп MAX_MATCHES_SHOWN убран (см. чат "Официальные матчи: та же
       // архитектура, что и у Трансферов") — полный список хранится в
       // снимке, разбивка на страницы теперь на фронтенде (MatchesCalendar.tsx).
-      shownMatches = toSeasonMatches(trainingRelevant);
+      // Номер сезона (см. чат "Матчи по сезонам") — currentSeasonAnchor
+      // заполняется в блоке "league" выше в этой же синхронизации; если он
+      // null (якорь ни разу не был получен для этого аккаунта), season у
+      // всех матчей честно null, а не выдуманное число.
+      shownMatches = toSeasonMatches(trainingRelevant, currentSeasonAnchor);
+      if (!currentSeasonAnchor) {
+        debugCounts.push(
+          "номер сезона: якорь (Season + дата 1-го тура из leaguefixtures.xml) ещё не получен ни разу для этого аккаунта — у всех матчей season=null.",
+        );
+      }
       calendarWarning = [archiveWarning, filterWarning].filter(Boolean).join(" ") || null;
       anySucceeded = true;
     } catch (err) {

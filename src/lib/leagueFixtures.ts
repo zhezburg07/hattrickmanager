@@ -69,6 +69,40 @@ export function parseLeagueFixturesXml(xml: string): RealFixtureMatch[] {
   });
 }
 
+// Номер текущего сезона + дата самого раннего матча (round 1) этого сезона
+// — единственный бесплатный источник "якоря" для вычисления номера сезона
+// по дате в matches.xml/matchesarchive.xml (у которых поля Season нет
+// вообще, см. чат "Матчи по сезонам" — computeSeasonNumber в matches.ts).
+// leaguefixtures.xml УЖЕ запрашивается для сетки результатов лиги выше —
+// это не отдельный запрос. Официально подтверждено (wiki.hattrick.org/wiki/
+// CHPP_Development/XML/leagueFixtures): HattrickData/Season = "сезон, к
+// которому относятся данные" — раз мы не передаём параметр season, CHPP
+// отдаёт текущий. earliestMatchDate — минимум MatchDate по ВСЕМ матчам
+// ответа (весь сезон целиком, включая ещё не сыгранные раунды), что и есть
+// дата 1-го тура, без отдельного чтения поля MatchRound.
+export function parseLeagueFixturesSeasonInfo(xml: string): { season: number | null; earliestMatchDate: string | null } {
+  const parser = new XMLParser();
+  const data = parser.parse(xml);
+  const root = data?.HattrickData as Record<string, unknown> | undefined;
+  const seasonRaw = root?.Season;
+  const season = seasonRaw !== undefined && seasonRaw !== null && !Number.isNaN(Number(seasonRaw)) ? Number(seasonRaw) : null;
+
+  const rawMatches =
+    root?.Match ??
+    (root?.SeriesFixtures as Record<string, unknown> | undefined)?.Match ??
+    (root?.MatchList as Record<string, unknown> | undefined)?.Match ??
+    ((root?.Team as Record<string, unknown> | undefined)?.MatchList as Record<string, unknown> | undefined)?.Match;
+  const matches = asArray(rawMatches);
+
+  let earliestMatchDate: string | null = null;
+  for (const m of matches) {
+    const d = m.MatchDate !== undefined ? String(m.MatchDate) : null;
+    if (d && (earliestMatchDate === null || d < earliestMatchDate)) earliestMatchDate = d;
+  }
+
+  return { season, earliestMatchDate };
+}
+
 // ДИАГНОСТИКА (тот же приём, что уже выручил с tournamentfixtures.xml, см.
 // debugTournamentFixturesRawStructure в hattrickArena.ts) — пробует
 // несколько вероятных путей к списку матчей одновременно и дампит ПОЛНЫЙ

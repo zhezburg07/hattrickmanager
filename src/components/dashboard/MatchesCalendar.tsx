@@ -1,17 +1,45 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { SeasonMatch } from "@/data/matches";
 import MatchDetailAnalysis from "./MatchDetailAnalysis";
 import MatchTypeIcon from "./MatchTypeIcon";
 import styles from "./Matches.module.css";
 
-// Постраничный вывод (см. чат "Официальные матчи: та же архитектура, что и
-// у Трансферов") — синхронизация теперь хранит ВСЮ накопленную историю без
-// кэпа (см. chppSync.ts, StoredMatchesCalendar.matchHistory), поэтому список
-// режется на страницы здесь, а не на сервере, тем же паттерном, что и на
-// "Трансферах" (см. PAGE_SIZE в TransfersSection.tsx).
+// Постраничный вывод ВНУТРИ сезона (см. чат "Официальные матчи: та же
+// архитектура, что и у Трансферов") — синхронизация хранит ВСЮ накопленную
+// историю без кэпа (см. chppSync.ts, StoredMatchesCalendar.matchHistory), а
+// разбивка на сезоны (см. ниже) и на страницы внутри сезона — на фронтенде,
+// тем же паттерном, что и на "Трансферах" (см. PAGE_SIZE в TransfersSection.tsx).
 const PAGE_SIZE = 30;
+
+// Ключ группы сезона в SEASON_UNKNOWN_KEY — матчи с season=null (якорь
+// текущего сезона, см. computeSeasonNumber в matches.ts, ещё ни разу не был
+// получен для этого аккаунта — leaguefixtures.xml не отдал нужных полей ни
+// в одну синхронизацию). Отдельная псевдо-группа, а не молчаливая
+// подмешивание к какому-то конкретному сезону — см. чат "Матчи по сезонам".
+const SEASON_UNKNOWN_KEY = "unknown";
+
+function groupBySeason(matches: SeasonMatch[]): { key: string; season: number | null; matches: SeasonMatch[] }[] {
+  const bySeason = new Map<string, { season: number | null; matches: SeasonMatch[] }>();
+  for (const m of matches) {
+    const key = m.season === null ? SEASON_UNKNOWN_KEY : String(m.season);
+    const entry = bySeason.get(key) ?? { season: m.season, matches: [] };
+    entry.matches.push(m);
+    bySeason.set(key, entry);
+  }
+  // Сезоны — от новых к старым (список matches уже отсортирован по дате по
+  // убыванию, см. toSeasonMatches, порядок внутри группы сохраняется); группа
+  // "сезон не определён" — самая первая, как требующая внимания (см. комментарий
+  // у SEASON_UNKNOWN_KEY выше), а не потерянная где-то в середине списка.
+  return [...bySeason.entries()]
+    .map(([key, { season, matches }]) => ({ key, season, matches }))
+    .sort((a, b) => {
+      if (a.season === null) return -1;
+      if (b.season === null) return 1;
+      return b.season - a.season;
+    });
+}
 
 // Список содержит только уже сыгранные матчи основной команды, реально
 // учитываемые Hattrick для тренировки игроков (лига/кубок/товарищеские) —
@@ -21,6 +49,12 @@ const PAGE_SIZE = 30;
 // Единый список без вкладок/фильтров по типу — как на реальном сайте
 // Hattrick, разница между лигой/кубком/товарищеским — только маленькой
 // иконкой слева (см. MatchTypeIcon).
+//
+// РАЗБИТО ПО СЕЗОНАМ (см. чат "Матчи по сезонам") — по аналогии с
+// hattrick.org: переключатель "‹ Сезон N | Сезон N+1 ›" сверху вместо
+// единого списка со сквозной постраничной прокруткой; внутри сезона — та
+// же сортировка (новые сверху) и та же постраничная прокрутка по 30, если
+// в сезоне матчей больше.
 export default function MatchesCalendar({
   matches,
   ourTeamName,
@@ -28,26 +62,71 @@ export default function MatchesCalendar({
   matches: SeasonMatch[];
   ourTeamName: string;
 }) {
-  const matchList = matches;
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+  const [seasonIndex, setSeasonIndex] = useState(0);
+
+  const seasonGroups = useMemo(() => groupBySeason(matches), [matches]);
+  const safeSeasonIndex = Math.min(seasonIndex, Math.max(0, seasonGroups.length - 1));
+  const currentGroup = seasonGroups[safeSeasonIndex] as { key: string; season: number | null; matches: SeasonMatch[] } | undefined;
+  const matchList = currentGroup?.matches ?? [];
+
+  // Список пришёл заново (обновление данных) — вернуться к самому свежему
+  // сезону и странице 1, иначе можно оказаться на несуществующей
+  // странице/сезоне, если история изменилась (тот же приём, что и на
+  // "Трансферах").
+  useEffect(() => setSeasonIndex(0), [matches]);
+  useEffect(() => setPage(1), [safeSeasonIndex, matches]);
 
   const totalPages = Math.max(1, Math.ceil(matchList.length / PAGE_SIZE));
-  // Список пришёл заново (обновление данных) — вернуться на страницу 1,
-  // иначе можно оказаться на несуществующей странице, если история стала
-  // короче (тот же приём, что и на "Трансферах").
-  useEffect(() => setPage(1), [matchList.length]);
   const safePage = Math.min(page, totalPages);
   const shown = matchList.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  const seasonLabel = (g: { season: number | null } | undefined) =>
+    !g ? "" : g.season === null ? "Сезон не определён" : `Сезон ${g.season}`;
+  const prevGroup = seasonGroups[safeSeasonIndex + 1]; // индекс+1 — сезон СТАРШЕ (список отсортирован по убыванию)
+  const nextGroup = seasonGroups[safeSeasonIndex - 1]; // индекс-1 — сезон НОВЕЕ
 
   return (
     <div className={styles.card}>
       <div className={styles.cardTitle}>Сыгранные матчи</div>
       <p className={styles.hint}>
-        Всего {matchList.length} матчей основной команды, влияющие на тренировку игроков — лига, кубок и
-        товарищеские, от недавних к самым старым. Предстоящие матчи, юношеская команда и Hattrick Arena/Masters/
-        лестницы сюда не входят. Нажмите на матч, чтобы открыть полный анализ.
+        Всего {matches.length} матчей основной команды, влияющие на тренировку игроков — лига, кубок и товарищеские,
+        сгруппированы по сезонам, от недавних к самым старым. Предстоящие матчи, юношеская команда и Hattrick
+        Arena/Masters/лестницы сюда не входят. Нажмите на матч, чтобы открыть полный анализ.
       </p>
+      {currentGroup?.season === null && (
+        <p className={styles.hint} style={{ marginTop: -8 }}>
+          Номер сезона для этих матчей ещё не определён — потребуется ещё одна успешная синхронизация, пока сезон в
+          лиге не начался или данные о нём не были получены.
+        </p>
+      )}
+
+      {seasonGroups.length > 1 && (
+        <div className={styles.pagination} style={{ marginTop: 0, marginBottom: 16 }}>
+          <button
+            type="button"
+            className={styles.pageBtn}
+            disabled={!prevGroup}
+            onClick={() => setSeasonIndex(safeSeasonIndex + 1)}
+            title={prevGroup ? seasonLabel(prevGroup) : undefined}
+          >
+            ‹ {prevGroup ? seasonLabel(prevGroup) : ""}
+          </button>
+          <span className={`${styles.pageBtn} ${styles.pageBtnActive}`} style={{ cursor: "default" }}>
+            {seasonLabel(currentGroup)}
+          </span>
+          <button
+            type="button"
+            className={styles.pageBtn}
+            disabled={!nextGroup}
+            onClick={() => setSeasonIndex(safeSeasonIndex - 1)}
+            title={nextGroup ? seasonLabel(nextGroup) : undefined}
+          >
+            {nextGroup ? seasonLabel(nextGroup) : ""} ›
+          </button>
+        </div>
+      )}
 
       <div className={styles.matchListWrap}>
         {shown.map((m) => {
@@ -130,7 +209,9 @@ export default function MatchesCalendar({
       )}
 
       <div className={styles.legend}>
-        <span>Сыграно матчей: {matchList.length}</span>
+        <span>
+          {seasonLabel(currentGroup)}: {matchList.length} матчей
+        </span>
       </div>
     </div>
   );
