@@ -13,7 +13,14 @@ import {
 } from "@/data/squad";
 import { usePositionOverrides, effectivePositionGroup } from "@/data/positionOverrides";
 import { parsePayload, serializePayload, type DragPayload } from "./dragPayload";
-import { computeZoneRatings, computeSlotRating, zoneLabel, type ZoneKey } from "./zoneRatings";
+import {
+  computeZoneRatings,
+  computeSlotRatingBreakdown,
+  formatSlotRatingTooltip,
+  isCaptainWorthy,
+  zoneLabel,
+  type ZoneKey,
+} from "./zoneRatings";
 import { applicableInstructions, instructionArrow, instructionLabel, type PlayerInstruction } from "@/data/playerInstructions";
 import { formationExperienceHint } from "./formationExperience";
 import LineupSubsRow from "./LineupSubsRow";
@@ -208,6 +215,9 @@ export default function LineupField({
               const isSelected = player !== null && player.id === selectedPlayerId;
               const effectiveGroup = player ? effectivePositionGroup(player, overrides) : null;
               const isPositionOverridden = player !== null && effectiveGroup !== player.positionGroup;
+              // Считаем один раз на слот — используется и для числа на карточке,
+              // и для подсказки при наведении на него (см. formatSlotRatingTooltip).
+              const ratingBreakdown = player ? computeSlotRatingBreakdown(player, slot.role) : null;
               // Цвет карточки берётся из амплуа самого игрока (то же значение,
               // что красит его в "Составе" и в общем списке), а не из типа
               // слота — слот раскрашен по роли (accentClassByKey) только пока
@@ -259,9 +269,9 @@ export default function LineupField({
                           <span className={styles.slotCardName}>{player.name.split(" ")[1] ?? player.name}</span>
                           <span
                             className={styles.slotCardRole}
-                            title={`Расчётный рейтинг на позиции ${roleFullLabel[slot.role]}`}
+                            title={formatSlotRatingTooltip(ratingBreakdown!, roleFullLabel[slot.role])}
                           >
-                            {computeSlotRating(player, slot.role).toFixed(1)}
+                            {ratingBreakdown!.rating.toFixed(1)}
                           </span>
                         </>
                       ) : (
@@ -275,6 +285,12 @@ export default function LineupField({
                         title={`Амплуа изменено вручную — естественная позиция: ${positionGroupLabel[player!.positionGroup]}`}
                       >
                         ✎
+                      </span>
+                    )}
+
+                    {player && isCaptainWorthy(player) && (
+                      <span className={styles.captainMark} title={`${player.name} — подходит на капитана (высокое лидерство)`}>
+                        🎖️
                       </span>
                     )}
 

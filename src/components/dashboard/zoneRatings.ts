@@ -87,12 +87,152 @@ const slotRoleWeights: Record<SlotRole, Array<[keyof SquadSkills, number]>> = {
   FWD_WIDE: [["scoring", 2.5], ["winger", 1.5], ["passing", 1]],
 };
 
-// Расчётный рейтинг силы игрока на конкретном слоте — по той же логике
-// взвешенного среднего, что и командные зональные показатели, просто на
-// одного игрока вместо усреднения по линии.
-export function computeSlotRating(player: SquadPlayer, role: SlotRole): number {
+// ---- Преданность клубу и родной клуб (см. чат "Расширить формулу
+// позиционного рейтинга") — ТОЧНЫЕ официальные бонусы (wiki.hattrick.org/
+// wiki/Player_loyalty, официальный редакторский анонс от HT-Tjecken,
+// 2011-10-03): "+1 skill level on all skills (stamina excluded), after 3
+// seasons (336 days)" для преданности, "+0.5 skill level on all skills
+// (stamina excluded)" фиксированно для родного клуба, оба бонуса
+// складываются (воспитанник с максимальной преданностью получает +1.5).
+//
+// Кривую "нарастает по дням, половина эффекта на 12-й неделе, максимум на
+// 336-й день" реализовывать заново НЕ нужно — Hattrick уже применил её
+// сам и отдаёт готовый результат через CHPP: поле Loyalty в players.xml
+// (см. squadPlayers.ts) — на ТОЙ ЖЕ шкале 0-20, что и обычные навыки
+// (skillWord), где 20 ("божественно"/divine) = полный бонус по вики. Взяв
+// это число как есть, мы используем именно официальную кривую Hattrick, а
+// не приближение к ней.
+const LOYALTY_MAX_SKILL_LEVEL = 20; // та же шкала skillWord, что и у обычных навыков
+const LOYALTY_MAX_BONUS = 1; // "божественная" преданность (loyalty=20) = полный бонус
+
+function computeLoyaltyBonus(player: SquadPlayer): number {
+  if (player.loyalty === undefined) return 0; // нет данных — бонус не начисляем, а не гадаем
+  return (Math.max(0, Math.min(LOYALTY_MAX_SKILL_LEVEL, player.loyalty)) / LOYALTY_MAX_SKILL_LEVEL) * LOYALTY_MAX_BONUS;
+}
+
+const MOTHER_CLUB_BONUS = 0.5; // фиксированный официальный бонус, см. комментарий выше
+
+function computeMotherClubBonus(player: SquadPlayer): number {
+  return player.isClubProduct ? MOTHER_CLUB_BONUS : 0;
+}
+
+// ---- Опыт (см. тот же чат) — ЧЕСТНАЯ ЭВРИСТИКА, не официальная формула.
+// У Hattrick нет опубликованной численной формулы влияния опыта на игровой
+// рейтинг (в отличие от преданности выше) — здесь небольшой аддитивный
+// бонус, растущий линейно с опытом по той же шкале 0-20, что и навыки.
+// EXPERIENCE_MAX_BONUS специально небольшой (меньше даже одного бонуса
+// родного клуба) — это заведомо ПРИБЛИЖЕНИЕ, которое можно и нужно будет
+// уточнить позже по мере накопления статистики реальных матчей (см. тот
+// же долгосрочный проект, что и у Индекса силы зон).
+const EXPERIENCE_MAX_SKILL_LEVEL = 20;
+const EXPERIENCE_MAX_BONUS = 0.3; // ПРИБЛИЖЕНИЕ — предстоит уточнить
+
+function computeExperienceBonus(player: SquadPlayer): number {
+  return (Math.max(0, Math.min(EXPERIENCE_MAX_SKILL_LEVEL, player.experience)) / EXPERIENCE_MAX_SKILL_LEVEL) * EXPERIENCE_MAX_BONUS;
+}
+
+// ---- Форма (см. тот же чат) — ЧЕСТНАЯ ЭВРИСТИКА, не официальная формула.
+// Официальной числовой формулы влияния формы на игровой рейтинг Hattrick не
+// публикует — применяем текущую Форму (шкала 0-8, formWord) как МНОЖИТЕЛЬ
+// к уже собранному рейтингу (навыки + точные бонусы + опыт), а не как ещё
+// одно слагаемое: "нормальная" форма 6-7 — база ×1, ниже — понижающий
+// множитель, выше — повышающий. FORM_BONUS_PER_LEVEL и клэмп — заведомо
+// ПРИБЛИЖЕНИЕ, предстоит уточнить позже по мере накопления статистики
+// реальных матчей.
+const FORM_BASELINE_LEVEL = 6.5; // середина диапазона "6-7" из задания
+const FORM_BONUS_PER_LEVEL = 0.03; // ПРИБЛИЖЕНИЕ — ±3% множителя за каждый уровень формы от базы
+const FORM_MULTIPLIER_MIN = 0.8;
+const FORM_MULTIPLIER_MAX = 1.12;
+
+function computeFormMultiplier(player: SquadPlayer): number {
+  const raw = 1 + (player.form - FORM_BASELINE_LEVEL) * FORM_BONUS_PER_LEVEL;
+  return Math.max(FORM_MULTIPLIER_MIN, Math.min(FORM_MULTIPLIER_MAX, raw));
+}
+
+// ---- Характер игрока (см. тот же чат, пункт 5) — НЕ входит в числовой
+// рейтинг силы: черты характера (лидерство и т.п.) не влияют на игровые
+// навыки согласно документации Hattrick, они важны для ДРУГИХ решений
+// (например, выбор капитана). Показывается отдельным индикатором рядом со
+// слотом (см. LineupField.tsx), а не искажает число рейтинга. Порог 6 —
+// верхние 2 уровня из 8 (leadershipWord: 6="сносно", 7="хорошо" — лучшая
+// доступная метка для лидерства, у этого навыка нет более высоких словесных
+// уровней, в отличие от обычных навыков).
+export const CAPTAIN_LEADERSHIP_THRESHOLD = 6;
+
+export function isCaptainWorthy(player: SquadPlayer): boolean {
+  return player.leadership >= CAPTAIN_LEADERSHIP_THRESHOLD;
+}
+
+export interface SlotRatingBreakdown {
+  rating: number; // итоговое число, показанное на слоте
+  // -- точно (навыки + официальные бонусы Hattrick) --
+  baseSkillAverage: number; // взвешенное среднее по навыкам роли, без бонусов
+  loyaltyBonus: number; // 0..+1, официальная формула (см. computeLoyaltyBonus)
+  motherClubBonus: number; // 0 или +0.5, официальная формула
+  hasLoyaltyData: boolean; // false — CHPP не вернул Loyalty для этого игрока, бонус честно 0
+  // -- приближённо (эвристики, не официальные формулы) --
+  experienceBonus: number;
+  formMultiplier: number;
+}
+
+// Расчётный рейтинг силы игрока на конкретном слоте — база, как и раньше,
+// взвешенное среднее по навыкам роли (та же логика, что и у командных
+// зональных показателей), поверх нее — официальные бонусы преданности и
+// родного клуба (складываются С КАЖДЫМ навыком по официальному правилу
+// Hattrick "+X к каждому навыку", что математически эквивалентно прибавить
+// bonus один раз к уже взвешенному среднему — сумма весов не меняется), а
+// затем небольшой эвристический бонус за опыт и множитель формы поверх
+// всего итога (см. комментарии у соответствующих функций выше).
+export function computeSlotRatingBreakdown(player: SquadPlayer, role: SlotRole): SlotRatingBreakdown {
   const terms = slotRoleWeights[role].map(([skillKey, weight]): [number, number] => [player.skills[skillKey], weight]);
-  return weighted(terms);
+  const baseSkillAverage = weighted(terms);
+
+  const loyaltyBonus = computeLoyaltyBonus(player);
+  const motherClubBonus = computeMotherClubBonus(player);
+  const experienceBonus = computeExperienceBonus(player);
+  const formMultiplier = computeFormMultiplier(player);
+
+  const rating = (baseSkillAverage + loyaltyBonus + motherClubBonus + experienceBonus) * formMultiplier;
+
+  return {
+    rating,
+    baseSkillAverage,
+    loyaltyBonus,
+    motherClubBonus,
+    hasLoyaltyData: player.loyalty !== undefined,
+    experienceBonus,
+    formMultiplier,
+  };
+}
+
+export function computeSlotRating(player: SquadPlayer, role: SlotRole): number {
+  return computeSlotRatingBreakdown(player, role).rating;
+}
+
+// Текст подсказки при наведении на число рейтинга слота (см. чат "Расширить
+// формулу позиционного рейтинга") — по запросу явно разделяет ТОЧНЫЕ
+// компоненты (навыки + официальные бонусы Hattrick — преданность, родной
+// клуб) и ПРИБЛИЖЁННЫЕ (эвристики без официальной формулы — опыт, форма),
+// чтобы не выдавать честное приближение за официальную точность.
+export function formatSlotRatingTooltip(breakdown: SlotRatingBreakdown, roleLabel: string): string {
+  const loyaltyLine = breakdown.hasLoyaltyData
+    ? `Преданность клубу: +${breakdown.loyaltyBonus.toFixed(2)}`
+    : "Преданность клубу: +0.00 (CHPP не вернул Loyalty для этого игрока)";
+  const motherClubLine =
+    breakdown.motherClubBonus > 0 ? `Родной клуб: +${breakdown.motherClubBonus.toFixed(2)} (воспитанник)` : "Родной клуб: +0.00";
+
+  return [
+    `Расчётный рейтинг на позиции ${roleLabel}: ${breakdown.rating.toFixed(1)}`,
+    "",
+    "Точно (навыки + официальные бонусы Hattrick):",
+    `  База по навыкам: ${breakdown.baseSkillAverage.toFixed(2)}`,
+    `  ${loyaltyLine}`,
+    `  ${motherClubLine}`,
+    "",
+    "Приближённо (эвристика, не официальная формула — будет уточняться по мере накопления статистики матчей):",
+    `  Опыт: +${breakdown.experienceBonus.toFixed(2)}`,
+    `  Форма: ×${breakdown.formMultiplier.toFixed(2)}`,
+  ].join("\n");
 }
 
 // Приблизительный, демонстрационный расчёт 7 секторов расстановки (как в

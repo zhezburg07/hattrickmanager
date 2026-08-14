@@ -198,6 +198,28 @@
   cursor: help;
 }
 
+/* Индикатор "подходит на капитана" (см. чат "Расширить формулу
+   позиционного рейтинга", isCaptainWorthy в zoneRatings.ts) — по запросу
+   характер игрока (лидерство) НЕ входит в число рейтинга силы, только в
+   этот отдельный значок. Нижний правый угол карточки — оба верхних заняты
+   instructionIcon/overrideMark. */
+.captainMark {
+  position: absolute;
+  bottom: -5px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--color-accent);
+  background: var(--color-bg-darker);
+  font-size: 9px;
+  line-height: 1;
+  cursor: help;
+}
+
 /* Всплывающее сообщение об ограничении */
 .toast {
   position: fixed;
