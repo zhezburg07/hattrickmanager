@@ -94,9 +94,9 @@ export interface SquadPlayer {
   // src/lib/lastMatchRating.ts); undefined, если игрок не выходил на поле в
   // этом матче или запрос не удался.
   lastMatchRating?: number;
-  // Лучший рейтинг (0-10) среди последних 3 сыгранных матчей игрока — см.
-  // src/lib/lastMatchRating.ts. undefined, если игрок не выходил на поле ни
-  // в одном из этих матчей или данные не удалось получить.
+  // Лучший рейтинг (0-10) среди последних RECENT_MATCH_COUNT сыгранных
+  // матчей игрока — см. src/lib/lastMatchRating.ts. undefined, если игрок не
+  // выходил на поле ни в одном из этих матчей или данные не удалось получить.
   recentBestRating?: number;
   // Специализация (см. PlayerSpecialty) — undefined, если её нет или поле
   // не удалось прочитать.

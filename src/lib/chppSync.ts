@@ -670,9 +670,9 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       countryIdLookupResult.lookup ?? undefined,
     );
 
-    // Рейтинги последних матчей (звёзды) — до 3 сыгранных матчей, каждый
-    // требует своего matchlineup.xml. Список сыгранных матчей уже есть
-    // (parsedMatches выше) — второй раз matches.xml не запрашиваем.
+    // Рейтинги последних матчей (звёзды) — до RECENT_MATCH_COUNT сыгранных
+    // матчей, каждый требует своего matchlineup.xml. Список сыгранных матчей
+    // уже есть (parsedMatches выше) — второй раз matches.xml не запрашиваем.
     if (parsedMatches) {
       try {
         const recentFinished = parsedMatches
