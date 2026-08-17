@@ -4,7 +4,6 @@ import type { LeagueTableRow } from "@/components/dashboard/LeagueTable";
 import type { RecentMatchRow, UpcomingMatchRow } from "@/components/dashboard/MatchesSection";
 import { defaultCurrency, chppSupportersPopularityToFanMoodLevel } from "@/data/dashboard";
 import { resolveCountryByEnglishName, type SquadPlayer } from "@/data/squad";
-import { ROLE_ID_TO_SLOT_ROLE, KNOWN_NON_FIELD_ROLE_IDS, roleFullLabel } from "@/data/pitchBoard";
 import { requestChppXmlRaw, type ChppRawResponse, type StoredHattrickTokens } from "./hattrickApi";
 import { isChppAuthError, assertNoChppError } from "./chppError";
 import { parseTeamDetailsXml } from "./teamDetails";
@@ -698,42 +697,6 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
               return {};
             }
           });
-
-          // ВРЕМЕННАЯ диагностика (см. чат "Калибровка позиционного рейтинга
-          // по реальным звёздам Hattrick", план в .claude/plans, шаг 0) —
-          // ROLE_ID_TO_SLOT_ROLE теперь подтверждено ДВУМЯ независимыми
-          // источниками (геометрия FIELD_POSITIONS + официальные имена
-          // констант chpp/type_match_role.go, см. комментарий в
-          // pitchBoard.ts), но живая сверка с реальным отчётом матча на
-          // hattrick.org для 2-3 матчей всё ещё не помешает как третье
-          // подтверждение. Дамп теперь явно различает: позицию на поле
-          // (сопоставлена), уже ПОНЯТЫЙ код скамейки/спецроли (см.
-          // KNOWN_NON_FIELD_ROLE_IDS — ожидаемо, не требует внимания) и
-          // ДЕЙСТВИТЕЛЬНО неизвестный код (единственное, что стоит
-          // проверять дальше). После сверки — убрать построчный дамп,
-          // оставить только саму таблицу сопоставления.
-          {
-            const nameById = new Map(players.map((p) => [p.id, p.name]));
-            const roleLines: string[] = [];
-            recentFinished.forEach((m, i) => {
-              const ratings = perMatchRatings[i] ?? {};
-              for (const [playerId, entry] of Object.entries(ratings)) {
-                if (entry.roleId === null) continue;
-                const slotRole = ROLE_ID_TO_SLOT_ROLE[entry.roleId];
-                const known = KNOWN_NON_FIELD_ROLE_IDS[entry.roleId];
-                const label = slotRole
-                  ? roleFullLabel[slotRole]
-                  : known
-                    ? `${known} (не позиция на поле — ожидаемо)`
-                    : "НЕ СОПОСТАВЛЕНО — требует проверки";
-                const name = nameById.get(Number(playerId)) ?? `#${playerId}`;
-                roleLines.push(`матч ${m.matchId}: ${name} — RoleID ${entry.roleId} → ${label}`);
-              }
-            });
-            if (roleLines.length > 0) {
-              sectionErrors.push(`RoleID→SlotRole (диагностика, план калибровки шаг 0): ${roleLines.join(" | ")}`);
-            }
-          }
 
           // Датасет калибровки позиционного рейтинга (см. чат "Калибровка
           // позиционного рейтинга по реальным звёздам Hattrick", план в
