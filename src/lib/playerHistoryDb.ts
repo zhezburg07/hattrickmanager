@@ -58,11 +58,26 @@ async function ensureTable(): Promise<void> {
       PRIMARY KEY (hattrick_user_id, player_id, training_week)
     )
   `;
+  // Преданность/родной клуб (см. чат "Калибровка позиционного рейтинга по
+  // реальным звёздам Hattrick", план в .claude/plans, шаг 2) — тот же приём
+  // аддитивной миграции, что уже применялся в hattrickTokensDb.ts/
+  // knownTournamentsDb.ts (ALTER TABLE ADD COLUMN IF NOT EXISTS, а не новая
+  // таблица — это совместимое добавление колонок, PRIMARY KEY не меняется).
+  await db`ALTER TABLE player_weekly_stat_snapshots ADD COLUMN IF NOT EXISTS loyalty INTEGER`;
+  await db`ALTER TABLE player_weekly_stat_snapshots ADD COLUMN IF NOT EXISTS is_club_product BOOLEAN`;
   tableEnsured = true;
 }
 
 function snapshotOf(p: SquadPlayer): PlayerStatSnapshot {
-  return { skills: { ...p.skills }, experience: p.experience, form: p.form, stamina: p.stamina, tsi: p.tsi };
+  return {
+    skills: { ...p.skills },
+    experience: p.experience,
+    form: p.form,
+    stamina: p.stamina,
+    tsi: p.tsi,
+    loyalty: p.loyalty,
+    isClubProduct: p.isClubProduct,
+  };
 }
 
 // Снимок из ПОСЛЕДНЕЙ тренировочной недели строго ДО текущей (не обязательно
@@ -76,7 +91,7 @@ export async function getPreviousWeekSnapshots(
   await ensureTable();
   const db = sql();
   const rows = await db`
-    SELECT DISTINCT ON (player_id) player_id, skills, experience, form, stamina, tsi
+    SELECT DISTINCT ON (player_id) player_id, skills, experience, form, stamina, tsi, loyalty, is_club_product
     FROM player_weekly_stat_snapshots
     WHERE hattrick_user_id = ${hattrickUserId} AND training_week < ${currentWeek}
     ORDER BY player_id, training_week DESC
@@ -90,9 +105,46 @@ export async function getPreviousWeekSnapshots(
       form: row.form,
       stamina: row.stamina,
       tsi: row.tsi,
+      loyalty: row.loyalty ?? undefined,
+      isClubProduct: row.is_club_product ?? undefined,
     };
   }
   return result;
+}
+
+// Снимок на/до ПРОИЗВОЛЬНОЙ прошлой даты (недели матча), а не только "до
+// текущей" (см. getPreviousWeekSnapshots выше) — нужен для "Калибровка
+// позиционного рейтинга по реальным звёздам Hattrick" (план в .claude/plans,
+// шаг 2/3): чтобы посчитать прогноз для конкретного прошлого матча теми
+// навыками, что были у игрока НА ТОТ МОМЕНТ, а не сегодняшними. null, если
+// снимка на эту неделю или раньше ещё нет (например, аккаунт подключён
+// позже даты матча) — честно, вызывающий код должен пропустить запись
+// калибровки для этого игрока/матча, а не подставлять текущие данные.
+export async function getSnapshotAsOf(
+  hattrickUserId: string,
+  playerId: number,
+  atOrBeforeWeek: string,
+): Promise<PlayerStatSnapshot | null> {
+  await ensureTable();
+  const db = sql();
+  const rows = await db`
+    SELECT skills, experience, form, stamina, tsi, loyalty, is_club_product
+    FROM player_weekly_stat_snapshots
+    WHERE hattrick_user_id = ${hattrickUserId} AND player_id = ${playerId} AND training_week <= ${atOrBeforeWeek}
+    ORDER BY training_week DESC
+    LIMIT 1
+  `;
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    skills: row.skills,
+    experience: row.experience,
+    form: row.form,
+    stamina: row.stamina,
+    tsi: row.tsi,
+    loyalty: row.loyalty ?? undefined,
+    isClubProduct: row.is_club_product ?? undefined,
+  };
 }
 
 // Сохраняет/обновляет снимок ТЕКУЩЕЙ тренировочной недели — при повторных
@@ -110,8 +162,8 @@ export async function saveCurrentWeekSnapshot(
     players.map((p) => {
       const snapshot = snapshotOf(p);
       return db`
-        INSERT INTO player_weekly_stat_snapshots (hattrick_user_id, player_id, training_week, skills, experience, form, stamina, tsi, updated_at)
-        VALUES (${hattrickUserId}, ${p.id}, ${currentWeek}, ${JSON.stringify(snapshot.skills)}, ${snapshot.experience}, ${snapshot.form}, ${snapshot.stamina}, ${snapshot.tsi}, now())
+        INSERT INTO player_weekly_stat_snapshots (hattrick_user_id, player_id, training_week, skills, experience, form, stamina, tsi, loyalty, is_club_product, updated_at)
+        VALUES (${hattrickUserId}, ${p.id}, ${currentWeek}, ${JSON.stringify(snapshot.skills)}, ${snapshot.experience}, ${snapshot.form}, ${snapshot.stamina}, ${snapshot.tsi}, ${snapshot.loyalty ?? null}, ${snapshot.isClubProduct ?? null}, now())
         ON CONFLICT (hattrick_user_id, player_id, training_week)
         DO UPDATE SET
           skills = EXCLUDED.skills,
@@ -119,6 +171,8 @@ export async function saveCurrentWeekSnapshot(
           form = EXCLUDED.form,
           stamina = EXCLUDED.stamina,
           tsi = EXCLUDED.tsi,
+          loyalty = EXCLUDED.loyalty,
+          is_club_product = EXCLUDED.is_club_product,
           updated_at = now()
       `;
     }),

@@ -7,6 +7,8 @@ import styles from "@/components/dashboard/Dashboard.module.css";
 import { getRequiredHattrickTokens, getStoredHattrickUserId } from "@/lib/hattrickApi";
 import { ensureSynced, getStoredLineupData } from "@/lib/chppSync";
 import { getPreviousWeekSnapshots, trainingWeekKey } from "@/lib/playerHistoryDb";
+import { getAllRoleCalibrations, getPlayerRoleTrends } from "@/lib/matchRolePredictionsDb";
+import { RATING_FORMULA_VERSION } from "@/components/dashboard/zoneRatings";
 
 // Раньше эта страница делала живые запросы к CHPP (players.xml,
 // worlddetails.xml, matchlineup.xml, плюс "Анализ соперника" — ещё teamdetails/
@@ -46,6 +48,32 @@ export default async function LineupPage() {
   const prevByPlayerId =
     players && hattrickUserId ? await getPreviousWeekSnapshots(hattrickUserId, trainingWeekKey(new Date())) : {};
 
+  // Калибровка позиционного рейтинга по реальным звёздам Hattrick (см. чат
+  // "Калибровка позиционного рейтинга по реальным звёздам Hattrick", план в
+  // .claude/plans, шаг 4) — коэффициенты общие на все аккаунты (обезличенная
+  // таблица, см. matchRolePredictionsDb.ts), поэтому читаются здесь
+  // независимо от того, есть ли у ЭТОГО аккаунта свои сыгранные матчи.
+  // Пустой объект (а не ошибка), если БД недоступна или данных ещё мало —
+  // applyCalibration в zoneRatings.ts честно оставляет сырой прогноз.
+  let calibrations: Awaited<ReturnType<typeof getAllRoleCalibrations>> = {};
+  try {
+    calibrations = await getAllRoleCalibrations(RATING_FORMULA_VERSION);
+  } catch {
+    // Калибровка — необязательное дополнение поверх сырого рейтинга, не
+    // должна ронять саму страницу "Расстановка".
+  }
+
+  // Тренд по конкретным игрокам состава (см. чат "Калибровка позиционного
+  // рейтинга по реальным звёздам Hattrick", план в .claude/plans, шаг 5) —
+  // тоже общая на все аккаунты таблица, поэтому запрашивается по ID игроков
+  // ЭТОГО состава, а не по hattrick_user_id.
+  let trends: Awaited<ReturnType<typeof getPlayerRoleTrends>> = {};
+  try {
+    if (players) trends = await getPlayerRoleTrends(players.map((p) => p.id));
+  } catch {
+    // Тренд — необязательное дополнение, не должно ронять страницу.
+  }
+
   return (
     <>
       <Header />
@@ -63,6 +91,8 @@ export default async function LineupPage() {
                 prevByPlayerId={prevByPlayerId}
                 opponentAnalysis={opponentAnalysis}
                 trainerPlayerId={trainerPlayerId}
+                calibrations={calibrations}
+                trends={trends}
               />
             </>
           )}

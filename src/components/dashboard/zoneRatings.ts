@@ -105,14 +105,23 @@ const slotRoleWeights: Record<SlotRole, Array<[keyof SquadSkills, number]>> = {
 const LOYALTY_MAX_SKILL_LEVEL = 20; // та же шкала skillWord, что и у обычных навыков
 const LOYALTY_MAX_BONUS = 1; // "божественная" преданность (loyalty=20) = полный бонус
 
-function computeLoyaltyBonus(player: SquadPlayer): number {
+// Только те поля SquadPlayer, что реально читает расчёт рейтинга — по этому
+// же подмножеству формула считается и для ЖИВОГО игрока (LineupField.tsx),
+// и для ИСТОРИЧЕСКОГО снимка навыков (PlayerStatSnapshot, см.
+// playerHistoryDb.ts) при калибровке по прошлым матчам (см. чат "Калибровка
+// позиционного рейтинга по реальным звёздам Hattrick", план в
+// .claude/plans, шаг 3) — PlayerStatSnapshot структурно уже содержит все
+// эти поля, отдельный "поддельный SquadPlayer" собирать не нужно.
+type RatingInputs = Pick<SquadPlayer, "skills" | "loyalty" | "isClubProduct" | "experience" | "form">;
+
+function computeLoyaltyBonus(player: RatingInputs): number {
   if (player.loyalty === undefined) return 0; // нет данных — бонус не начисляем, а не гадаем
   return (Math.max(0, Math.min(LOYALTY_MAX_SKILL_LEVEL, player.loyalty)) / LOYALTY_MAX_SKILL_LEVEL) * LOYALTY_MAX_BONUS;
 }
 
 const MOTHER_CLUB_BONUS = 0.5; // фиксированный официальный бонус, см. комментарий выше
 
-function computeMotherClubBonus(player: SquadPlayer): number {
+function computeMotherClubBonus(player: RatingInputs): number {
   return player.isClubProduct ? MOTHER_CLUB_BONUS : 0;
 }
 
@@ -127,7 +136,7 @@ function computeMotherClubBonus(player: SquadPlayer): number {
 const EXPERIENCE_MAX_SKILL_LEVEL = 20;
 const EXPERIENCE_MAX_BONUS = 0.3; // ПРИБЛИЖЕНИЕ — предстоит уточнить
 
-function computeExperienceBonus(player: SquadPlayer): number {
+function computeExperienceBonus(player: RatingInputs): number {
   return (Math.max(0, Math.min(EXPERIENCE_MAX_SKILL_LEVEL, player.experience)) / EXPERIENCE_MAX_SKILL_LEVEL) * EXPERIENCE_MAX_BONUS;
 }
 
@@ -144,7 +153,7 @@ const FORM_BONUS_PER_LEVEL = 0.03; // ПРИБЛИЖЕНИЕ — ±3% множи
 const FORM_MULTIPLIER_MIN = 0.8;
 const FORM_MULTIPLIER_MAX = 1.12;
 
-function computeFormMultiplier(player: SquadPlayer): number {
+function computeFormMultiplier(player: RatingInputs): number {
   const raw = 1 + (player.form - FORM_BASELINE_LEVEL) * FORM_BONUS_PER_LEVEL;
   return Math.max(FORM_MULTIPLIER_MIN, Math.min(FORM_MULTIPLIER_MAX, raw));
 }
@@ -175,6 +184,16 @@ export interface SlotRatingBreakdown {
   formMultiplier: number;
 }
 
+// Версия набора весов/бонусов формулы — увеличивать при ЛЮБОМ изменении
+// slotRoleWeights или бонусных коэффициентов выше (LOYALTY_MAX_BONUS,
+// MOTHER_CLUB_BONUS, EXPERIENCE_MAX_BONUS, FORM_*). Записывается вместе с
+// каждым прогнозом в датасет калибровки (см. чат "Калибровка позиционного
+// рейтинга по реальным звёздам Hattrick", план в .claude/plans, шаг 3-4) —
+// чтобы регрессия не смешивала в одной выборке прогнозы, посчитанные
+// разными версиями формулы (иначе изменение весов задним числом "портило"
+// бы уже накопленную калибровку).
+export const RATING_FORMULA_VERSION = "1";
+
 // Расчётный рейтинг силы игрока на конкретном слоте — база, как и раньше,
 // взвешенное среднее по навыкам роли (та же логика, что и у командных
 // зональных показателей), поверх нее — официальные бонусы преданности и
@@ -183,7 +202,7 @@ export interface SlotRatingBreakdown {
 // bonus один раз к уже взвешенному среднему — сумма весов не меняется), а
 // затем небольшой эвристический бонус за опыт и множитель формы поверх
 // всего итога (см. комментарии у соответствующих функций выше).
-export function computeSlotRatingBreakdown(player: SquadPlayer, role: SlotRole): SlotRatingBreakdown {
+export function computeSlotRatingBreakdown(player: RatingInputs, role: SlotRole): SlotRatingBreakdown {
   const terms = slotRoleWeights[role].map(([skillKey, weight]): [number, number] => [player.skills[skillKey], weight]);
   const baseSkillAverage = weighted(terms);
 
@@ -205,16 +224,89 @@ export function computeSlotRatingBreakdown(player: SquadPlayer, role: SlotRole):
   };
 }
 
-export function computeSlotRating(player: SquadPlayer, role: SlotRole): number {
+export function computeSlotRating(player: RatingInputs, role: SlotRole): number {
   return computeSlotRatingBreakdown(player, role).rating;
+}
+
+// Коэффициенты калибровки сырого прогноза к реальной шкале звёзд Hattrick —
+// посчитаны в БД через линейную регрессию (regr_slope/regr_intercept, см.
+// getAllRoleCalibrations в matchRolePredictionsDb.ts) по накопленным парам
+// "прогноз/реальный RatingStars" для этой роли (см. чат "Калибровка
+// позиционного рейтинга по реальным звёздам Hattrick", план в
+// .claude/plans, шаг 4). Тип объявлен здесь (а не в matchRolePredictionsDb.ts,
+// который тянет за собой серверный @neondatabase/serverless) — этот файл
+// используется и на сервере, и в клиентском LineupField.tsx.
+export interface RoleCalibration {
+  slope: number;
+  intercept: number;
+  sampleCount: number;
+}
+
+// Реальный минимум шкалы Hattrick — звёзды начинаются с 0.5. Потолка НЕТ —
+// по запросу шкала остаётся открытой сверху (реальные оценки бывают 13 и
+// выше), линейная формула сама по себе ничем не ограничена сверху, так что
+// достаточно только пола.
+const STAR_SCALE_FLOOR = 0.5;
+
+// calibration === null — коэффициентов для этой роли ещё нет (мало
+// накопленных матчей, см. MIN_CALIBRATION_SAMPLES в matchRolePredictionsDb.ts)
+// или калибровка отключена — честно возвращаем сырой прогноз без изменений,
+// а не гадаем на скудных данных.
+export function applyCalibration(rawRating: number, calibration: RoleCalibration | null): number {
+  if (!calibration) return rawRating;
+  return Math.max(STAR_SCALE_FLOOR, calibration.slope * rawRating + calibration.intercept);
+}
+
+// Тренд КОНКРЕТНОГО игрока на конкретной роли — среднее РЕАЛЬНОЕ
+// (actual_rating_stars) за последние несколько матчей (см. getPlayerRoleTrends
+// в matchRolePredictionsDb.ts, план в .claude/plans, шаг 5). Тип объявлен
+// здесь по той же причине, что и RoleCalibration выше — файл общий для
+// сервера и клиента, matchRolePredictionsDb.ts (серверный, тянет
+// @neondatabase/serverless) импортирует его отсюда, а не наоборот.
+export interface PlayerRoleTrend {
+  avgActualStars: number;
+  sampleCount: number;
+}
+
+// Ключ для PlayerRoleTrend/getPlayerRoleTrends — общий для записи
+// (matchRolePredictionsDb.ts, серверный) и чтения на клиенте
+// (LineupField.tsx), чтобы не разъехаться форматом. Объявлен здесь (не в
+// matchRolePredictionsDb.ts) по той же причине, что и остальные типы этого
+// блока — нужен и клиентскому компоненту.
+export function playerRoleTrendKey(playerId: number, slotRole: SlotRole): string {
+  return `${playerId}:${slotRole}`;
 }
 
 // Текст подсказки при наведении на число рейтинга слота (см. чат "Расширить
 // формулу позиционного рейтинга") — по запросу явно разделяет ТОЧНЫЕ
 // компоненты (навыки + официальные бонусы Hattrick — преданность, родной
 // клуб) и ПРИБЛИЖЁННЫЕ (эвристики без официальной формулы — опыт, форма),
-// чтобы не выдавать честное приближение за официальную точность.
-export function formatSlotRatingTooltip(breakdown: SlotRatingBreakdown, roleLabel: string): string {
+// чтобы не выдавать честное приближение за официальную точность. calibration
+// (см. чат "Калибровка позиционного рейтинга по реальным звёздам Hattrick",
+// шаг 4) — если есть, показанное число уже откалибровано к реальной шкале
+// звёзд, а сырой прогноз указан отдельной строкой для прозрачности; если
+// нет (мало накопленных матчей ещё) — показывается сырое число как есть, с
+// честной пометкой, что калибровки пока нет. trend (шаг 5) — если для
+// ИМЕННО ЭТОГО игрока на ИМЕННО ЭТОЙ роли есть накопленная история реальных
+// матчей, добавляет пример из задания ("прогноз 6.2★, в среднем реально
+// получал 5.8★ за последние N игр"); молча пропускается, если истории нет.
+export function formatSlotRatingTooltip(
+  breakdown: SlotRatingBreakdown,
+  roleLabel: string,
+  calibration: RoleCalibration | null = null,
+  trend: PlayerRoleTrend | null = null,
+): string {
+  const displayRating = applyCalibration(breakdown.rating, calibration);
+  const headline = calibration
+    ? `Расчётный рейтинг на позиции ${roleLabel}: ${displayRating.toFixed(1)}★ ` +
+      `(откалибровано по ${calibration.sampleCount} реальным матчам игроков этой роли; до калибровки: ${breakdown.rating.toFixed(2)})`
+    : `Расчётный рейтинг на позиции ${roleLabel}: ${breakdown.rating.toFixed(1)} ` +
+      `(калибровки по реальным звёздам пока нет — мало накопленных матчей)`;
+  const trendLine = trend
+    ? `Этот игрок на этой позиции в среднем реально получал ${trend.avgActualStars.toFixed(1)}★ ` +
+      `за последние ${trend.sampleCount} матч(ей) — против прогноза ${displayRating.toFixed(1)}★ сейчас.`
+    : null;
+
   const loyaltyLine = breakdown.hasLoyaltyData
     ? `Преданность клубу: +${breakdown.loyaltyBonus.toFixed(2)}`
     : "Преданность клубу: +0.00 (CHPP не вернул Loyalty для этого игрока)";
@@ -222,7 +314,8 @@ export function formatSlotRatingTooltip(breakdown: SlotRatingBreakdown, roleLabe
     breakdown.motherClubBonus > 0 ? `Родной клуб: +${breakdown.motherClubBonus.toFixed(2)} (воспитанник)` : "Родной клуб: +0.00";
 
   return [
-    `Расчётный рейтинг на позиции ${roleLabel}: ${breakdown.rating.toFixed(1)}`,
+    headline,
+    ...(trendLine ? [trendLine] : []),
     "",
     "Точно (навыки + официальные бонусы Hattrick):",
     `  База по навыкам: ${breakdown.baseSkillAverage.toFixed(2)}`,

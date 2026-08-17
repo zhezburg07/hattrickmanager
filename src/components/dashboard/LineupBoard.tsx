@@ -10,6 +10,7 @@ import {
   subCategories,
   slotCounts,
   type Assignments,
+  type SlotRole,
 } from "@/data/pitchBoard";
 import type { PositionGroup, SquadPlayer, PlayerStatSnapshot } from "@/data/squad";
 import { applicableInstructions, type PlayerInstruction } from "@/data/playerInstructions";
@@ -21,6 +22,7 @@ import { recommendLineup } from "./recommendLineup";
 import { formationExperienceLevel } from "./formationExperience";
 import type { DragPayload } from "./dragPayload";
 import type { OpponentAnalysisResult } from "@/lib/opponentAnalysis";
+import type { RoleCalibration, PlayerRoleTrend } from "./zoneRatings";
 import styles from "./Lineup.module.css";
 
 // Порядок заполнения слотов линии "снаружи внутрь": сначала оба крайних
@@ -88,11 +90,15 @@ export default function LineupBoard({
   prevByPlayerId,
   opponentAnalysis,
   trainerPlayerId,
+  calibrations,
+  trends,
 }: {
   players: SquadPlayer[];
   prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
   opponentAnalysis: OpponentAnalysisResult;
   trainerPlayerId?: number;
+  calibrations?: Partial<Record<SlotRole, RoleCalibration>>;
+  trends?: Record<string, PlayerRoleTrend>;
 }) {
   const roster = players;
   const playersById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
@@ -453,6 +459,8 @@ export default function LineupBoard({
           formationLabel={formationLabel}
           experienceLevel={experienceLevel}
           onRecommend={handleRecommend}
+          calibrations={calibrations}
+          trends={trends}
         />
 
         <LineupPlayerList

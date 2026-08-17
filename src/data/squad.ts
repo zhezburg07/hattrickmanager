@@ -49,12 +49,22 @@ export interface SquadSkills {
 // Снимок показателей игрока, которые могут меняться от тренировки к
 // тренировке — используется для сравнения "было → стало" между двумя
 // синхронизациями (см. usePlayerStatChanges в SquadTable.tsx).
+//
+// loyalty/isClubProduct добавлены для "Калибровка позиционного рейтинга по
+// реальным звёздам Hattrick" (см. план в .claude/plans, шаг 2) — нужны,
+// чтобы честно восстановить, какие входные данные формула рейтинга
+// использовала бы НА МОМЕНТ конкретного прошлого матча, а не только текущие
+// skills/experience/form/stamina/tsi. Опциональны по той же причине, что и
+// на SquadPlayer (см. squad.ts выше) — CHPP отдаёт их не всегда, а снимки,
+// сохранённые ДО этого изменения, их не содержат вовсе.
 export interface PlayerStatSnapshot {
   skills: SquadSkills;
   experience: number;
   form: number;
   stamina: number;
   tsi: number;
+  loyalty?: number;
+  isClubProduct?: boolean;
 }
 
 export interface SquadPlayer {

@@ -4,6 +4,7 @@ import type { LeagueTableRow } from "@/components/dashboard/LeagueTable";
 import type { RecentMatchRow, UpcomingMatchRow } from "@/components/dashboard/MatchesSection";
 import { defaultCurrency, chppSupportersPopularityToFanMoodLevel } from "@/data/dashboard";
 import { resolveCountryByEnglishName, type SquadPlayer } from "@/data/squad";
+import { ROLE_ID_TO_SLOT_ROLE, roleFullLabel } from "@/data/pitchBoard";
 import { requestChppXmlRaw, type ChppRawResponse, type StoredHattrickTokens } from "./hattrickApi";
 import { isChppAuthError, assertNoChppError } from "./chppError";
 import { parseTeamDetailsXml } from "./teamDetails";
@@ -22,6 +23,7 @@ import {
   parseMatchLineupRatings,
   RECENT_MATCH_COUNT,
   MATCH_LINEUP_VERSION,
+  buildCalibrationCandidates,
 } from "./lastMatchRating";
 import {
   parseOpponentLineup,
@@ -30,7 +32,9 @@ import {
   tacticTypeLabel,
   type OpponentAnalysisResult,
 } from "./opponentAnalysis";
-import { trainingWeekKey, saveCurrentWeekSnapshot } from "./playerHistoryDb";
+import { trainingWeekKey, saveCurrentWeekSnapshot, getSnapshotAsOf } from "./playerHistoryDb";
+import { computeSlotRatingBreakdown, RATING_FORMULA_VERSION } from "@/components/dashboard/zoneRatings";
+import { saveMatchRolePrediction } from "./matchRolePredictionsDb";
 import { resolveFanExpectations, NEUTRAL_FAN_EXPECTATION, type FanExpectation } from "./fanExpectation";
 import { parseArenaDetailsXml, type RealArenaCapacity } from "./arena";
 import { parseTrainingXml, type RealTraining } from "./training";
@@ -694,13 +698,87 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
               return {};
             }
           });
-          const lastMatchRatings = perMatchRatings[0] ?? {};
+
+          // ВРЕМЕННАЯ диагностика (см. чат "Калибровка позиционного рейтинга
+          // по реальным звёздам Hattrick", план в .claude/plans, шаг 0) —
+          // ROLE_ID_TO_SLOT_ROLE выведено геометрически из FIELD_POSITIONS
+          // (MatchDetailAnalysis.tsx), но ни разу не сверено с реальным
+          // отчётом матча на hattrick.org ИМЕННО для этой цели. Дамп
+          // RoleID → SlotRole на игрока за последние матчи — сверить вручную
+          // на 2-3 матчах, затем убрать построчный дамп (оставить только
+          // саму таблицу сопоставления и краткую строку подтверждения).
+          {
+            const nameById = new Map(players.map((p) => [p.id, p.name]));
+            const roleLines: string[] = [];
+            recentFinished.forEach((m, i) => {
+              const ratings = perMatchRatings[i] ?? {};
+              for (const [playerId, entry] of Object.entries(ratings)) {
+                if (entry.roleId === null) continue;
+                const slotRole = ROLE_ID_TO_SLOT_ROLE[entry.roleId];
+                const name = nameById.get(Number(playerId)) ?? `#${playerId}`;
+                roleLines.push(
+                  `матч ${m.matchId}: ${name} — RoleID ${entry.roleId} → ${slotRole ? roleFullLabel[slotRole] : "не сопоставлено"}`,
+                );
+              }
+            });
+            if (roleLines.length > 0) {
+              sectionErrors.push(`RoleID→SlotRole (диагностика, план калибровки шаг 0): ${roleLines.join(" | ")}`);
+            }
+          }
+
+          // Датасет калибровки позиционного рейтинга (см. чат "Калибровка
+          // позиционного рейтинга по реальным звёздам Hattrick", план в
+          // .claude/plans, шаг 3) — отбор кандидатов (только стартовый
+          // состав, RoleID 100-113) вынесен в чистую buildCalibrationCandidates
+          // (lastMatchRating.ts, юнит-тестируется без реальной БД). Для
+          // каждого кандидата берём снимок навыков НА ДАТУ МАТЧА
+          // (getSnapshotAsOf, не сегодняшний — иначе прогноз "подсматривал"
+          // бы будущий рост навыков), считаем прогноз той же формулой, что
+          // и на "Расстановке" (computeSlotRatingBreakdown), сохраняем пару
+          // прогноз/реальность в обезличенную matchRolePredictionsDb.ts.
+          // Пропускаем кандидата, если снимка на эту дату ещё нет — честно,
+          // не подставляем текущие навыки вместо исторических. Один
+          // провалившийся игрок/матч не должен ронять остальной цикл —
+          // ошибки гасятся индивидуально.
+          const calibrationCandidates = buildCalibrationCandidates(recentFinished, perMatchRatings);
+          await Promise.all(
+            calibrationCandidates.map((c) =>
+              (async () => {
+                const snapshot = await getSnapshotAsOf(hattrickUserId, c.playerId, c.matchWeek);
+                if (!snapshot) return;
+                const predictedRaw = computeSlotRatingBreakdown(snapshot, c.slotRole).rating;
+                await saveMatchRolePrediction({
+                  matchId: c.matchId,
+                  playerId: c.playerId,
+                  matchDate: c.matchDate,
+                  roleId: c.roleId,
+                  slotRole: c.slotRole,
+                  skills: snapshot.skills,
+                  experience: snapshot.experience,
+                  form: snapshot.form,
+                  stamina: snapshot.stamina,
+                  loyalty: snapshot.loyalty ?? null,
+                  isClubProduct: snapshot.isClubProduct ?? null,
+                  formulaVersion: RATING_FORMULA_VERSION,
+                  predictedRaw,
+                  actualRatingStars: c.actualRatingStars,
+                });
+              })().catch(() => {
+                // Один игрок/матч — не должен ронять остальной цикл калибровки.
+              }),
+            ),
+          );
+
+          const lastMatchRatings: Record<number, number> = {};
+          for (const [playerId, entry] of Object.entries(perMatchRatings[0] ?? {})) {
+            lastMatchRatings[Number(playerId)] = entry.rating;
+          }
           const bestOfRecentRatings: Record<number, number> = {};
           for (const ratings of perMatchRatings) {
-            for (const [playerId, rating] of Object.entries(ratings)) {
+            for (const [playerId, entry] of Object.entries(ratings)) {
               const id = Number(playerId);
               bestOfRecentRatings[id] =
-                bestOfRecentRatings[id] !== undefined ? Math.max(bestOfRecentRatings[id], rating) : rating;
+                bestOfRecentRatings[id] !== undefined ? Math.max(bestOfRecentRatings[id], entry.rating) : entry.rating;
             }
           }
           players = players.map((p) => ({
