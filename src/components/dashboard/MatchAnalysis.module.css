@@ -875,6 +875,17 @@
   background: rgba(192, 80, 63, 0.16);
 }
 
+/* Число по зоне, довычисленное алгебраически по остатку (последний
+   резервный шаг computeAttackZoneBreakdown), а не подтверждённое напрямую
+   кодом события из EventList — см. ZoneValue в matchAnalysis.ts. Курсив +
+   приглушённый цвет + "≈", чтобы визуально отличаться от подтверждённых
+   чисел рядом в той же ячейке "Л / Ц / П". */
+.computedZoneValue {
+  font-style: italic;
+  color: var(--color-text-muted);
+  cursor: help;
+}
+
 /* Посещаемость */
 .tableWrap {
   overflow-x: auto;

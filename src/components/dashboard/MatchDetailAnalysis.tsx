@@ -56,6 +56,15 @@ interface MatchAttendance {
   capacityTotal: number | null;
 }
 
+// См. ZoneValue в src/lib/matchAnalysis.ts — confirmed=false значит, что
+// число не измерено напрямую по коду события в EventList, а довычислено по
+// остатку (официальный итог зоны минус подтверждённая часть), последний
+// резервный шаг computeAttackZoneBreakdown.
+interface ZoneValue {
+  value: number;
+  confirmed: boolean;
+}
+
 interface MatchAttackStats {
   chancesTotal: number | null;
   goals: number | null;
@@ -65,16 +74,16 @@ interface MatchAttackStats {
   chancesRight: number | null;
   chancesSpecialEvents: number | null;
   chancesOther: number | null;
-  goalsLeft: number | null;
-  goalsCenter: number | null;
-  goalsRight: number | null;
-  goalsSpecialEvents: number | null;
-  goalsOther: number | null;
-  missedLeft: number | null;
-  missedCenter: number | null;
-  missedRight: number | null;
-  missedSpecialEvents: number | null;
-  missedOther: number | null;
+  goalsLeft: ZoneValue | null;
+  goalsCenter: ZoneValue | null;
+  goalsRight: ZoneValue | null;
+  goalsSpecialEvents: ZoneValue | null;
+  goalsOther: ZoneValue | null;
+  missedLeft: ZoneValue | null;
+  missedCenter: ZoneValue | null;
+  missedRight: ZoneValue | null;
+  missedSpecialEvents: ZoneValue | null;
+  missedOther: ZoneValue | null;
 }
 
 type MatchTimelineKind = "goal" | "card" | "sub" | "injury" | "miss" | "special";
@@ -237,33 +246,51 @@ function fmtStat(v: number | null | undefined): string {
 // зоны не разделяет по типу). "Голы"/"Нереализованные моменты" по зонам —
 // это УЖЕ реальный расчёт из отдельных событий EventList по EventTypeID
 // (неофициальная, но проверяемая расшифровка кодов, см. комментарий у
-// computeAttackZoneBreakdown), а не готовое поле — поэтому показываем эти
-// числа ТОЛЬКО если расчёт сошёлся с официальными итогами для этого
-// конкретного матча (goalsLeft и т.п. не null); если не сошёлся или
-// EventList не пришёл — честное тире с пояснением, а не выдуманное число.
+// computeAttackZoneBreakdown): число показывается напрямую, если сошлось с
+// официальным итогом ЭТОЙ КОНКРЕТНОЙ зоны; если нет — последний резервный
+// шаг довычисляет его по остатку (см. ZoneValue.confirmed=false, отмечено
+// курсивом и "≈"); если данных не хватает даже на это — честное тире.
 const NO_ZONE_BREAKDOWN_HINT =
-  "Не удалось надёжно разобрать по зонам для этого матча (расчёт из отдельных событий EventList не сошёлся с официальным итогом, либо EventList не пришёл) — показан только общий итог за матч в столбце «Всего».";
+  "Не удалось надёжно разобрать эту зону для этого матча (расчёт из отдельных событий EventList не сошёлся с официальным итогом зоны, и алгебраически довычислить по остатку тоже не удалось, либо EventList не пришёл).";
+const COMPUTED_ZONE_HINT =
+  "Не подтверждено напрямую кодом события — довычислено по остатку (официальный итог зоны минус подтверждённая часть), последний резервный шаг.";
 
+function renderZoneValue(v: ZoneValue | null | undefined) {
+  if (v === null || v === undefined) {
+    return <span title={NO_ZONE_BREAKDOWN_HINT}>—</span>;
+  }
+  if (!v.confirmed) {
+    return (
+      <em className={styles.computedZoneValue} title={COMPUTED_ZONE_HINT}>
+        ≈{v.value}
+      </em>
+    );
+  }
+  return <span>{v.value}</span>;
+}
+
+function ZoneLcrCell({ l, c, r }: { l: ZoneValue | null | undefined; c: ZoneValue | null | undefined; r: ZoneValue | null | undefined }) {
+  return (
+    <td className={styles.numCell}>
+      {renderZoneValue(l)} / {renderZoneValue(c)} / {renderZoneValue(r)}
+    </td>
+  );
+}
+
+function ZoneCell({ value }: { value: ZoneValue | null | undefined }) {
+  return <td className={styles.numCell}>{renderZoneValue(value)}</td>;
+}
+
+// Только для "Всего моментов" — готовое поле matchdetails (chancesLeft и
+// т.п.), обычные числа без confirmed/computed различия, т.к. это не расчёт
+// из EventList, а сами официальные поля Hattrick.
 function fmtZoneLcr(l: number | null | undefined, c: number | null | undefined, r: number | null | undefined): string | null {
   if (l === null || l === undefined || c === null || c === undefined || r === null || r === undefined) return null;
   return `${l} / ${c} / ${r}`;
 }
 
-function ZoneCell({ value }: { value: string | number | null }) {
-  if (value === null) {
-    return (
-      <td className={styles.numCell} title={NO_ZONE_BREAKDOWN_HINT}>
-        —
-      </td>
-    );
-  }
-  return <td className={styles.numCell}>{value}</td>;
-}
-
 function AttackMomentsTable({ teamLabel, teamId, stats }: { teamLabel: string; teamId: string; stats: MatchAttackStats | null }) {
   const lcr = fmtZoneLcr(stats?.chancesLeft, stats?.chancesCenter, stats?.chancesRight) ?? NO_DATA;
-  const goalsLcr = fmtZoneLcr(stats?.goalsLeft, stats?.goalsCenter, stats?.goalsRight);
-  const missedLcr = fmtZoneLcr(stats?.missedLeft, stats?.missedCenter, stats?.missedRight);
 
   return (
     <div className={styles.tableWrap} style={{ marginBottom: 20 }}>
@@ -283,16 +310,16 @@ function AttackMomentsTable({ teamLabel, teamId, stats }: { teamLabel: string; t
         <tbody>
           <tr className={styles.attackMomentsRowGoals}>
             <td>Голы</td>
-            <ZoneCell value={goalsLcr} />
-            <ZoneCell value={stats?.goalsSpecialEvents ?? null} />
-            <ZoneCell value={stats?.goalsOther ?? null} />
+            <ZoneLcrCell l={stats?.goalsLeft} c={stats?.goalsCenter} r={stats?.goalsRight} />
+            <ZoneCell value={stats?.goalsSpecialEvents} />
+            <ZoneCell value={stats?.goalsOther} />
             <td className={styles.numCell}>{fmtStat(stats?.goals)}</td>
           </tr>
           <tr className={styles.attackMomentsRowMissed}>
             <td>Нереализованные моменты</td>
-            <ZoneCell value={missedLcr} />
-            <ZoneCell value={stats?.missedSpecialEvents ?? null} />
-            <ZoneCell value={stats?.missedOther ?? null} />
+            <ZoneLcrCell l={stats?.missedLeft} c={stats?.missedCenter} r={stats?.missedRight} />
+            <ZoneCell value={stats?.missedSpecialEvents} />
+            <ZoneCell value={stats?.missedOther} />
             <td className={styles.numCell}>{fmtStat(stats?.missed)}</td>
           </tr>
           <tr className={styles.attackMomentsRowTotal}>
@@ -321,11 +348,12 @@ function AttackMomentsHeading() {
       <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 12 }}>
         Строка "Всего моментов" — разбивка по зонам атаки (Л/Ц/П, спецсобытия, другое) из готового поля matchdetails
         (голы и нереализованные вместе). Строки "Голы" и "Нереализованные моменты" по зонам — это уже отдельный расчёт
-        из конкретных событий EventList по коду события (неофициальная, но проверяемая расшифровка кодов): числа
-        показаны только если этот расчёт сошёлся с официальными итогами выше для этого конкретного матча — иначе
-        честное тире с пояснением по наведению, а не выдуманное число. Что именно доступно по каждому типу событий на
-        самой временной шкале ниже — см. чеклист над лентой; сырые счётчики по каждой зоне и разбор EventList по кодам
-        — в панели "Диагностика" в самом низу страницы.
+        из конкретных событий EventList по коду события (неофициальная, но проверяемая расшифровка кодов): число
+        показано обычным шрифтом, если сошлось напрямую с официальным итогом этой зоны; <em>курсивом с "≈"</em> — если
+        не сошлось, но его удалось довычислить по остатку (официальный итог зоны минус подтверждённая часть); тире —
+        если данных не хватило даже на это. Что именно доступно по каждому типу событий на самой временной шкале ниже
+        — см. чеклист над лентой; сырые счётчики по каждой зоне и разбор EventList по кодам — в панели "Диагностика" в
+        самом низу страницы.
       </p>
     </div>
   );

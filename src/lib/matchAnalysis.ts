@@ -94,6 +94,19 @@ export interface MatchAttendance {
 // goals — HomeGoals/AwayGoals, тоже итог за матч (используется просто как
 // точное число реализованных моментов). missed — производное значение
 // (chancesTotal - goals), тоже итог за матч, НЕ распределённый по времени.
+// Значение зоны, которое может быть либо напрямую подтверждено официальным
+// итогом матча, либо (последний резервный шаг, см. computeAttackZoneBreakdown
+// ниже и чат "Прочерки в разбивке по зонам: вычислять недостающее число
+// алгебраически") довычислено по остатку: официальный итог зоны минус
+// подтверждённая часть. confirmed=false НЕ означает "ненадёжно" — это
+// строгий вывод из уже подтверждённых чисел, просто не измеренное
+// напрямую по коду события в EventList, поэтому UI обязан показывать эти
+// два случая по-разному (см. ZoneCell/ZoneLcrCell в MatchDetailAnalysis.tsx).
+export interface ZoneValue {
+  value: number;
+  confirmed: boolean;
+}
+
 export interface MatchAttackStats {
   chancesTotal: number | null;
   goals: number | null;
@@ -112,19 +125,20 @@ export interface MatchAttackStats {
   // вычисляется из отдельных событий EventList по EventTypeID (см.
   // classifyEventTypeId/computeAttackZoneBreakdown ниже), а не из готового
   // поля matchdetails (такого поля у Hattrick нет). Каждое поле null, если
-  // разбивку не удалось сверить с официальными итогами выше для этого
-  // конкретного матча (EventList не пришёл, расхождение с известными
-  // суммами и т.п.) — тогда честно не показываем эти числа.
-  goalsLeft: number | null;
-  goalsCenter: number | null;
-  goalsRight: number | null;
-  goalsSpecialEvents: number | null;
-  goalsOther: number | null;
-  missedLeft: number | null;
-  missedCenter: number | null;
-  missedRight: number | null;
-  missedSpecialEvents: number | null;
-  missedOther: number | null;
+  // для этой зоны не хватило данных даже на алгебраический резервный расчёт
+  // (EventList не пришёл, ни прямая сверка, ни довычисление по остатку не
+  // удались) — тогда честно не показываем число. confirmed внутри ZoneValue
+  // отличает напрямую подтверждённое число от довычисленного по остатку.
+  goalsLeft: ZoneValue | null;
+  goalsCenter: ZoneValue | null;
+  goalsRight: ZoneValue | null;
+  goalsSpecialEvents: ZoneValue | null;
+  goalsOther: ZoneValue | null;
+  missedLeft: ZoneValue | null;
+  missedCenter: ZoneValue | null;
+  missedRight: ZoneValue | null;
+  missedSpecialEvents: ZoneValue | null;
+  missedOther: ZoneValue | null;
 }
 
 // Тактический приказ команды на матч — подтверждённое поле <TacticType>
@@ -306,16 +320,16 @@ function currentEventClassificationLabel(typeId: number): string {
 }
 
 interface AttackZoneBreakdown {
-  goalsLeft: number | null;
-  goalsCenter: number | null;
-  goalsRight: number | null;
-  goalsSpecialEvents: number | null;
-  goalsOther: number | null;
-  missedLeft: number | null;
-  missedCenter: number | null;
-  missedRight: number | null;
-  missedSpecialEvents: number | null;
-  missedOther: number | null;
+  goalsLeft: ZoneValue | null;
+  goalsCenter: ZoneValue | null;
+  goalsRight: ZoneValue | null;
+  goalsSpecialEvents: ZoneValue | null;
+  goalsOther: ZoneValue | null;
+  missedLeft: ZoneValue | null;
+  missedCenter: ZoneValue | null;
+  missedRight: ZoneValue | null;
+  missedSpecialEvents: ZoneValue | null;
+  missedOther: ZoneValue | null;
 }
 
 const EMPTY_ZONE_BREAKDOWN: AttackZoneBreakdown = {
@@ -332,13 +346,26 @@ const EMPTY_ZONE_BREAKDOWN: AttackZoneBreakdown = {
 };
 
 // Считает разбивку по EventList и СВЕРЯЕТ её с уже подтверждёнными
-// официальными итогами (NrOfChances*/HomeGoals-AwayGoals, см. stats) —
-// сумма расшифровки по каждой категории (Л/Ц/П/Спецсобытия/Другое, отдельно
-// голы и отдельно нереализованные) должна ТОЧНО совпасть с официальным
-// числом. Расшифровка кодов неофициальная (см. комментарий выше), поэтому
-// если хоть одна сверка не сходится — не показываем разбивку вовсе (честные
-// null), а не наполовину верные числа; причина расхождения всегда попадает
-// в debug, чтобы не гадать вслепую при следующей жалобе.
+// официальными итогами (NrOfChances*/HomeGoals-AwayGoals, см. stats) — по
+// КАЖДОЙ зоне (Л/Ц/П/Спецсобытия/Другое) НЕЗАВИСИМО от остальных: голы+
+// нереализованные из EventList должны точно совпасть с официальным итогом
+// именно этой зоны. Расшифровка кодов неофициальная (см. комментарий выше).
+//
+// Если прямая сверка зоны не сошлась — последний резервный шаг (см. чат
+// "Прочерки в разбивке по зонам: вычислять недостающее число алгебраически"):
+// довычисляем недостающую сторону по остатку (официальный итог зоны минус
+// подтверждённая часть), но только если ОДНА из двух сторон надёжна в
+// АГРЕГАТЕ — т.е. сумма голов (или сумма нереализованных) по ВСЕМ зонам сразу
+// точно совпадает с официальным HomeGoals/AwayGoals (или chancesTotal-goals).
+// Это не произвольное "голам доверяем больше" — если бы в EventList не
+// хватало именно гола (не непопадания), общая сумма голов по зонам тоже не
+// сошлась бы с официальной, и алгебра для этой стороны не запустится.
+// Довычисленное значение помечается confirmed=false (см. ZoneValue) — UI
+// обязан показывать его иначе, чем напрямую подтверждённое число.
+//
+// Если ни одна из агрегатных сумм не надёжна для данной зоны (или остаток
+// получается отрицательным — это уже противоречие в данных, а не пробел) —
+// честный прочерк для обеих сторон этой зоны, как и раньше.
 function computeAttackZoneBreakdown(
   match: Record<string, unknown>,
   teamId: string,
@@ -383,51 +410,97 @@ function computeAttackZoneBreakdown(
     else if (typeId >= 100 && typeId < 300) unclassified++;
   }
 
-  const checks: [string, number | null, number][] = [
-    ["Л", stats.chancesLeft, goalsLeft + missedLeft],
-    ["Ц", stats.chancesCenter, goalsCenter + missedCenter],
-    ["П", stats.chancesRight, goalsRight + missedRight],
-    ["Спецсобытия", stats.chancesSpecialEvents, goalsSpecial + missedSpecial],
-    ["Другое", stats.chancesOther, goalsOther + missedOther],
-    ["Голы (сумма по зонам)", stats.goals, goalsLeft + goalsCenter + goalsRight + goalsSpecial + goalsOther],
-    ["Нереализовано (сумма по зонам)", stats.missed, missedLeft + missedCenter + missedRight + missedSpecial + missedOther],
-  ];
-  // Расхождение считается как computed − real (см. чат "Разбивка по зонам:
-  // диагностика для конкретного матча") — знак сразу показывает направление:
-  // "+1" значит по EventList насчитали на 1 БОЛЬШЕ, чем в официальном итоге
-  // (лишнее/задвоенное событие или неверно классифицированный код),
-  // "-1" — на 1 МЕНЬШЕ (пропущенное событие или неопознанный код, см.
-  // "нераспознанных кодов" ниже — типичная причина недостачи).
-  const mismatches = checks
-    .filter(([, real, computed]) => real !== null && real !== computed)
-    .map(([label, real, computed]) => {
-      const delta = computed - (real as number);
-      return `${label}: официально ${real}, по EventList ${computed} (расхождение ${delta > 0 ? "+" : ""}${delta})`;
-    });
+  const goalsSumRaw = goalsLeft + goalsCenter + goalsRight + goalsSpecial + goalsOther;
+  const missedSumRaw = missedLeft + missedCenter + missedRight + missedSpecial + missedOther;
+  const goalsSumConfirmed = stats.goals !== null && stats.goals === goalsSumRaw;
+  const missedSumConfirmed = stats.missed !== null && stats.missed === missedSumRaw;
 
   debug.push(
     `Разбивка по зонам (${sideLabel}) из EventList: голы Л/Ц/П/Спец/Друг=${goalsLeft}/${goalsCenter}/${goalsRight}/${goalsSpecial}/${goalsOther}, ` +
       `нереализовано Л/Ц/П/Спец/Друг=${missedLeft}/${missedCenter}/${missedRight}/${missedSpecial}/${missedOther}, ` +
       `нераспознанных кодов в диапазоне гола/непопадания (100-299)=${unclassified}. ` +
-      (mismatches.length === 0
-        ? "сходится со всеми официальными итогами — показываем в таблице."
-        : `НЕ сходится (${mismatches.join("; ")}) — не показываем ни "Голы", ни "Нереализованные моменты" по зонам для этой команды ` +
-          `(проверка "всё или ничего": одной несошедшейся категории достаточно, чтобы обнулить ОБЕ строки, см. computeAttackZoneBreakdown) — ` +
-          `оставляем честные прочерки в таблице, "Всего моментов" (готовое поле matchdetails, не из EventList) не затронуто.`),
+      `Голы (сумма по зонам): официально ${stats.goals ?? "нет поля"}, по EventList ${goalsSumRaw} — ${goalsSumConfirmed ? "сходится" : "НЕ сходится"} ` +
+      `(эта сторона ${goalsSumConfirmed ? "" : "НЕ "}годится как надёжная для алгебраического довычисления недостающих зон). ` +
+      `Нереализовано (сумма по зонам): официально ${stats.missed ?? "нет поля"}, по EventList ${missedSumRaw} — ${missedSumConfirmed ? "сходится" : "НЕ сходится"} ` +
+      `(эта сторона ${missedSumConfirmed ? "" : "НЕ "}годится как надёжная для алгебраического довычисления недостающих зон).`,
   );
 
-  if (mismatches.length > 0) return EMPTY_ZONE_BREAKDOWN;
+  const zoneDescriptors: [string, number, number, number | null][] = [
+    ["Л", goalsLeft, missedLeft, stats.chancesLeft],
+    ["Ц", goalsCenter, missedCenter, stats.chancesCenter],
+    ["П", goalsRight, missedRight, stats.chancesRight],
+    ["Спецсобытия", goalsSpecial, missedSpecial, stats.chancesSpecialEvents],
+    ["Другое", goalsOther, missedOther, stats.chancesOther],
+  ];
+
+  const resolved: Record<string, { goals: ZoneValue | null; missed: ZoneValue | null }> = {};
+  const zoneNotes: string[] = [];
+
+  for (const [label, goalsRaw, missedRaw, officialTotal] of zoneDescriptors) {
+    if (officialTotal === null) {
+      resolved[label] = { goals: null, missed: null };
+      zoneNotes.push(`${label}: нет официального итога зоны — прочерк`);
+      continue;
+    }
+    if (goalsRaw + missedRaw === officialTotal) {
+      // Прямая сверка сошлась — обе стороны этой зоны подтверждены, без
+      // обращения к резервной алгебре.
+      resolved[label] = {
+        goals: { value: goalsRaw, confirmed: true },
+        missed: { value: missedRaw, confirmed: true },
+      };
+      continue;
+    }
+    if (goalsSumConfirmed) {
+      const missedComputed = officialTotal - goalsRaw;
+      if (missedComputed >= 0) {
+        resolved[label] = {
+          goals: { value: goalsRaw, confirmed: true },
+          missed: { value: missedComputed, confirmed: false },
+        };
+        zoneNotes.push(
+          `${label}: официально ${officialTotal}, голы подтверждены (${goalsRaw}) — нереализованные довычислены по остатку = ${officialTotal} − ${goalsRaw} = ${missedComputed}`,
+        );
+        continue;
+      }
+    }
+    if (missedSumConfirmed) {
+      const goalsComputed = officialTotal - missedRaw;
+      if (goalsComputed >= 0) {
+        resolved[label] = {
+          goals: { value: goalsComputed, confirmed: false },
+          missed: { value: missedRaw, confirmed: true },
+        };
+        zoneNotes.push(
+          `${label}: официально ${officialTotal}, нереализованные подтверждены (${missedRaw}) — голы довычислены по остатку = ${officialTotal} − ${missedRaw} = ${goalsComputed}`,
+        );
+        continue;
+      }
+    }
+    resolved[label] = { goals: null, missed: null };
+    zoneNotes.push(
+      `${label}: официально ${officialTotal}, по EventList голы=${goalsRaw}+нереализовано=${missedRaw}=${goalsRaw + missedRaw} — не сходится, ` +
+        `и алгебраически довычислить нельзя (ни одна сумма не надёжна в агрегате, либо остаток отрицательный — противоречие) — прочерк`,
+    );
+  }
+
+  debug.push(
+    zoneNotes.length > 0
+      ? `Разбивка по зонам (${sideLabel}) — по зонам отдельно: ${zoneNotes.join("; ")}.`
+      : `Разбивка по зонам (${sideLabel}) — все зоны сошлись напрямую со своими официальными итогами, без резервной алгебры.`,
+  );
+
   return {
-    goalsLeft,
-    goalsCenter,
-    goalsRight,
-    goalsSpecialEvents: goalsSpecial,
-    goalsOther,
-    missedLeft,
-    missedCenter,
-    missedRight,
-    missedSpecialEvents: missedSpecial,
-    missedOther,
+    goalsLeft: resolved["Л"].goals,
+    goalsCenter: resolved["Ц"].goals,
+    goalsRight: resolved["П"].goals,
+    goalsSpecialEvents: resolved["Спецсобытия"].goals,
+    goalsOther: resolved["Другое"].goals,
+    missedLeft: resolved["Л"].missed,
+    missedCenter: resolved["Ц"].missed,
+    missedRight: resolved["П"].missed,
+    missedSpecialEvents: resolved["Спецсобытия"].missed,
+    missedOther: resolved["Другое"].missed,
   };
 }
 
@@ -1369,8 +1442,10 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
 
     // Разбивка голов/нереализованного ПО ЗОНАМ через отдельные события
     // EventList (см. computeAttackZoneBreakdown выше) — заполняет ранее
-    // всегда-null поля goalsLeft/.../missedOther, но только если сходится с
-    // уже подтверждёнными официальными итогами.
+    // всегда-null поля goalsLeft/.../missedOther, по каждой зоне независимо:
+    // напрямую (сходится с официальным итогом зоны), алгебраически по
+    // остатку (последний резервный шаг, ZoneValue.confirmed=false), либо
+    // честным null, если не хватило данных даже на это.
     const homeZoneBreakdown = computeAttackZoneBreakdown(match, homeTeamId, homeAttackStats, "хозяева", debug);
     const awayZoneBreakdown = computeAttackZoneBreakdown(match, awayTeamId, awayAttackStats, "гости", debug);
     if (homeAttackStats) homeAttackStats = { ...homeAttackStats, ...homeZoneBreakdown };
