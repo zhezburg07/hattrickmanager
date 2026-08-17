@@ -103,6 +103,8 @@ export default function LineupField({
   onRecommend,
   calibrations,
   trends,
+  teamMoraleValue = null,
+  teamConfidenceValue = null,
 }: {
   slots: BoardSlot[];
   getPlayer: (group: PositionGroup, index: number) => SquadPlayer | null;
@@ -135,6 +137,11 @@ export default function LineupField({
   // звёздам Hattrick", план в .claude/plans, шаг 5), ключ — playerRoleTrendKey.
   // Молча не показывается для игрока/роли, для которых записи нет.
   trends?: Record<string, PlayerRoleTrend>;
+  // Командный дух/уверенность (training.xml, см. чат "Командный дух/
+  // уверенность в формуле позиционного рейтинга") — общекомандные, одно и
+  // то же значение для КАЖДОГО слота. null — нет данных, множитель ×1.
+  teamMoraleValue?: number | null;
+  teamConfidenceValue?: number | null;
 }) {
   const [mode, setMode] = useState<ViewMode>("squad");
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -236,7 +243,9 @@ export default function LineupField({
               const isPositionOverridden = player !== null && effectiveGroup !== player.positionGroup;
               // Считаем один раз на слот — используется и для числа на карточке,
               // и для подсказки при наведении на него (см. formatSlotRatingTooltip).
-              const ratingBreakdown = player ? computeSlotRatingBreakdown(player, slot.role) : null;
+              const ratingBreakdown = player
+                ? computeSlotRatingBreakdown(player, slot.role, teamMoraleValue, teamConfidenceValue)
+                : null;
               // Калибровка к реальной шкале звёзд Hattrick (см. чат
               // "Калибровка позиционного рейтинга по реальным звёздам
               // Hattrick", план в .claude/plans, шаг 4) — null, пока для

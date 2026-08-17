@@ -712,6 +712,18 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
           // не подставляем текущие навыки вместо исторических. Один
           // провалившийся игрок/матч не должен ронять остальной цикл —
           // ошибки гасятся индивидуально.
+          //
+          // Командный дух/уверенность (см. чат "Командный дух/уверенность в
+          // формуле позиционного рейтинга") НАМЕРЕННО не передаются сюда —
+          // у нас нет исторического снимка КОМАНДНОГО духа/уверенности на
+          // дату прошлого матча (в отличие от навыков игрока, для них нет
+          // своей weekly-таблицы снимков), поэтому честно остаёмся на
+          // нейтральном множителе ×1 для обоих факторов при построении
+          // прогноза ЗАДНИМ ЧИСЛОМ — не подставляем СЕГОДНЯШНИЙ дух/
+          // уверенность команды вместо того, что было на самом деле в
+          // прошлом. Из-за этого регрессия калибруется против чуть иной
+          // величины, чем та, что показывается live (там множители
+          // применяются) — известное, принятое ограничение, а не баг.
           const calibrationCandidates = buildCalibrationCandidates(recentFinished, perMatchRatings);
           await Promise.all(
             calibrationCandidates.map((c) =>
@@ -2040,6 +2052,12 @@ export interface SquadPageData {
   players: SquadPlayer[] | null;
   error: string | null;
   trainerPlayerId: number | undefined;
+  // Командный дух/уверенность (training.xml, см. чат "Командный дух/
+  // уверенность в формуле позиционного рейтинга") — общекомандные значения
+  // для computePlayerPotential в "Потенциале". null — нет данных (не
+  // синхронизировано, либо Available="false" на момент синхронизации).
+  teamMoraleValue: number | null;
+  teamConfidenceValue: number | null;
 }
 
 // Тот же вид, что squad/page.tsx ожидал от resolveTrainerPlayerId() при
@@ -2049,6 +2067,7 @@ export async function getStoredSquadData(hattrickUserId: string): Promise<SquadP
   const playersEntry = snapshots[DATA_KEYS.players];
   const playersData = playersEntry?.data as StoredPlayersData | null;
   const team = snapshots[DATA_KEYS.team]?.data as StoredTeamData | null;
+  const training = snapshots[DATA_KEYS.training]?.data as RealTraining | null;
 
   let trainerPlayerId: number | undefined;
   if (team?.trainerPlayerId) {
@@ -2060,6 +2079,8 @@ export async function getStoredSquadData(hattrickUserId: string): Promise<SquadP
     players: playersData?.players ?? null,
     error: playersEntry?.error ?? null,
     trainerPlayerId,
+    teamMoraleValue: training?.moraleValue ?? null,
+    teamConfidenceValue: training?.confidenceValue ?? null,
   };
 }
 
@@ -2068,6 +2089,8 @@ export interface LineupPageData {
   error: string | null;
   opponentAnalysis: OpponentAnalysisResult;
   trainerPlayerId: number | undefined;
+  teamMoraleValue: number | null;
+  teamConfidenceValue: number | null;
 }
 
 export async function getStoredLineupData(hattrickUserId: string): Promise<LineupPageData> {
@@ -2080,6 +2103,7 @@ export async function getStoredLineupData(hattrickUserId: string): Promise<Lineu
     error: opponentEntry?.error ?? null,
   };
   const team = snapshots[DATA_KEYS.team]?.data as StoredTeamData | null;
+  const training = snapshots[DATA_KEYS.training]?.data as RealTraining | null;
 
   let trainerPlayerId: number | undefined;
   if (team?.trainerPlayerId) {
@@ -2092,6 +2116,8 @@ export async function getStoredLineupData(hattrickUserId: string): Promise<Lineu
     error: playersEntry?.error ?? null,
     opponentAnalysis,
     trainerPlayerId,
+    teamMoraleValue: training?.moraleValue ?? null,
+    teamConfidenceValue: training?.confidenceValue ?? null,
   };
 }
 

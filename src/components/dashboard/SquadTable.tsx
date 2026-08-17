@@ -100,6 +100,8 @@ function getValue(
   overrides: PositionOverrides,
   trainerPlayerId: number | undefined,
   calibrations: Partial<Record<SlotRole, RoleCalibration>>,
+  teamMoraleValue: number | null,
+  teamConfidenceValue: number | null,
 ): string | number {
   switch (key) {
     case "flag":
@@ -121,7 +123,7 @@ function getValue(
     case "rating":
       return player.lastMatchRating ?? -1;
     case "potential":
-      return computePlayerPotential(player, player.positionGroup, calibrations);
+      return computePlayerPotential(player, player.positionGroup, calibrations, teamMoraleValue, teamConfidenceValue);
     case "tsi":
       return player.tsi;
     case "status":
@@ -159,11 +161,18 @@ export default function SquadTable({
   prevByPlayerId,
   trainerPlayerId,
   calibrations = {},
+  teamMoraleValue = null,
+  teamConfidenceValue = null,
 }: {
   players: SquadPlayer[];
   prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
   trainerPlayerId?: number;
   calibrations?: Partial<Record<SlotRole, RoleCalibration>>;
+  // Командный дух/уверенность (training.xml) — общекомандные, для
+  // computePlayerPotential в "Потенциале" (см. чат "Командный дух/
+  // уверенность в формуле позиционного рейтинга"). null — нет данных.
+  teamMoraleValue?: number | null;
+  teamConfidenceValue?: number | null;
 }) {
   const roster = players;
   const effectiveTrainerPlayerId = trainerPlayerId;
@@ -188,8 +197,8 @@ export default function SquadTable({
   const sorted = useMemo(() => {
     const list = [...roster];
     list.sort((a, b) => {
-      const va = getValue(a, sortKey, overrides, effectiveTrainerPlayerId, calibrations);
-      const vb = getValue(b, sortKey, overrides, effectiveTrainerPlayerId, calibrations);
+      const va = getValue(a, sortKey, overrides, effectiveTrainerPlayerId, calibrations, teamMoraleValue, teamConfidenceValue);
+      const vb = getValue(b, sortKey, overrides, effectiveTrainerPlayerId, calibrations, teamMoraleValue, teamConfidenceValue);
       let cmp =
         typeof va === "string" && typeof vb === "string"
           ? va.localeCompare(vb, "ru")
@@ -203,7 +212,7 @@ export default function SquadTable({
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
-  }, [roster, sortKey, sortDir, overrides, effectiveTrainerPlayerId, calibrations]);
+  }, [roster, sortKey, sortDir, overrides, effectiveTrainerPlayerId, calibrations, teamMoraleValue, teamConfidenceValue]);
 
   function handleSort(key: SortKey) {
     if (key === sortKey) {
@@ -299,7 +308,9 @@ export default function SquadTable({
                 ))}
                 {hasLoyalty && <LoyaltyCell player={p} />}
                 {hasRating && <RatingCell rating={p.lastMatchRating} />}
-                <RatingCell rating={computePlayerPotential(p, p.positionGroup, calibrations)} />
+                <RatingCell
+                  rating={computePlayerPotential(p, p.positionGroup, calibrations, teamMoraleValue, teamConfidenceValue)}
+                />
               </tr>
               );
             })}
@@ -312,6 +323,8 @@ export default function SquadTable({
               hasRating={hasRating}
               trainerPlayerId={effectiveTrainerPlayerId}
               calibrations={calibrations}
+              teamMoraleValue={teamMoraleValue}
+              teamConfidenceValue={teamConfidenceValue}
             />
           </tfoot>
         </table>
@@ -355,12 +368,13 @@ export default function SquadTable({
                 <DiffArrow dir={staminaDiff} />
               </span>
               {p.lastMatchRating !== undefined && (
-                <span title={`${p.lastMatchRating.toFixed(1)} из 10`}>
+                <span title={`${p.lastMatchRating.toFixed(1)}★`}>
                   Рейтинг матча <b>★ {p.lastMatchRating.toFixed(1)}</b>
                 </span>
               )}
               <span title={POTENTIAL_HINT}>
-                Потенциал <b>★ {computePlayerPotential(p, p.positionGroup, calibrations).toFixed(1)}</b>
+                Потенциал{" "}
+                <b>★ {computePlayerPotential(p, p.positionGroup, calibrations, teamMoraleValue, teamConfidenceValue).toFixed(1)}</b>
               </span>
               <span
                 className={diffClass(tsiDiff)}

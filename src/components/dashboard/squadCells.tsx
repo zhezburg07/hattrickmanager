@@ -502,6 +502,8 @@ export function AverageRow({
   hasRating,
   trainerPlayerId,
   calibrations = {},
+  teamMoraleValue = null,
+  teamConfidenceValue = null,
 }: {
   players: SquadPlayer[];
   prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
@@ -509,6 +511,8 @@ export function AverageRow({
   hasRating: boolean;
   trainerPlayerId?: number;
   calibrations?: Partial<Record<SlotRole, RoleCalibration>>;
+  teamMoraleValue?: number | null;
+  teamConfidenceValue?: number | null;
 }) {
   const squad = trainerPlayerId !== undefined ? players.filter((p) => p.id !== trainerPlayerId) : players;
   if (squad.length === 0) return null;
@@ -539,7 +543,9 @@ export function AverageRow({
   const avgRating = average(
     squad.filter((p) => p.lastMatchRating !== undefined).map((p) => p.lastMatchRating as number),
   );
-  const avgPotential = average(squad.map((p) => computePlayerPotential(p, p.positionGroup, calibrations)));
+  const avgPotential = average(
+    squad.map((p) => computePlayerPotential(p, p.positionGroup, calibrations, teamMoraleValue, teamConfidenceValue)),
+  );
 
   return (
     <tr className={styles.avgRow}>

@@ -93,6 +93,8 @@ function getValue(
   overrides: PositionOverrides,
   trainerPlayerId: number | undefined,
   calibrations: Partial<Record<SlotRole, RoleCalibration>>,
+  teamMoraleValue: number | null,
+  teamConfidenceValue: number | null,
 ): string | number {
   switch (key) {
     case "flag":
@@ -118,7 +120,7 @@ function getValue(
     case "rating":
       return player.lastMatchRating ?? -1;
     case "potential":
-      return computePlayerPotential(player, player.positionGroup, calibrations);
+      return computePlayerPotential(player, player.positionGroup, calibrations, teamMoraleValue, teamConfidenceValue);
     default:
       return player.skills[key as SkillKey];
   }
@@ -135,6 +137,8 @@ export default function LineupPlayerList({
   prevByPlayerId,
   trainerPlayerId,
   calibrations = {},
+  teamMoraleValue = null,
+  teamConfidenceValue = null,
 }: {
   players: SquadPlayer[];
   onDropToBench: (payload: DragPayload) => void;
@@ -146,6 +150,8 @@ export default function LineupPlayerList({
   prevByPlayerId?: Record<number, PlayerStatSnapshot | undefined>;
   trainerPlayerId?: number;
   calibrations?: Partial<Record<SlotRole, RoleCalibration>>;
+  teamMoraleValue?: number | null;
+  teamConfidenceValue?: number | null;
 }) {
   const [isOver, setIsOver] = useState(false);
   // По умолчанию — Вратарь → Защитник → Полузащитник → Вингер → Нападающий,
@@ -207,8 +213,8 @@ export default function LineupPlayerList({
   const sorted = useMemo(() => {
     const list = [...players];
     list.sort((a, b) => {
-      const va = getValue(a, sortKey, overrides, trainerPlayerId, calibrations);
-      const vb = getValue(b, sortKey, overrides, trainerPlayerId, calibrations);
+      const va = getValue(a, sortKey, overrides, trainerPlayerId, calibrations, teamMoraleValue, teamConfidenceValue);
+      const vb = getValue(b, sortKey, overrides, trainerPlayerId, calibrations, teamMoraleValue, teamConfidenceValue);
       let cmp =
         typeof va === "string" && typeof vb === "string" ? va.localeCompare(vb, "ru") : (va as number) - (vb as number);
       // Внутри одной позиции — по TSI по убыванию (см. тот же тай-брейк в
@@ -217,7 +223,7 @@ export default function LineupPlayerList({
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
-  }, [players, sortKey, sortDir, overrides, trainerPlayerId, calibrations]);
+  }, [players, sortKey, sortDir, overrides, trainerPlayerId, calibrations, teamMoraleValue, teamConfidenceValue]);
 
   function handleSort(key: SortKey) {
     if (key === sortKey) {
@@ -354,7 +360,9 @@ export default function LineupPlayerList({
                   ))}
                   {hasLoyalty && <LoyaltyCell player={p} />}
                   {hasRating && <RatingCell rating={p.lastMatchRating} />}
-                  <RatingCell rating={computePlayerPotential(p, p.positionGroup, calibrations)} />
+                  <RatingCell
+                    rating={computePlayerPotential(p, p.positionGroup, calibrations, teamMoraleValue, teamConfidenceValue)}
+                  />
                 </tr>
                 {expandedPlayerId === p.id && (
                   <tr>
@@ -375,6 +383,8 @@ export default function LineupPlayerList({
               hasRating={hasRating}
               trainerPlayerId={trainerPlayerId}
               calibrations={calibrations}
+              teamMoraleValue={teamMoraleValue}
+              teamConfidenceValue={teamConfidenceValue}
             />
           </tfoot>
         </table>

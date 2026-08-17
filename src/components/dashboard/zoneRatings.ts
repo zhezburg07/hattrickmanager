@@ -158,6 +158,46 @@ function computeFormMultiplier(player: RatingInputs): number {
   return Math.max(FORM_MULTIPLIER_MIN, Math.min(FORM_MULTIPLIER_MAX, raw));
 }
 
+// ---- Командный дух и уверенность команды (см. чат "Командный дух/
+// уверенность в формуле позиционного рейтинга") — ЧЕСТНАЯ ЭВРИСТИКА, не
+// официальная формула (Hattrick не публикует, как именно эти показатели
+// влияют на результат матча). В отличие от Формы — это ОБЩЕКОМАНДНЫЕ
+// значения (training.xml, Team.Morale/Team.SelfConfidence, см.
+// src/lib/training.ts), одни и те же для всех игроков команды, а не
+// индивидуальные — поэтому передаются отдельными параметрами в
+// computeSlotRatingBreakdown ниже, а не полем RatingInputs конкретного
+// игрока. Тот же приём "множитель поверх уже собранного рейтинга", что и у
+// Формы: нейтральное значение (середина официальной шкалы Hattrick) — ×1,
+// ниже — понижающий множитель, выше — повышающий. null (нет данных —
+// синхронизация пришлась на матч команды, training.xml не пришёл и т.п.) —
+// честно ×1 (нейтрально), а не гадаем.
+//
+// Командный дух шире известен в сообществе Hattrick как более заметный
+// фактор — поэтому диапазон шире, чем у уверенности.
+const TEAM_SPIRIT_BASELINE = 5; // TeamSpiritID 0-10, 5="Спокойствие"/Calm — истинная середина шкалы
+const TEAM_SPIRIT_BONUS_PER_LEVEL = 0.025; // ПРИБЛИЖЕНИЕ — ±2.5% множителя за каждый уровень духа от базы
+const TEAM_SPIRIT_MULTIPLIER_MIN = 0.85;
+const TEAM_SPIRIT_MULTIPLIER_MAX = 1.15;
+
+function computeTeamSpiritMultiplier(moraleValue: number | null | undefined): number {
+  if (moraleValue === null || moraleValue === undefined) return 1;
+  const raw = 1 + (moraleValue - TEAM_SPIRIT_BASELINE) * TEAM_SPIRIT_BONUS_PER_LEVEL;
+  return Math.max(TEAM_SPIRIT_MULTIPLIER_MIN, Math.min(TEAM_SPIRIT_MULTIPLIER_MAX, raw));
+}
+
+// Уверенность — второстепенный, более мягкий фактор относительно духа, тот
+// же принцип, диапазон уже.
+const TEAM_CONFIDENCE_BASELINE = 4.5; // SelfConfidence 0-9, 4/5="Прилично"/"Хорошо" — истинная середина шкалы
+const TEAM_CONFIDENCE_BONUS_PER_LEVEL = 0.02; // ПРИБЛИЖЕНИЕ — ±2% множителя за каждый уровень уверенности от базы
+const TEAM_CONFIDENCE_MULTIPLIER_MIN = 0.9;
+const TEAM_CONFIDENCE_MULTIPLIER_MAX = 1.1;
+
+function computeTeamConfidenceMultiplier(confidenceValue: number | null | undefined): number {
+  if (confidenceValue === null || confidenceValue === undefined) return 1;
+  const raw = 1 + (confidenceValue - TEAM_CONFIDENCE_BASELINE) * TEAM_CONFIDENCE_BONUS_PER_LEVEL;
+  return Math.max(TEAM_CONFIDENCE_MULTIPLIER_MIN, Math.min(TEAM_CONFIDENCE_MULTIPLIER_MAX, raw));
+}
+
 // ---- Характер игрока (см. тот же чат, пункт 5) — НЕ входит в числовой
 // рейтинг силы: черты характера (лидерство и т.п.) не влияют на игровые
 // навыки согласно документации Hattrick, они важны для ДРУГИХ решений
@@ -182,17 +222,25 @@ export interface SlotRatingBreakdown {
   // -- приближённо (эвристики, не официальные формулы) --
   experienceBonus: number;
   formMultiplier: number;
+  teamSpiritMultiplier: number; // ×1, если moraleValue не передан/недоступен
+  teamConfidenceMultiplier: number; // ×1, если confidenceValue не передан/недоступен
+  hasTeamMoraleData: boolean; // false — moraleValue не передан/null, множитель честно ×1, а не "нейтральный дух"
+  hasTeamConfidenceData: boolean;
 }
 
 // Версия набора весов/бонусов формулы — увеличивать при ЛЮБОМ изменении
 // slotRoleWeights или бонусных коэффициентов выше (LOYALTY_MAX_BONUS,
-// MOTHER_CLUB_BONUS, EXPERIENCE_MAX_BONUS, FORM_*). Записывается вместе с
-// каждым прогнозом в датасет калибровки (см. чат "Калибровка позиционного
-// рейтинга по реальным звёздам Hattrick", план в .claude/plans, шаг 3-4) —
-// чтобы регрессия не смешивала в одной выборке прогнозы, посчитанные
-// разными версиями формулы (иначе изменение весов задним числом "портило"
-// бы уже накопленную калибровку).
-export const RATING_FORMULA_VERSION = "1";
+// MOTHER_CLUB_BONUS, EXPERIENCE_MAX_BONUS, FORM_*, TEAM_SPIRIT_*,
+// TEAM_CONFIDENCE_*). Записывается вместе с каждым прогнозом в датасет
+// калибровки (см. чат "Калибровка позиционного рейтинга по реальным
+// звёздам Hattrick", план в .claude/plans, шаг 3-4) — чтобы регрессия не
+// смешивала в одной выборке прогнозы, посчитанные разными версиями формулы
+// (иначе изменение весов задним числом "портило" бы уже накопленную
+// калибровку). УВЕЛИЧЕНО с "1" на "2" при добавлении командного духа/
+// уверенности (см. чат "Командный дух/уверенность в формуле позиционного
+// рейтинга") — по согласованию сброс накопленной калибровки принят как
+// цена, датасет пока маленький (~месяц истории).
+export const RATING_FORMULA_VERSION = "2";
 
 // Расчётный рейтинг силы игрока на конкретном слоте — база, как и раньше,
 // взвешенное среднее по навыкам роли (та же логика, что и у командных
@@ -200,9 +248,17 @@ export const RATING_FORMULA_VERSION = "1";
 // родного клуба (складываются С КАЖДЫМ навыком по официальному правилу
 // Hattrick "+X к каждому навыку", что математически эквивалентно прибавить
 // bonus один раз к уже взвешенному среднему — сумма весов не меняется), а
-// затем небольшой эвристический бонус за опыт и множитель формы поверх
-// всего итога (см. комментарии у соответствующих функций выше).
-export function computeSlotRatingBreakdown(player: RatingInputs, role: SlotRole): SlotRatingBreakdown {
+// затем небольшой эвристический бонус за опыт и множители формы/командного
+// духа/уверенности поверх всего итога (см. комментарии у соответствующих
+// функций выше). teamMoraleValue/teamConfidenceValue — ОБЩЕКОМАНДНЫЕ (одно
+// и то же значение для каждого игрока команды на этом расчёте, в отличие от
+// per-player Формы), необязательны — не переданы/null → множитель ×1.
+export function computeSlotRatingBreakdown(
+  player: RatingInputs,
+  role: SlotRole,
+  teamMoraleValue?: number | null,
+  teamConfidenceValue?: number | null,
+): SlotRatingBreakdown {
   const terms = slotRoleWeights[role].map(([skillKey, weight]): [number, number] => [player.skills[skillKey], weight]);
   const baseSkillAverage = weighted(terms);
 
@@ -210,8 +266,14 @@ export function computeSlotRatingBreakdown(player: RatingInputs, role: SlotRole)
   const motherClubBonus = computeMotherClubBonus(player);
   const experienceBonus = computeExperienceBonus(player);
   const formMultiplier = computeFormMultiplier(player);
+  const teamSpiritMultiplier = computeTeamSpiritMultiplier(teamMoraleValue);
+  const teamConfidenceMultiplier = computeTeamConfidenceMultiplier(teamConfidenceValue);
 
-  const rating = (baseSkillAverage + loyaltyBonus + motherClubBonus + experienceBonus) * formMultiplier;
+  const rating =
+    (baseSkillAverage + loyaltyBonus + motherClubBonus + experienceBonus) *
+    formMultiplier *
+    teamSpiritMultiplier *
+    teamConfidenceMultiplier;
 
   return {
     rating,
@@ -221,11 +283,20 @@ export function computeSlotRatingBreakdown(player: RatingInputs, role: SlotRole)
     hasLoyaltyData: player.loyalty !== undefined,
     experienceBonus,
     formMultiplier,
+    teamSpiritMultiplier,
+    teamConfidenceMultiplier,
+    hasTeamMoraleData: teamMoraleValue !== null && teamMoraleValue !== undefined,
+    hasTeamConfidenceData: teamConfidenceValue !== null && teamConfidenceValue !== undefined,
   };
 }
 
-export function computeSlotRating(player: RatingInputs, role: SlotRole): number {
-  return computeSlotRatingBreakdown(player, role).rating;
+export function computeSlotRating(
+  player: RatingInputs,
+  role: SlotRole,
+  teamMoraleValue?: number | null,
+  teamConfidenceValue?: number | null,
+): number {
+  return computeSlotRatingBreakdown(player, role, teamMoraleValue, teamConfidenceValue).rating;
 }
 
 // Коэффициенты калибровки сырого прогноза к реальной шкале звёзд Hattrick —
@@ -285,10 +356,17 @@ export function computePlayerPotential(
   player: RatingInputs,
   positionGroup: PositionGroup,
   calibrations: Partial<Record<SlotRole, RoleCalibration>> = {},
+  teamMoraleValue?: number | null,
+  teamConfidenceValue?: number | null,
 ): number {
   const roles = POSITION_GROUP_SLOT_ROLES[positionGroup];
   return Math.max(
-    ...roles.map((role) => applyCalibration(computeSlotRatingBreakdown(player, role).rating, calibrations[role] ?? null)),
+    ...roles.map((role) =>
+      applyCalibration(
+        computeSlotRatingBreakdown(player, role, teamMoraleValue, teamConfidenceValue).rating,
+        calibrations[role] ?? null,
+      ),
+    ),
   );
 }
 
@@ -347,6 +425,12 @@ export function formatSlotRatingTooltip(
     : "Преданность клубу: +0.00 (CHPP не вернул Loyalty для этого игрока)";
   const motherClubLine =
     breakdown.motherClubBonus > 0 ? `Родной клуб: +${breakdown.motherClubBonus.toFixed(2)} (воспитанник)` : "Родной клуб: +0.00";
+  const teamSpiritLine = breakdown.hasTeamMoraleData
+    ? `Командный дух: ×${breakdown.teamSpiritMultiplier.toFixed(2)}`
+    : "Командный дух: ×1.00 (нет данных training.xml на момент синхронизации)";
+  const teamConfidenceLine = breakdown.hasTeamConfidenceData
+    ? `Уверенность команды: ×${breakdown.teamConfidenceMultiplier.toFixed(2)}`
+    : "Уверенность команды: ×1.00 (нет данных training.xml на момент синхронизации)";
 
   return [
     headline,
@@ -360,6 +444,8 @@ export function formatSlotRatingTooltip(
     "Приближённо (эвристика, не официальная формула — будет уточняться по мере накопления статистики матчей):",
     `  Опыт: +${breakdown.experienceBonus.toFixed(2)}`,
     `  Форма: ×${breakdown.formMultiplier.toFixed(2)}`,
+    `  ${teamSpiritLine}`,
+    `  ${teamConfidenceLine}`,
   ].join("\n");
 }
 

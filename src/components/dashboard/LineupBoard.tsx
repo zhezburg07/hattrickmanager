@@ -92,6 +92,8 @@ export default function LineupBoard({
   trainerPlayerId,
   calibrations,
   trends,
+  teamMoraleValue = null,
+  teamConfidenceValue = null,
 }: {
   players: SquadPlayer[];
   prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
@@ -99,6 +101,8 @@ export default function LineupBoard({
   trainerPlayerId?: number;
   calibrations?: Partial<Record<SlotRole, RoleCalibration>>;
   trends?: Record<string, PlayerRoleTrend>;
+  teamMoraleValue?: number | null;
+  teamConfidenceValue?: number | null;
 }) {
   const roster = players;
   const playersById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
@@ -461,6 +465,8 @@ export default function LineupBoard({
           onRecommend={handleRecommend}
           calibrations={calibrations}
           trends={trends}
+          teamMoraleValue={teamMoraleValue}
+          teamConfidenceValue={teamConfidenceValue}
         />
 
         <LineupPlayerList
@@ -474,6 +480,8 @@ export default function LineupBoard({
           prevByPlayerId={resolvedPrevByPlayerId}
           trainerPlayerId={trainerPlayerId}
           calibrations={calibrations}
+          teamMoraleValue={teamMoraleValue}
+          teamConfidenceValue={teamConfidenceValue}
         />
       </div>
 

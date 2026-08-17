@@ -27,9 +27,9 @@ export default async function SquadPage() {
     return <SyncFailedScreen lastError={syncStatus.lastError} />;
   }
 
-  const { players, error, trainerPlayerId } = hattrickUserId
+  const { players, error, trainerPlayerId, teamMoraleValue, teamConfidenceValue } = hattrickUserId
     ? await getStoredSquadData(hattrickUserId)
-    : { players: null, error: null, trainerPlayerId: undefined };
+    : { players: null, error: null, trainerPlayerId: undefined, teamMoraleValue: null, teamConfidenceValue: null };
 
   // Стрелки роста/падения навыков — сравнение с предыдущей ТРЕНИРОВОЧНОЙ
   // неделей (см. src/lib/playerHistoryDb.ts). Запись текущего снимка теперь
@@ -63,6 +63,8 @@ export default async function SquadPage() {
               prevByPlayerId={prevByPlayerId}
               trainerPlayerId={trainerPlayerId}
               calibrations={calibrations}
+              teamMoraleValue={teamMoraleValue}
+              teamConfidenceValue={teamConfidenceValue}
             />
           )}
         </div>

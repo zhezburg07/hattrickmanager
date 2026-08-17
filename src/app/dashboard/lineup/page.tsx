@@ -27,7 +27,7 @@ export default async function LineupPage() {
     return <SyncFailedScreen lastError={syncStatus.lastError} />;
   }
 
-  const { players, error, opponentAnalysis, trainerPlayerId } = hattrickUserId
+  const { players, error, opponentAnalysis, trainerPlayerId, teamMoraleValue, teamConfidenceValue } = hattrickUserId
     ? await getStoredLineupData(hattrickUserId)
     : {
         players: null,
@@ -43,6 +43,8 @@ export default async function LineupPage() {
           error: null,
         },
         trainerPlayerId: undefined,
+        teamMoraleValue: null,
+        teamConfidenceValue: null,
       };
 
   const prevByPlayerId =
@@ -93,6 +95,8 @@ export default async function LineupPage() {
                 trainerPlayerId={trainerPlayerId}
                 calibrations={calibrations}
                 trends={trends}
+                teamMoraleValue={teamMoraleValue}
+                teamConfidenceValue={teamConfidenceValue}
               />
             </>
           )}
