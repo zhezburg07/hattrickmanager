@@ -7,12 +7,13 @@ import {
   formWord,
   staminaToLevel,
   playerBadgeCode,
-  estimatePotentialRating,
   type SquadPlayer,
   type PlayerStatus,
   type PlayerStatSnapshot,
 } from "@/data/squad";
 import { usePositionOverrides, type PositionOverrides } from "@/data/positionOverrides";
+import { computePlayerPotential, type RoleCalibration } from "./zoneRatings";
+import type { SlotRole } from "@/data/pitchBoard";
 import { parsePayload, serializePayload, type DragPayload } from "./dragPayload";
 import { diffDirection, diffTitle } from "./playerStatChanges";
 import FlagIcon from "./FlagIcon";
@@ -54,6 +55,14 @@ type SortKey =
   | "potential";
 type SortDir = "asc" | "desc";
 
+// Та же формула, что и число на занятом слоте поля (computeSlotRatingBreakdown/
+// applyCalibration, см. computePlayerPotential в zoneRatings.ts) — лучшая из
+// подходящих ролей позиционной группы игрока, с калибровкой по реальным
+// матчам там, где данных уже достаточно. Дублируется в SquadTable.tsx — тот
+// же текст, тот же принцип "один-в-один", что и у baseColumns ниже.
+const POTENTIAL_HINT =
+  "Лучший расчётный рейтинг среди подходящих позиций слота — та же формула, что и на поле (навыки + преданность + родной клуб + опыт + форма, с калибровкой по реальным матчам, где данных достаточно).";
+
 // Тот же порядок и подписи столбцов, что и в "Составе" (SquadTable.tsx) —
 // этот список нарочно держим один-в-один, без возможности менять амплуа
 // (см. PositionBadgeReadOnly ниже) и без клика по строке, открывающего
@@ -71,7 +80,7 @@ const baseColumns: { key: SortKey; label: string; title?: string }[] = [
   ...skillKeys.map((k) => ({ key: k as SortKey, label: skillShortLabel[k], title: skillLabel[k] })),
   { key: "loyalty", label: "Предан.", title: "Преданность клубу" },
   { key: "rating", label: "Рейтинг", title: "Рейтинг за последний сыгранный матч" },
-  { key: "potential", label: "Потен.", title: "Потенциальный рейтинг при текущих навыках и форме" },
+  { key: "potential", label: "Потен.", title: POTENTIAL_HINT },
 ];
 
 const textColumns = new Set<SortKey>(["flag", "name", "positionGroup", "status"]);
@@ -83,6 +92,7 @@ function getValue(
   key: SortKey,
   overrides: PositionOverrides,
   trainerPlayerId: number | undefined,
+  calibrations: Partial<Record<SlotRole, RoleCalibration>>,
 ): string | number {
   switch (key) {
     case "flag":
@@ -108,7 +118,7 @@ function getValue(
     case "rating":
       return player.lastMatchRating ?? -1;
     case "potential":
-      return estimatePotentialRating(player);
+      return computePlayerPotential(player, player.positionGroup, calibrations);
     default:
       return player.skills[key as SkillKey];
   }
@@ -124,6 +134,7 @@ export default function LineupPlayerList({
   payloadForPlayer,
   prevByPlayerId,
   trainerPlayerId,
+  calibrations = {},
 }: {
   players: SquadPlayer[];
   onDropToBench: (payload: DragPayload) => void;
@@ -134,6 +145,7 @@ export default function LineupPlayerList({
   payloadForPlayer: (playerId: number) => DragPayload;
   prevByPlayerId?: Record<number, PlayerStatSnapshot | undefined>;
   trainerPlayerId?: number;
+  calibrations?: Partial<Record<SlotRole, RoleCalibration>>;
 }) {
   const [isOver, setIsOver] = useState(false);
   // По умолчанию — Вратарь → Защитник → Полузащитник → Вингер → Нападающий,
@@ -195,8 +207,8 @@ export default function LineupPlayerList({
   const sorted = useMemo(() => {
     const list = [...players];
     list.sort((a, b) => {
-      const va = getValue(a, sortKey, overrides, trainerPlayerId);
-      const vb = getValue(b, sortKey, overrides, trainerPlayerId);
+      const va = getValue(a, sortKey, overrides, trainerPlayerId, calibrations);
+      const vb = getValue(b, sortKey, overrides, trainerPlayerId, calibrations);
       let cmp =
         typeof va === "string" && typeof vb === "string" ? va.localeCompare(vb, "ru") : (va as number) - (vb as number);
       // Внутри одной позиции — по TSI по убыванию (см. тот же тай-брейк в
@@ -205,7 +217,7 @@ export default function LineupPlayerList({
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
-  }, [players, sortKey, sortDir, overrides, trainerPlayerId]);
+  }, [players, sortKey, sortDir, overrides, trainerPlayerId, calibrations]);
 
   function handleSort(key: SortKey) {
     if (key === sortKey) {
@@ -342,7 +354,7 @@ export default function LineupPlayerList({
                   ))}
                   {hasLoyalty && <LoyaltyCell player={p} />}
                   {hasRating && <RatingCell rating={p.lastMatchRating} />}
-                  <RatingCell rating={estimatePotentialRating(p)} />
+                  <RatingCell rating={computePlayerPotential(p, p.positionGroup, calibrations)} />
                 </tr>
                 {expandedPlayerId === p.id && (
                   <tr>
@@ -362,6 +374,7 @@ export default function LineupPlayerList({
               hasLoyalty={hasLoyalty}
               hasRating={hasRating}
               trainerPlayerId={trainerPlayerId}
+              calibrations={calibrations}
             />
           </tfoot>
         </table>

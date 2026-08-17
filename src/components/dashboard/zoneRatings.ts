@@ -257,6 +257,41 @@ export function applyCalibration(rawRating: number, calibration: RoleCalibration
   return Math.max(STAR_SCALE_FLOOR, calibration.slope * rawRating + calibration.intercept);
 }
 
+// Роли слота (SlotRole), которые в принципе относятся к общей позиционной
+// группе игрока (PositionGroup) — сама группа не различает фланг/центр,
+// поэтому берём ОБЕ подходящие роли и в computePlayerPotential ниже выбираем
+// лучшую (см. чат "Унифицировать Потенциал с расчётом на слотах поля").
+const POSITION_GROUP_SLOT_ROLES: Record<PositionGroup, SlotRole[]> = {
+  GK: ["GK"],
+  DEF: ["DEF_WIDE", "DEF_CENTRAL"],
+  MID: ["MID_WIDE", "MID_CENTRAL"],
+  FWD: ["FWD_WIDE", "FWD_CENTRAL"],
+};
+
+// "Потенциал" в таблицах "Состав"/"Расстановка" — та же формула и та же
+// калибровка, что и число на занятом слоте поля (computeSlotRatingBreakdown/
+// applyCalibration), а не отдельная упрощённая оценка. Игрок вне поля не
+// привязан к конкретному слоту (фланг/центр), поэтому берём МАКСИМУМ среди
+// всех ролей слота его позиционной группы — "какой лучший рейтинг он в
+// принципе способен дать где-то в этой линии прямо сейчас". Калибровка
+// применяется ОТДЕЛЬНО к каждой роли (у фланга и центра разные
+// коэффициенты), а максимум берётся уже среди откалиброванных чисел — не
+// наоборот, иначе максимум сырых рейтингов мог бы выбрать роль, которая на
+// самом деле после калибровки даёт результат похуже. Раньше здесь была
+// отдельная, куда более грубая оценка (estimatePotentialRating в squad.ts,
+// один навык + бонус формы, искусственно зажатая в [0, 10]) — диапазон
+// теперь НЕ ограничен сверху, как и у самой шкалы звёзд Hattrick.
+export function computePlayerPotential(
+  player: RatingInputs,
+  positionGroup: PositionGroup,
+  calibrations: Partial<Record<SlotRole, RoleCalibration>> = {},
+): number {
+  const roles = POSITION_GROUP_SLOT_ROLES[positionGroup];
+  return Math.max(
+    ...roles.map((role) => applyCalibration(computeSlotRatingBreakdown(player, role).rating, calibrations[role] ?? null)),
+  );
+}
+
 // Тренд КОНКРЕТНОГО игрока на конкретной роли — среднее РЕАЛЬНОЕ
 // (actual_rating_stars) за последние несколько матчей (см. getPlayerRoleTrends
 // в matchRolePredictionsDb.ts, план в .claude/plans, шаг 5). Тип объявлен

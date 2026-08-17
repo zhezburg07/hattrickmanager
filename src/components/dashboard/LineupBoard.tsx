@@ -473,6 +473,7 @@ export default function LineupBoard({
           payloadForPlayer={payloadForPlayer}
           prevByPlayerId={resolvedPrevByPlayerId}
           trainerPlayerId={trainerPlayerId}
+          calibrations={calibrations}
         />
       </div>
 

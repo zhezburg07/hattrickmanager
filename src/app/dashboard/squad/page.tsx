@@ -7,6 +7,8 @@ import styles from "@/components/dashboard/Dashboard.module.css";
 import { getRequiredHattrickTokens, getStoredHattrickUserId } from "@/lib/hattrickApi";
 import { ensureSynced, getStoredSquadData } from "@/lib/chppSync";
 import { getPreviousWeekSnapshots, trainingWeekKey } from "@/lib/playerHistoryDb";
+import { getAllRoleCalibrations } from "@/lib/matchRolePredictionsDb";
+import { RATING_FORMULA_VERSION } from "@/components/dashboard/zoneRatings";
 
 // Раньше эта страница сама делала живые запросы к CHPP (players.xml,
 // teamdetails.xml, matchlineup.xml для рейтингов последних матчей,
@@ -36,6 +38,19 @@ export default async function SquadPage() {
   const prevByPlayerId =
     players && hattrickUserId ? await getPreviousWeekSnapshots(hattrickUserId, trainingWeekKey(new Date())) : {};
 
+  // "Потенциал" здесь теперь считается той же формулой, что и число на
+  // слоте поля (computePlayerPotential в zoneRatings.ts), включая
+  // калибровку по реальным звёздам — коэффициенты общие на все аккаунты
+  // (см. тот же приём в dashboard/lineup/page.tsx). Пустой объект (а не
+  // ошибка), если БД недоступна или данных ещё мало.
+  let calibrations: Awaited<ReturnType<typeof getAllRoleCalibrations>> = {};
+  try {
+    calibrations = await getAllRoleCalibrations(RATING_FORMULA_VERSION);
+  } catch {
+    // Калибровка — необязательное дополнение поверх сырого рейтинга, не
+    // должна ронять саму страницу "Состав".
+  }
+
   return (
     <>
       <Header />
@@ -43,7 +58,12 @@ export default async function SquadPage() {
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
           {error && <DemoModeBanner title="Не удалось загрузить реальный состав" reasons={[error]} />}
           {players && (
-            <SquadTable players={players} prevByPlayerId={prevByPlayerId} trainerPlayerId={trainerPlayerId} />
+            <SquadTable
+              players={players}
+              prevByPlayerId={prevByPlayerId}
+              trainerPlayerId={trainerPlayerId}
+              calibrations={calibrations}
+            />
           )}
         </div>
       </main>

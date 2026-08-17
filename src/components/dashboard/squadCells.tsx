@@ -14,7 +14,6 @@ import {
   skillLabel,
   skillWord,
   staminaToLevel,
-  estimatePotentialRating,
   type SquadPlayer,
   type PlayerStatus,
   type PlayerStatSnapshot,
@@ -26,6 +25,8 @@ import {
   type PositionOverrides,
   type PositionOverrideValue,
 } from "@/data/positionOverrides";
+import { computePlayerPotential, type RoleCalibration } from "./zoneRatings";
+import type { SlotRole } from "@/data/pitchBoard";
 import HeartIcon from "./HeartIcon";
 import { SpecialtyIcon, InjuryIcon, CardIcon } from "./StatusIcons";
 import { GoalBallIcon } from "./TimelineIcons";
@@ -394,14 +395,18 @@ export function LoyaltyCell({ player }: { player: SquadPlayer }) {
   return <SkillNumberCell value={player.loyalty} hoverWord={skillWord(player.loyalty)} />;
 }
 
-// Универсальная звёздная ячейка (0-10, с десятыми) — переиспользуется для
-// Рейтинга последнего матча и Потенциала. "—", если значения нет.
+// Универсальная звёздная ячейка — переиспользуется для Рейтинга последнего
+// матча и Потенциала, оба на реальной шкале звёзд Hattrick (открытой сверху,
+// см. STAR_SCALE_FLOOR в zoneRatings.ts — оценки 13+ бывают на практике, "из
+// 10" было бы неверно). Раскраска по "тиру" (tierFromRatio) остаётся условным
+// делением на 10 просто как якорь шкалы — не жёсткий потолок отображения.
+// "—", если значения нет.
 export function RatingCell({ rating }: { rating?: number }) {
   if (rating === undefined) {
     return <td className={styles.skillCell}>—</td>;
   }
   return (
-    <td className={styles.skillCell} title={`${rating.toFixed(1)} из 10`}>
+    <td className={styles.skillCell} title={`${rating.toFixed(1)}★`}>
       <span className={`${styles.skillWord} ${tierFromRatio(rating / 10)}`}>★ {rating.toFixed(1)}</span>
     </td>
   );
@@ -471,7 +476,7 @@ function AverageDecimalCell({
 function AverageRatingCell({ value }: { value: number | undefined }) {
   if (value === undefined) return <td className={styles.skillCell}>—</td>;
   return (
-    <td className={styles.skillCell} title={`${value.toFixed(1)} из 10`}>
+    <td className={styles.skillCell} title={`${value.toFixed(1)}★`}>
       <span className={`${styles.skillWord} ${tierFromRatio(value / 10)}`}>★ {value.toFixed(1)}</span>
     </td>
   );
@@ -496,12 +501,14 @@ export function AverageRow({
   hasLoyalty,
   hasRating,
   trainerPlayerId,
+  calibrations = {},
 }: {
   players: SquadPlayer[];
   prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
   hasLoyalty: boolean;
   hasRating: boolean;
   trainerPlayerId?: number;
+  calibrations?: Partial<Record<SlotRole, RoleCalibration>>;
 }) {
   const squad = trainerPlayerId !== undefined ? players.filter((p) => p.id !== trainerPlayerId) : players;
   if (squad.length === 0) return null;
@@ -532,7 +539,7 @@ export function AverageRow({
   const avgRating = average(
     squad.filter((p) => p.lastMatchRating !== undefined).map((p) => p.lastMatchRating as number),
   );
-  const avgPotential = average(squad.map((p) => estimatePotentialRating(p)));
+  const avgPotential = average(squad.map((p) => computePlayerPotential(p, p.positionGroup, calibrations)));
 
   return (
     <tr className={styles.avgRow}>

@@ -7,11 +7,12 @@ import {
   skillWord,
   formWord,
   staminaToLevel,
-  estimatePotentialRating,
   type SquadPlayer,
   type PlayerStatus,
   type PlayerStatSnapshot,
 } from "@/data/squad";
+import { computePlayerPotential, type RoleCalibration } from "./zoneRatings";
+import type { SlotRole } from "@/data/pitchBoard";
 import {
   usePositionOverrides,
   type PositionOverrides,
@@ -60,6 +61,13 @@ type SortKey =
 
 type SortDir = "asc" | "desc";
 
+// Та же формула, что и число на занятом слоте поля (computeSlotRatingBreakdown/
+// applyCalibration, см. computePlayerPotential в zoneRatings.ts) — лучшая из
+// подходящих ролей позиционной группы игрока, с калибровкой по реальным
+// матчам там, где данных уже достаточно.
+const POTENTIAL_HINT =
+  "Лучший расчётный рейтинг среди подходящих позиций слота — та же формула, что и на поле (навыки + преданность + родной клуб + опыт + форма, с калибровкой по реальным матчам, где данных достаточно).";
+
 // Подписи столбцов укорочены по сравнению с "Расстановкой" (там ширины не
 // поджаты так туго) — иначе сама надпись заголовка (не содержимое ячеек)
 // оказывается самой широкой частью узких столбцов и не даёт таблице
@@ -77,7 +85,7 @@ const baseColumns: { key: SortKey; label: string; title?: string }[] = [
   ...skillKeys.map((k) => ({ key: k as SortKey, label: skillShortLabel[k], title: skillLabel[k] })),
   { key: "loyalty", label: "Предан.", title: "Преданность клубу" },
   { key: "rating", label: "Рейтинг", title: "Рейтинг за последний сыгранный матч" },
-  { key: "potential", label: "Потен.", title: "Потенциальный рейтинг при текущих навыках и форме" },
+  { key: "potential", label: "Потен.", title: POTENTIAL_HINT },
 ];
 
 // текстовые колонки по умолчанию сортируются от А до Я,
@@ -91,6 +99,7 @@ function getValue(
   key: SortKey,
   overrides: PositionOverrides,
   trainerPlayerId: number | undefined,
+  calibrations: Partial<Record<SlotRole, RoleCalibration>>,
 ): string | number {
   switch (key) {
     case "flag":
@@ -112,7 +121,7 @@ function getValue(
     case "rating":
       return player.lastMatchRating ?? -1;
     case "potential":
-      return estimatePotentialRating(player);
+      return computePlayerPotential(player, player.positionGroup, calibrations);
     case "tsi":
       return player.tsi;
     case "status":
@@ -149,10 +158,12 @@ export default function SquadTable({
   players,
   prevByPlayerId,
   trainerPlayerId,
+  calibrations = {},
 }: {
   players: SquadPlayer[];
   prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
   trainerPlayerId?: number;
+  calibrations?: Partial<Record<SlotRole, RoleCalibration>>;
 }) {
   const roster = players;
   const effectiveTrainerPlayerId = trainerPlayerId;
@@ -177,8 +188,8 @@ export default function SquadTable({
   const sorted = useMemo(() => {
     const list = [...roster];
     list.sort((a, b) => {
-      const va = getValue(a, sortKey, overrides, effectiveTrainerPlayerId);
-      const vb = getValue(b, sortKey, overrides, effectiveTrainerPlayerId);
+      const va = getValue(a, sortKey, overrides, effectiveTrainerPlayerId, calibrations);
+      const vb = getValue(b, sortKey, overrides, effectiveTrainerPlayerId, calibrations);
       let cmp =
         typeof va === "string" && typeof vb === "string"
           ? va.localeCompare(vb, "ru")
@@ -192,7 +203,7 @@ export default function SquadTable({
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
-  }, [roster, sortKey, sortDir, overrides, effectiveTrainerPlayerId]);
+  }, [roster, sortKey, sortDir, overrides, effectiveTrainerPlayerId, calibrations]);
 
   function handleSort(key: SortKey) {
     if (key === sortKey) {
@@ -288,7 +299,7 @@ export default function SquadTable({
                 ))}
                 {hasLoyalty && <LoyaltyCell player={p} />}
                 {hasRating && <RatingCell rating={p.lastMatchRating} />}
-                <RatingCell rating={estimatePotentialRating(p)} />
+                <RatingCell rating={computePlayerPotential(p, p.positionGroup, calibrations)} />
               </tr>
               );
             })}
@@ -300,6 +311,7 @@ export default function SquadTable({
               hasLoyalty={hasLoyalty}
               hasRating={hasRating}
               trainerPlayerId={effectiveTrainerPlayerId}
+              calibrations={calibrations}
             />
           </tfoot>
         </table>
@@ -347,8 +359,8 @@ export default function SquadTable({
                   Рейтинг матча <b>★ {p.lastMatchRating.toFixed(1)}</b>
                 </span>
               )}
-              <span title="Потенциальный рейтинг при текущих навыках и форме">
-                Потенциал <b>★ {estimatePotentialRating(p).toFixed(1)}</b>
+              <span title={POTENTIAL_HINT}>
+                Потенциал <b>★ {computePlayerPotential(p, p.positionGroup, calibrations).toFixed(1)}</b>
               </span>
               <span
                 className={diffClass(tsiDiff)}
