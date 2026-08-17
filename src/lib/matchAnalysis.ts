@@ -758,12 +758,37 @@ function debugEventTypeBreakdown(
     return checks.filter(([, real]) => real !== null && real === count).map(([label]) => `${side}=${label}`);
   };
 
+  // ИСПРАВЛЕНО (см. чат "П: официально 1, по EventList 0 — код 142 не то,
+  // чем казался") — ⚡совпадение выше проверяет только числовое совпадение
+  // счётчика с официальным итогом (могло совпасть случайно, особенно при
+  // маленьких числах вроде 1 — именно так код 142, реально классифицированный
+  // как "Голы→Л", "совпал" по счётчику с "Нереализовано"/"П (право)" для
+  // другого матча, введя в заблуждение). Чтобы не путать эту эвристику с
+  // РЕАЛЬНОЙ классификацией, каждая строка теперь показывает ещё и то, куда
+  // код фактически отнесён в самих таблицах GOAL_ZONE_*/MISSED_ZONE_* (тех
+  // же, что использует computeAttackZoneBreakdown) — если это расходится с
+  // ⚡совпадением, доверять нужно ТОЛЬКО этой колонке, а не совпадению.
+  const currentClassificationLabel = (typeId: number): string => {
+    if (GOAL_ZONE_LEFT.has(typeId)) return "Голы→Л";
+    if (GOAL_ZONE_CENTER.has(typeId)) return "Голы→Ц";
+    if (GOAL_ZONE_RIGHT.has(typeId)) return "Голы→П";
+    if (GOAL_SPECIAL_EVENT.has(typeId)) return "Голы→Спец";
+    if (GOAL_OTHER.has(typeId)) return "Голы→Другое";
+    if (MISSED_ZONE_LEFT.has(typeId)) return "Непопадания→Л";
+    if (MISSED_ZONE_CENTER.has(typeId)) return "Непопадания→Ц";
+    if (MISSED_ZONE_RIGHT.has(typeId)) return "Непопадания→П";
+    if (MISSED_SPECIAL_EVENT.has(typeId)) return "Непопадания→Спец";
+    if (MISSED_OTHER.has(typeId)) return "Непопадания→Другое";
+    return "НЕ классифицирован (вне GOAL_*/MISSED_* таблиц)";
+  };
+
   return [...byType.entries()]
     .sort((a, b) => b[1].count - a[1].count)
     .map(([id, { count, home, away, samples }]) => {
       const hints = [...matchHints("хозяева", home, homeStats), ...matchHints("гости", away, awayStats)];
-      const hintStr = hints.length > 0 ? ` ⚡совпадение с: ${hints.join(", ")}` : "";
-      return `#${id}×${count} (дома:${home}/гости:${away})${hintStr} [${samples.map((s) => `"${s}"`).join(", ")}]`;
+      const hintStr = hints.length > 0 ? ` ⚡числовое совпадение (может быть случайным!): ${hints.join(", ")}` : "";
+      const classification = currentClassificationLabel(Number(id));
+      return `#${id}×${count} (дома:${home}/гости:${away}) [реальная классификация: ${classification}]${hintStr} [${samples.map((s) => `"${s}"`).join(", ")}]`;
     })
     .join(" | ");
 }
