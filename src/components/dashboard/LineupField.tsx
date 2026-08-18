@@ -8,6 +8,7 @@ import {
   positionAccentColor,
   positionGroupLabel,
   skillWordWithLevel,
+  staminaToLevel,
   type PositionGroup,
   type SquadPlayer,
 } from "@/data/squad";
@@ -172,7 +173,7 @@ export default function LineupField({
               Форма <b>{average(players.map((p) => p.form))}</b>
             </span>
             <span>
-              Вын-ть <b>{average(players.map((p) => p.stamina))}</b>
+              Вын-ть <b>{average(players.map((p) => staminaToLevel(p.stamina)))}</b>
             </span>
           </div>
 
