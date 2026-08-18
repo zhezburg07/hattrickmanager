@@ -17,7 +17,7 @@ function formatDate(value: string): string {
   });
 }
 
-function LoginForm({ wrongPassword }: { wrongPassword: boolean }) {
+function LoginForm({ wrongPassword, rateLimited }: { wrongPassword: boolean; rateLimited: boolean }) {
   const configured = isAdminPasswordConfigured();
 
   return (
@@ -31,7 +31,8 @@ function LoginForm({ wrongPassword }: { wrongPassword: boolean }) {
         ) : (
           <>
             <p className={styles.subtitle}>Эта страница видна только владельцу сайта. Введите пароль.</p>
-            {wrongPassword && <p className={styles.error}>Неверный пароль.</p>}
+            {rateLimited && <p className={styles.error}>Слишком много попыток входа. Подождите немного и попробуйте снова.</p>}
+            {wrongPassword && !rateLimited && <p className={styles.error}>Неверный пароль.</p>}
             <input className={styles.input} type="password" name="password" placeholder="Пароль" autoFocus required />
             <button className={styles.button} type="submit">
               Войти
@@ -49,7 +50,7 @@ export default async function AdminPage({
   searchParams: { error?: string };
 }) {
   if (!isAdminAuthenticated()) {
-    return <LoginForm wrongPassword={searchParams?.error === "1"} />;
+    return <LoginForm wrongPassword={searchParams?.error === "1"} rateLimited={searchParams?.error === "ratelimit"} />;
   }
 
   let users: ConnectedUser[] = [];

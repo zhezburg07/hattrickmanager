@@ -8,6 +8,13 @@ import {
   MIN_PASSWORD_LENGTH,
 } from "@/lib/passwordAuth";
 import { SESSION_COOKIE, buildSessionCookieValue } from "@/lib/siteSession";
+import { checkRateLimit, clientIp } from "@/lib/rateLimit";
+
+// 5 регистраций в час на IP — щедрее, чем у входа, не нужно (реальному
+// человеку незачем регистрироваться чаще), но достаточно, чтобы не мешать
+// нескольким людям за одним NAT/офисным IP (см. чат "Аудит проекта").
+const REGISTER_RATE_LIMIT_MAX = 5;
+const REGISTER_RATE_LIMIT_WINDOW_SECONDS = 60 * 60;
 
 // Без maxAge — сессионная cookie, как и в /api/auth/login: сессия,
 // установленная паролем (в том числе сразу после регистрации), должна
@@ -29,6 +36,22 @@ function cookieOptions() {
 // кабинете, см. ReducedDashboard.tsx), через обычный OAuth. Здесь создаётся
 // только запись в accounts: логин, email, хеш пароля.
 export async function POST(request: NextRequest) {
+  try {
+    const rateLimit = await checkRateLimit(
+      `register:${clientIp(request)}`,
+      REGISTER_RATE_LIMIT_MAX,
+      REGISTER_RATE_LIMIT_WINDOW_SECONDS,
+    );
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Слишком много попыток регистрации. Попробуйте позже." },
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } },
+      );
+    }
+  } catch (err) {
+    console.error("Rate limit (регистрация): не удалось проверить —", err instanceof Error ? err.message : err);
+  }
+
   let body: { username?: string; email?: string; confirmEmail?: string; password?: string };
   try {
     body = await request.json();

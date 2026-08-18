@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { findByIdentifier } from "@/lib/accountsDb";
 import { verifyPassword } from "@/lib/passwordAuth";
 import { SESSION_COOKIE, buildSessionCookieValue } from "@/lib/siteSession";
+import { checkRateLimit, clientIp } from "@/lib/rateLimit";
+
+// 10 попыток за 15 минут на IP — типичный порог защиты от перебора пароля,
+// достаточно щедрый, чтобы не мешать реальному пользователю, опечатавшемуся
+// пару раз (см. чат "Аудит проекта").
+const LOGIN_RATE_LIMIT_MAX = 10;
+const LOGIN_RATE_LIMIT_WINDOW_SECONDS = 15 * 60;
 
 // Без maxAge — это намеренно обычная сессионная cookie: вход по паролю
 // должен требовать повторного ввода логина/пароля при каждом новом визите
@@ -25,6 +32,26 @@ function cookieOptions() {
 // подписанный ID аккаунта (см. src/lib/accountsDb.ts), не сам Hattrick-
 // токен — тот (если команда подключена) уже лежит в базе отдельно.
 export async function POST(request: NextRequest) {
+  try {
+    const rateLimit = await checkRateLimit(
+      `login:${clientIp(request)}`,
+      LOGIN_RATE_LIMIT_MAX,
+      LOGIN_RATE_LIMIT_WINDOW_SECONDS,
+    );
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Слишком много попыток входа. Попробуйте позже." },
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } },
+      );
+    }
+  } catch (err) {
+    // Rate limit не должен блокировать вход, если сама проверка не удалась
+    // (например, БД временно недоступна) — честно логируем и пускаем
+    // дальше, а не превращаем сбой инфраструктуры защиты в отказ в доступе
+    // для всех.
+    console.error("Rate limit (вход): не удалось проверить —", err instanceof Error ? err.message : err);
+  }
+
   let body: { identifier?: string; password?: string };
   try {
     body = await request.json();

@@ -1,8 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { applyPasswordReset, findByResetToken } from "@/lib/accountsDb";
 import { hashPassword, isValidPassword, MIN_PASSWORD_LENGTH } from "@/lib/passwordAuth";
+import { checkRateLimit, clientIp } from "@/lib/rateLimit";
+
+// 10 попыток за 15 минут на IP — защита от перебора самого токена сброса
+// (см. чат "Аудит проекта"), тот же порядок, что и у входа по паролю.
+const RESET_PASSWORD_RATE_LIMIT_MAX = 10;
+const RESET_PASSWORD_RATE_LIMIT_WINDOW_SECONDS = 15 * 60;
 
 export async function POST(request: NextRequest) {
+  try {
+    const rateLimit = await checkRateLimit(
+      `reset-password:${clientIp(request)}`,
+      RESET_PASSWORD_RATE_LIMIT_MAX,
+      RESET_PASSWORD_RATE_LIMIT_WINDOW_SECONDS,
+    );
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Слишком много попыток. Попробуйте позже." },
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } },
+      );
+    }
+  } catch (err) {
+    console.error("Rate limit (новый пароль): не удалось проверить —", err instanceof Error ? err.message : err);
+  }
+
   let body: { token?: string; password?: string };
   try {
     body = await request.json();
