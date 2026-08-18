@@ -41,8 +41,11 @@ export default async function SquadPage() {
   // "Потенциал" здесь теперь считается той же формулой, что и число на
   // слоте поля (computePlayerPotential в zoneRatings.ts), включая
   // калибровку по реальным звёздам — коэффициенты общие на все аккаунты
-  // (см. тот же приём в dashboard/lineup/page.tsx). Пустой объект (а не
-  // ошибка), если БД недоступна или данных ещё мало.
+  // (см. тот же приём в dashboard/lineup/page.tsx). Пустой объект остаётся
+  // только если сам запрос к БД упал — getAllRoleCalibrations теперь всегда
+  // возвращает коэффициенты для каждой роли (настоящую регрессию или
+  // временную предварительную заглушку, см. isPreliminary в
+  // matchRolePredictionsDb.ts).
   let calibrations: Awaited<ReturnType<typeof getAllRoleCalibrations>> = {};
   try {
     calibrations = await getAllRoleCalibrations(RATING_FORMULA_VERSION);

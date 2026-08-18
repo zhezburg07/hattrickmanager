@@ -55,8 +55,12 @@ export default async function LineupPage() {
   // .claude/plans, шаг 4) — коэффициенты общие на все аккаунты (обезличенная
   // таблица, см. matchRolePredictionsDb.ts), поэтому читаются здесь
   // независимо от того, есть ли у ЭТОГО аккаунта свои сыгранные матчи.
-  // Пустой объект (а не ошибка), если БД недоступна или данных ещё мало —
-  // applyCalibration в zoneRatings.ts честно оставляет сырой прогноз.
+  // getAllRoleCalibrations теперь всегда возвращает коэффициенты для каждой
+  // роли (настоящую регрессию или временную предварительную заглушку, см.
+  // isPreliminary/PRELIMINARY_CALIBRATION в matchRolePredictionsDb.ts) —
+  // пустой объект остаётся только если сам запрос к БД упал (см. catch
+  // ниже), тогда applyCalibration в zoneRatings.ts честно оставляет сырой
+  // прогноз.
   let calibrations: Awaited<ReturnType<typeof getAllRoleCalibrations>> = {};
   try {
     calibrations = await getAllRoleCalibrations(RATING_FORMULA_VERSION);

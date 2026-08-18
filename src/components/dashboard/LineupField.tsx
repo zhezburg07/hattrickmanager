@@ -16,10 +16,12 @@ import { usePositionOverrides, effectivePositionGroup } from "@/data/positionOve
 import { parsePayload, serializePayload, type DragPayload } from "./dragPayload";
 import {
   computeZoneRatings,
-  estimateSimpleSlotPotential,
-  formatSimpleSlotPotentialTooltip,
+  computeSlotRatingBreakdown,
+  formatSlotRatingTooltip,
+  applyCalibration,
   isCaptainWorthy,
   zoneLabel,
+  playerRoleTrendKey,
   type ZoneKey,
   type RoleCalibration,
   type PlayerRoleTrend,
@@ -240,15 +242,25 @@ export default function LineupField({
               const isSelected = player !== null && player.id === selectedPlayerId;
               const effectiveGroup = player ? effectivePositionGroup(player, overrides) : null;
               const isPositionOverridden = player !== null && effectiveGroup !== player.positionGroup;
-              // ВРЕМЕННО (см. чат "Временно упростить отображение
-              // позиционного рейтинга") — упрощённая оценка вместо
-              // computeSlotRatingBreakdown/applyCalibration, та же логика,
-              // что и у "Потен." в Составе/Расстановке (см.
-              // estimateSimpleSlotPotential/computePlayerPotential в
-              // zoneRatings.ts). calibrations/trends по-прежнему приходят
-              // пропами (нужны будут при откате упрощения), но пока не
-              // используются для отображаемого числа.
-              const displayRating = player ? estimateSimpleSlotPotential(player, slot.role) : null;
+              // Считаем один раз на слот — используется и для числа на карточке,
+              // и для подсказки при наведении на него (см. formatSlotRatingTooltip).
+              const ratingBreakdown = player
+                ? computeSlotRatingBreakdown(player, slot.role, teamMoraleValue, teamConfidenceValue)
+                : null;
+              // Калибровка к реальной шкале звёзд Hattrick (см. чат
+              // "Калибровка позиционного рейтинга по реальным звёздам
+              // Hattrick", план в .claude/plans, шаг 4) — либо настоящая
+              // регрессия по роли, либо временная предварительная заглушка
+              // (см. isPreliminary/PRELIMINARY_CALIBRATION в
+              // matchRolePredictionsDb.ts) — getAllRoleCalibrations теперь
+              // всегда возвращает что-то осмысленное для каждой роли.
+              const roleCalibration = calibrations?.[slot.role] ?? null;
+              const displayRating = ratingBreakdown ? applyCalibration(ratingBreakdown.rating, roleCalibration) : null;
+              // Тренд ЭТОГО игрока на ЭТОЙ роли (шаг 5, см. комментарий у
+              // trends в пропах выше) — null, если истории по этой паре
+              // игрок+роль ещё нет, тогда formatSlotRatingTooltip просто не
+              // добавляет строку с трендом.
+              const playerTrend = player ? (trends?.[playerRoleTrendKey(player.id, slot.role)] ?? null) : null;
               // Цвет карточки берётся из амплуа самого игрока (то же значение,
               // что красит его в "Составе" и в общем списке), а не из типа
               // слота — слот раскрашен по роли (accentClassByKey) только пока
@@ -300,7 +312,7 @@ export default function LineupField({
                           <span className={styles.slotCardName}>{player.name.split(" ")[1] ?? player.name}</span>
                           <span
                             className={styles.slotCardRole}
-                            title={formatSimpleSlotPotentialTooltip(displayRating!, roleFullLabel[slot.role])}
+                            title={formatSlotRatingTooltip(ratingBreakdown!, roleFullLabel[slot.role], roleCalibration, playerTrend)}
                           >
                             {displayRating!.toFixed(1)}
                           </span>
