@@ -311,6 +311,14 @@ export interface RoleCalibration {
   slope: number;
   intercept: number;
   sampleCount: number;
+  // true — коэффициенты НЕ из настоящей регрессии по накопленным реальным
+  // матчам этой роли (см. MIN_CALIBRATION_SAMPLES в matchRolePredictionsDb.ts),
+  // а из временного ручного приближения (см. PRELIMINARY_CALIBRATION там же)
+  // — пока по роли не накопится достаточно данных. sampleCount в этом
+  // случае не означает "число реальных матчей ЭТОЙ роли", подсказка
+  // (formatSlotRatingTooltip) обязана честно отличать этот случай от
+  // настоящей калибровки.
+  isPreliminary: boolean;
 }
 
 // Реальный минимум шкалы Hattrick — звёзды начинаются с 0.5. Потолка НЕТ —
@@ -482,11 +490,15 @@ export function formatSlotRatingTooltip(
   trend: PlayerRoleTrend | null = null,
 ): string {
   const displayRating = applyCalibration(breakdown.rating, calibration);
-  const headline = calibration
-    ? `Расчётный рейтинг на позиции ${roleLabel}: ${displayRating.toFixed(1)}★ ` +
-      `(откалибровано по ${calibration.sampleCount} реальным матчам игроков этой роли; до калибровки: ${breakdown.rating.toFixed(2)})`
-    : `Расчётный рейтинг на позиции ${roleLabel}: ${breakdown.rating.toFixed(1)} ` +
-      `(калибровки по реальным звёздам пока нет — мало накопленных матчей)`;
+  const headline =
+    calibration && calibration.isPreliminary
+      ? `Расчётный рейтинг на позиции ${roleLabel}: ${displayRating.toFixed(1)}★ ` +
+        `(ВРЕМЕННАЯ предварительная калибровка — грубое ручное приближение по 11 точкам одного матча, не полноценная регрессия по этой роли; до калибровки: ${breakdown.rating.toFixed(2)})`
+      : calibration
+        ? `Расчётный рейтинг на позиции ${roleLabel}: ${displayRating.toFixed(1)}★ ` +
+          `(откалибровано по ${calibration.sampleCount} реальным матчам игроков этой роли; до калибровки: ${breakdown.rating.toFixed(2)})`
+        : `Расчётный рейтинг на позиции ${roleLabel}: ${breakdown.rating.toFixed(1)} ` +
+          `(калибровки по реальным звёздам пока нет — мало накопленных матчей)`;
   const trendLine = trend
     ? `Этот игрок на этой позиции в среднем реально получал ${trend.avgActualStars.toFixed(1)}★ ` +
       `за последние ${trend.sampleCount} матч(ей) — против прогноза ${displayRating.toFixed(1)}★ сейчас.`

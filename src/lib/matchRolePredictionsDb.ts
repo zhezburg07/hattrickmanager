@@ -128,10 +128,32 @@ export async function saveMatchRolePrediction(record: MatchRolePredictionRecord)
 // линейная регрессия математически определена уже при 2 точках, но 2-3
 // матча — не статистика, а совпадение. Порог намеренно консервативный (см.
 // чат "Калибровка позиционного рейтинга по реальным звёздам Hattrick", план
-// в .claude/plans, шаг 4) — ниже него getAllRoleCalibrations честно не
-// возвращает калибровку для этой роли вовсе, вызывающий код остаётся на
-// сыром прогнозе (см. applyCalibration в zoneRatings.ts).
+// в .claude/plans, шаг 4) — ниже него getAllRoleCalibrations раньше честно
+// не возвращала калибровку для этой роли вовсе (см. applyCalibration в
+// zoneRatings.ts), теперь вместо этого подставляет ВРЕМЕННОЕ ручное
+// приближение — см. PRELIMINARY_CALIBRATION ниже.
 const MIN_CALIBRATION_SAMPLES = 15;
+
+// ВРЕМЕННОЕ ручное приближение (см. чат "Хардкод предварительной
+// калибровки") — пока ни у одной роли нет 15+ реальных матчей, чтобы
+// getAllRoleCalibrations честно посчитала регрессию сама. Источник: ручной
+// разбор 11 реальных пар прогноз/факт из ОДНОГО матча (match_id=770824257,
+// "Zhezburg 3:4 Feedback", 05.08.2026) — обычная линейная регрессия по всем
+// 11 точкам дала slope≈0.528/intercept≈0.818, без явного выброса на одной
+// точке MID_WIDE (predicted=11.51, actual=4.5 — единственный сэмпл этой
+// роли, отличить "реально другие веса роли" от "просто неудачный матч"
+// невозможно) — slope≈0.578/intercept≈0.527; взята середина обоих
+// диапазонов. НЕ статистически надёжная калибровка (11 точек на 5-7 ролей,
+// многие роли — по 1 сэмплу) — только чтобы прогноз уже сейчас выглядел
+// ближе к реальным звёздам, а не ждал недель/месяцев накопления. Общая
+// (не по ролям — данных для честного разделения по ролям ещё нет), поэтому
+// isPreliminary=true распространяется на ВСЕ 7 ролей одинаково. Как только
+// у роли накопится MIN_CALIBRATION_SAMPLES реальных матчей, настоящая
+// регрессия в цикле ниже автоматически перекрывает эту заглушку для этой
+// конкретной роли — удалять вручную ничего не придётся.
+const PRELIMINARY_CALIBRATION: { slope: number; intercept: number } = { slope: 0.55, intercept: 0.65 };
+
+const ALL_SLOT_ROLES: SlotRole[] = ["GK", "DEF_WIDE", "DEF_CENTRAL", "MID_WIDE", "MID_CENTRAL", "FWD_CENTRAL", "FWD_WIDE"];
 
 // Коэффициенты линейной калибровки (сырой прогноз → реальная звезда) по
 // каждой роли сразу — одним запросом через встроенные в Postgres
@@ -160,8 +182,20 @@ export async function getAllRoleCalibrations(formulaVersion: string): Promise<Pa
     const slope = Number(row.slope);
     const intercept = Number(row.intercept);
     if (Number.isNaN(slope) || Number.isNaN(intercept)) continue;
-    result[row.slot_role as SlotRole] = { slope, intercept, sampleCount };
+    result[row.slot_role as SlotRole] = { slope, intercept, sampleCount, isPreliminary: false };
   }
+
+  // Роли без настоящей регрессии (мало/нет реальных матчей ещё) — временная
+  // заглушка вместо "калибровки нет вообще", см. PRELIMINARY_CALIBRATION
+  // выше. sampleCount=0 — честно означает "не число реальных матчей этой
+  // роли", formatSlotRatingTooltip (zoneRatings.ts) обязана проверять
+  // isPreliminary раньше, чем показывать sampleCount пользователю.
+  for (const role of ALL_SLOT_ROLES) {
+    if (!result[role]) {
+      result[role] = { ...PRELIMINARY_CALIBRATION, sampleCount: 0, isPreliminary: true };
+    }
+  }
+
   return result;
 }
 
