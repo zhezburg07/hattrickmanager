@@ -17,7 +17,17 @@ export interface RealClubStaff {
   // информация о молодёжной академии (сам список игроков академии CHPP не
   // отдаёт через youthplayers.xml/youthdetails.xml — оба стабильно падают
   // с 401 у этого приложения, похоже на ограничение прав доступа).
-  youthLevel: number;
+  //
+  // ИСПРАВЛЕНО (см. чат "Срочная регрессия: юношеская академия ошибочно
+  // показана как отсутствующая") — раньше отсутствие поля YouthLevel в
+  // ответе (`?? 0`) молча превращалось в законный уровень 0, неотличимый от
+  // "команда реально не вкладывалась в академию". YouthTable.tsx, приняв
+  // youthLevel===0 за чистую монету, полностью прятал реально загруженный
+  // список из 15 игроков академии (пришедший отдельным, независимо
+  // отработавшим запросом youthplayerlist.xml). undefined — поле реально не
+  // пришло, 0 остаётся законным значением, когда оно РЕАЛЬНО пришло и равно
+  // нулю.
+  youthLevel: number | undefined;
   // Проверенная структура club.xml (см. комментарий выше) содержит только
   // <Staff> и <YouthSquad> — CupID здесь не найден, поле оставлено на
   // случай, если в реальном ответе всё же обнаружится где-то ещё.
@@ -43,7 +53,7 @@ export function parseClubXml(xml: string): RealClubStaff {
     spokespersonLevel: Number(staff.SpokespersonLevels ?? 0),
     sportPsychologistLevel: Number(staff.SportPsychologistLevels ?? 0),
     tacticalAssistantLevel: Number(staff.TacticalAssistantLevels ?? 0),
-    youthLevel: Number(root?.Team?.YouthSquad?.YouthLevel ?? 0),
+    youthLevel: root?.Team?.YouthSquad?.YouthLevel !== undefined ? Number(root.Team.YouthSquad.YouthLevel) : undefined,
     cupId,
   };
 }
