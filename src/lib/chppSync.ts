@@ -464,11 +464,40 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // общий проход по снимкам это не поймал бы.
   const sectionErrors: string[] = [];
 
+  // Общие для нескольких волн переменные — раньше каждая была объявлена
+  // прямо перед разделом, который её заполняет (см. git-историю), собраны
+  // здесь одним блоком специально ради распараллеливания ниже (см. чат
+  // "Аудит проекта: скорость", п.2): между элементами массива Promise.allSettled
+  // нельзя вставить объявление let, поэтому все переменные, которые читает
+  // ПОЗДНЯЯ волна из результата РАННЕЙ, должны быть в области видимости
+  // ДО начала первой волны, которая их пишет. Сам факт, что раздел
+  // "заполняет" такую переменную только внутри своей волны, а читают её
+  // только волны СТРОГО ПОЗЖЕ (после await Promise.allSettled той волны) —
+  // и есть гарантия отсутствия гонки данных при переходе от волны к волне.
+  let currencyLabel = defaultCurrency.label; // волна 1 (worldCurrency) → волна 2 (players/youthPlayers)
+  let homeCountry: HomeCountryInfo | null = null; // волна 1 (worldCurrency) → волна 2 (players/youthPlayers)
+  let currentSeasonAnchor: SeasonAnchor | null = null; // волна 1 (league) → волна 2 (matchesCalendar)
+  let parsedMatches: RealMatch[] | null = null; // волна 1 (matches) → волна 2 (несколько разделов)
+  let mergedSeasonMatches: RealMatch[] | null = null; // волна 2 (matchesCalendar) → волна 3 (arenaResults/cupInfo)
+  let parsedClub: RealClubStaff | null = null; // волна 1 (club) → волна 3 (cupInfo)
+
+  // ==================== ВОЛНА 1 (см. чат "Аудит проекта: скорость", п.2) ====
+  // Независимые друг от друга разделы — ни один не читает результат
+  // другого из ЭТОЙ ЖЕ волны (сверено построчно по всей функции перед
+  // распараллеливанием), поэтому идут параллельно вместо строгой
+  // последовательности, как раньше. Каждый раздел по-прежнему сам ловит
+  // свои исключения и пишет anySucceeded/anyFailed/sectionErrors — простое
+  // OR-накопление и push в общий массив безопасны при параллельном
+  // выполнении (JS выполняет каждую отдельную операцию атомарно, гонка
+  // возможна только если бы секции читали состояние ДРУГ ДРУГА, а не просто
+  // независимо писали в общий накопитель) — порядок ЗАВЕРШЕНИЯ не
+  // гарантирован, это влияет только на порядок строк в sectionErrors
+  // (диагностика), не на корректность.
+  await Promise.allSettled([
+    (async () => {
   // -- worldCurrency (валюта + домашняя страна для флагов игроков) --
   // второстепенная деталь оформления — неудача здесь не считается серьёзным
   // сбоем синхронизации, как и раньше.
-  let currencyLabel = defaultCurrency.label;
-  let homeCountry: HomeCountryInfo | null = null;
   try {
     if (raw.worlddetails) {
       assertOkStatus(raw.worlddetails);
@@ -480,15 +509,10 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   } catch (err) {
     await saveSnapshotError(hattrickUserId, DATA_KEYS.worldCurrency, errorMessage(err));
   }
-
-  // Якорь для вычисления номера сезона по дате матча (см. чат "Матчи по
-  // сезонам") — заполняется ниже в блоке "league", если leaguefixtures.xml
-  // запрашивался и вернул и Season, и хотя бы одну дату матча. Используется
-  // позже в блоке "matchesCalendar" — держим в этой более широкой области
-  // видимости по той же причине, что и mergedSeasonMatches выше.
-  let currentSeasonAnchor: SeasonAnchor | null = null;
-
-  // -- league (leaguedetails +, если сезон начался, leaguefixtures/матрица) --
+    })(),
+    (async () => {
+  // -- league (leaguedetails +, если сезон начался, leaguefixtures/матрица) —
+  // заполняет currentSeasonAnchor (см. общий блок волны выше) --
   try {
     assertOkStatus(raw.leaguedetails);
     const league = parseLeagueDetailsXml(raw.leaguedetails.rawXml, teamId);
@@ -559,20 +583,13 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     await saveSnapshotError(hattrickUserId, DATA_KEYS.league, `Лига и таблица (leaguedetails): ${errorMessage(err)}`);
     anyFailed = true;
   }
-
+    })(),
+    (async () => {
   // -- matches (полный разобранный список — переиспользуется ниже для
   // рейтингов последних матчей и анализа соперника, а не запрашивается
   // заново, как делали resolveLastMatchRatings/resolveOpponentAnalysis при
-  // живом запросе; Обзор сам отфильтрует недавние/ближайшие при чтении) --
-  let parsedMatches: RealMatch[] | null = null;
-  // Текущий сезон + matchesarchive, объединённые и без дублей — заполняется
-  // в секции "matchesCalendar" ниже, но нужен ещё и "cupInfo" (полная
-  // история кубков сезона, включая уже завершённые/проигранные — matches.xml
-  // один даёт только ~50 последних матчей, чего мало, если команда успела
-  // сыграть кубок+лигу+товарищеские). Держим в этой более широкой области
-  // видимости, а не только внутри блока "matchesCalendar", специально ради
-  // этого переиспользования.
-  let mergedSeasonMatches: RealMatch[] | null = null;
+  // живом запросе; Обзор сам отфильтрует недавние/ближайшие при чтении).
+  // Заполняет parsedMatches (см. общий блок волны выше) --
   try {
     assertOkStatus(raw.matches);
     parsedMatches = parseMatchesXml(raw.matches.rawXml, teamId);
@@ -582,7 +599,207 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     await saveSnapshotError(hattrickUserId, DATA_KEYS.matches, `Матчи (matches): ${errorMessage(err)}`);
     anyFailed = true;
   }
+    })(),
+    // -- overviewFanExpectations перемещена в волну 2 ниже — читает
+    // parsedMatches, заполняемый только что закрытой секцией "matches"
+    // этой же волны 1, поэтому не может быть частью волны 1 сама.
+    (async () => {
+  // -- economy (полный разобранный объект — Обзор берёт часть полей, позже
+  // страница "Финансы" переиспользует тот же ключ полностью) --
+  try {
+    assertOkStatus(raw.economy);
+    const economy: RealEconomy = parseEconomyXml(raw.economy.rawXml);
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.economy, economy);
+    anySucceeded = true;
+  } catch (err) {
+    await saveSnapshotError(hattrickUserId, DATA_KEYS.economy, `Финансы и болельщики (economy): ${errorMessage(err)}`);
+    anyFailed = true;
+  }
+    })(),
+    (async () => {
+  // -- club (состав тренерского штаба + youthLevel/cupId — переиспользуются
+  // ниже Юношеской командой и Кубками, отдельно club.xml для них не
+  // запрашивается). Заполняет parsedClub (см. общий блок волны выше) --
+  try {
+    assertOkStatus(raw.club);
+    parsedClub = parseClubXml(raw.club.rawXml);
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.club, parsedClub);
+    anySucceeded = true;
+  } catch (err) {
+    await saveSnapshotError(hattrickUserId, DATA_KEYS.club, `Персонал (club): ${errorMessage(err)}`);
+    anyFailed = true;
+  }
+    })(),
+    // -- players перемещена в волну 2 ниже — читает parsedMatches
+    // (секция "matches" этой же волны 1) и homeCountry/countryIdLookupResult
+    // (секция "worldCurrency" этой же волны 1), поэтому не может быть
+    // частью волны 1 сама.
+    (async () => {
+  // -- achievements --
+  try {
+    assertOkStatus(raw.achievements);
+    const achievements: AchievementsResult = parseAchievementsXml(raw.achievements.rawXml);
+    // Полный дамп достижений (искали скрытый сигнал о трофеях турниров,
+    // не нашли — вопрос закрыт, см. чат "Уборка диагностики") убран.
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.achievements, achievements);
+    anySucceeded = true;
+  } catch (err) {
+    await saveSnapshotError(hattrickUserId, DATA_KEYS.achievements, `Достижения (achievements): ${errorMessage(err)}`);
+    anyFailed = true;
+  }
+    })(),
+    (async () => {
+  // -- arena (Стадион) --
+  try {
+    assertOkStatus(raw.arenadetails);
+    const arena: RealArenaCapacity = parseArenaDetailsXml(raw.arenadetails.rawXml);
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arena, arena);
+    anySucceeded = true;
+  } catch (err) {
+    await saveSnapshotError(hattrickUserId, DATA_KEYS.arena, `Стадион (arenadetails): ${errorMessage(err)}`);
+    anyFailed = true;
+  }
+    })(),
+    (async () => {
+  // -- training (Тренировка) — второстепенная деталь: training.xml ни разу
+  // не пробовался живьём до появления этого проекта (см. src/lib/training.ts)
+  // — неудача не считается сбоем синхронизации, как и раньше молча
+  // оставляла тестовые значения по умолчанию.
+  try {
+    if (raw.training) {
+      assertOkStatus(raw.training);
+      const training: RealTraining = parseTrainingXml(raw.training.rawXml);
+      await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.training, training);
+    }
+  } catch (err) {
+    await saveSnapshotError(hattrickUserId, DATA_KEYS.training, errorMessage(err));
+  }
+    })(),
+    // -- youthPlayers перемещена в волну 2 ниже — читает homeCountry/
+    // countryIdLookupResult (секция "worldCurrency" этой же волны 1),
+    // поэтому не может быть частью волны 1 сама.
+    (async () => {
+  // -- arenaChallenges (заявки на товарищеские матчи, см. "Матчи") --
+  try {
+    assertOkStatus(raw.challenges);
+    const { sentByUs, offersFromOthers } = parseChallengesXml(raw.challenges.rawXml);
+    const result: ArenaChallengesResult = { sentByUs, offersFromOthers, error: null };
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arenaChallenges, result);
+    anySucceeded = true;
+  } catch (err) {
+    await saveSnapshotError(
+      hattrickUserId,
+      DATA_KEYS.arenaChallenges,
+      `Заявки на товарищеские матчи (challenges): ${errorMessage(err)}`,
+    );
+    anyFailed = true;
+  }
+    })(),
+    (async () => {
+  // -- transferHistory (Трансферы — история сделок команды; живой поиск по
+  // рынку убран целиком, см. чат "Трансферы: убрать поиск") --
+  // ИСПРАВЛЕНО (см. чат "Трансферы: пагинация не накапливается") —
+  // подтверждено диагностикой на реальных данных: pageIndex=0 отдаёт
+  // ПОСЛЕДНЮЮ страницу истории (сервер сам возвращает её настоящий номер —
+  // у пользователя это оказалась страница 28 из 28), а не все страницы
+  // сразу. NumberOfBuys/NumberOfSales в <Stats> — это ВСЕГО за карьеру,
+  // отдельно от постраничного <Transfers> (подтверждено: 322+356=678 при
+  // 28 страницах).
+  // ОПТИМИЗАЦИЯ (см. чат "Трансферы: полная история только один раз") —
+  // полный обход всех страниц (accumulateTransferHistory) нужен только
+  // ОДИН раз, пока для этого аккаунта ещё нет ни одной сохранённой сделки.
+  // На каждой следующей синхронизации запрашивается только последняя
+  // страница, а новые записи добавляются к уже сохранённой истории
+  // (mergeTransferHistory, дедупликация по TransferID) — вместо того чтобы
+  // каждый раз заново обходить всю историю. Снимок читается ДО того, как
+  // его перезапишет текущая синхронизация (тот же приём, что и для
+  // lastReliableCupId в разделе "cupInfo" выше).
+  try {
+    const httpStatus = raw.transfersteam?.httpStatus ?? null;
+    assertOkStatus(raw.transfersteam);
+    const latestPage: TransferHistoryResult = parseTransfersTeamXml(raw.transfersteam.rawXml, teamId, ourTeamName);
 
+    const previousSnapshot = await getSnapshot<TransferHistoryResult>(hattrickUserId, DATA_KEYS.transferHistory);
+    const hasPriorHistory = (previousSnapshot?.data?.transfers.length ?? 0) > 0;
+    // САМОВОССТАНОВЛЕНИЕ (см. чат "Трансферы: фильтр 'Проданные' всё ещё
+    // пуст на реальных данных" и "...логическая нестыковка — 'Куплен у
+    // Zhezburg'") — уже сохранённая история могла целиком накопиться ДО
+    // исправления определения покупка/продажа (полный обход всех страниц
+    // происходит только один раз, а инкрементальные обновления трогают
+    // только последнюю страницу — старые записи иначе НИКОГДА не
+    // пересчитаются). Два независимых признака устаревших/испорченных
+    // данных: (1) по статистике продажи точно есть, а среди сохранённых
+    // сделок ни одной "sale"; (2) среди сохранённых сделок есть хотя бы
+    // одна, где контрагентом указана НАША ЖЕ команда (та самая находка
+    // пользователя — "Куплен у Zhezburg", логически невозможная сделка).
+    // В любом из этих случаев форсируем ещё один полный обход (один раз),
+    // чтобы пересчитать ВСЮ историю новой логикой (TeamID + имя команды,
+    // см. parseTransfersTeamXml) — дальше снова переходим на инкрементальный
+    // режим.
+    const noSalesDespiteStats =
+      hasPriorHistory &&
+      previousSnapshot!.data!.numberOfSales > 0 &&
+      !previousSnapshot!.data!.transfers.some((t) => t.transferType === "sale");
+    const hasSelfAsCounterpart =
+      hasPriorHistory &&
+      !!ourTeamName &&
+      previousSnapshot!.data!.transfers.some((t) => t.counterpartTeamName === ourTeamName);
+    const priorLooksCorrupted = noSalesDespiteStats || hasSelfAsCounterpart;
+
+    let transferHistory: TransferHistoryResult;
+    let pageLog: string[];
+    if (hasPriorHistory && !priorLooksCorrupted) {
+      transferHistory = mergeTransferHistory(previousSnapshot!.data, latestPage);
+      pageLog = [
+        `инкрементально (уже была история из ${previousSnapshot!.data!.transfers.length} сделок): стр.${latestPage.pageIndex}/${latestPage.pages} → ${latestPage.transfers.length} сделок на странице, после слияния/дедупликации всего ${transferHistory.transfers.length}`,
+      ];
+    } else {
+      const accumulated = await accumulateTransferHistory(
+        latestPage,
+        (pageIndex) =>
+          requestChppXmlRaw("transfersteam", { pageIndex: String(pageIndex), version: TRANSFERS_TEAM_VERSION }, tokens),
+        { maxExtraFetches: MAX_EXTRA_TRANSFER_PAGE_FETCHES },
+        teamId,
+        ourTeamName,
+      );
+      transferHistory = accumulated.result;
+      const reason = hasSelfAsCounterpart
+        ? "сохранённая история выглядела испорченной: среди сделок был контрагент = наша же команда"
+        : noSalesDespiteStats
+          ? `сохранённая история выглядела устаревшей: 0 продаж среди сохранённых при numberOfSales=${previousSnapshot!.data!.numberOfSales}`
+          : null;
+      pageLog = [
+        reason
+          ? `полный обход (пересчёт — ${reason}): ${accumulated.pageLog.join("; ")}`
+          : `полный обход (первая синхронизация): ${accumulated.pageLog.join("; ")}`,
+      ];
+    }
+
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.transferHistory, transferHistory);
+    anySucceeded = true;
+    // Построчный дамп Buyer/Seller TeamID и дамп сделок-по-имени убраны
+    // (см. чат "Уборка диагностики") — механизм подтверждён рабочим, оставлена
+    // только краткая сводка.
+    sectionErrors.push(
+      `Трансферы (диагностика): HTTP ${httpStatus}, команда "${transferHistory.teamName || "?"}", всего за карьеру куплено ${transferHistory.numberOfBuys}/продано ${transferHistory.numberOfSales}, в снимке ${transferHistory.transfers.length} сделок (продаж среди них: ${transferHistory.transfers.filter((t) => t.transferType === "sale").length}) (${pageLog.join("; ")}) — снимок сохранён.`,
+    );
+  } catch (err) {
+    const message = `История трансферов (transfersteam): ${errorMessage(err)}`;
+    await saveSnapshotError(hattrickUserId, DATA_KEYS.transferHistory, message);
+    sectionErrors.push(message);
+    anyFailed = true;
+  }
+    })(),
+  ]);
+
+  // ==================== ВОЛНА 2 ====================
+  // Зависят от результатов волны 1 выше (parsedMatches/homeCountry/
+  // countryIdLookupResult/currentSeasonAnchor), но НЕ друг от друга — ни
+  // один из этих 5 разделов не читает результат другого ИЗ ЭТОЙ ЖЕ волны
+  // (сверено построчно), поэтому идут параллельно между собой, но только
+  // после того, как волна 1 полностью завершилась (await выше).
+  await Promise.allSettled([
+    (async () => {
   // -- overviewFanExpectations (см. чат "Заменить расчётный индикатор
   // ожиданий на реальные данные CHPP, если найдутся") — РЕАЛЬНОЕ поле
   // Hattrick (fans.xml → FanMatchExpectation), не наша прежняя эвристика
@@ -593,8 +810,16 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // только при ошибке. OVERVIEW_MATCHES_COUNT=3 намеренно совпадает с
   // тройкой, которую реально даёт fans.xml (см. чат "Матчи на Обзоре:
   // вернуть 3+3") — матч, не попавший в эту тройку, честно без записи,
-  // getStoredOverviewData подставит NEUTRAL_FAN_EXPECTATION сам.
+  // getStoredOverviewData подставит NEUTRAL_FAN_EXPECTATION сам. Читает
+  // parsedMatches (волна 1) --
   try {
+    // TS не умеет отслеживать через границу замыкания, что parsedMatches
+    // заполняется в закрытой к этому моменту волне 1 (см. общий блок волны
+    // 1 выше) — без явной аннотации типа здесь TS сузил бы значение до
+    // буквального null и терял бы .filter/.map по всей функции. Тот же
+    // приём повторяется во всех замыканиях волн 2-3, читающих переменные,
+    // заполненные в ДРУГОМ замыкании более ранней волны.
+    const matchesFromWave1 = parsedMatches as RealMatch[] | null;
     const { byMatchId, error: fansError } = await resolveFanExpectations(tokens);
     if (fansError) throw new Error(fansError);
     // Та же сортировка, что и в getStoredOverviewData ниже (см. чат "Матчи
@@ -602,14 +827,14 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     // диагностика считала бы совпадения не для тех матчей, что реально
     // показываются на Обзоре после исправления.
     const displayedRecentIds = new Set(
-      (parsedMatches ?? [])
+      (matchesFromWave1 ?? [])
         .filter((m) => m.status === "FINISHED" && m.ourScore !== null && m.oppScore !== null && m.matchId)
         .sort((a, b) => b.date.localeCompare(a.date))
         .slice(0, OVERVIEW_MATCHES_COUNT)
         .map((m) => m.matchId),
     );
     const displayedUpcomingIds = new Set(
-      (parsedMatches ?? [])
+      (matchesFromWave1 ?? [])
         .filter((m) => m.status === "UPCOMING" && m.matchId)
         .sort((a, b) => a.date.localeCompare(b.date))
         .slice(0, OVERVIEW_MATCHES_COUNT)
@@ -631,50 +856,30 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     );
     anyFailed = true;
   }
-
-  // -- economy (полный разобранный объект — Обзор берёт часть полей, позже
-  // страница "Финансы" переиспользует тот же ключ полностью) --
-  try {
-    assertOkStatus(raw.economy);
-    const economy: RealEconomy = parseEconomyXml(raw.economy.rawXml);
-    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.economy, economy);
-    anySucceeded = true;
-  } catch (err) {
-    await saveSnapshotError(hattrickUserId, DATA_KEYS.economy, `Финансы и болельщики (economy): ${errorMessage(err)}`);
-    anyFailed = true;
-  }
-
-  // -- club (состав тренерского штаба + youthLevel/cupId — переиспользуются
-  // ниже Юношеской командой и Кубками, отдельно club.xml для них не
-  // запрашивается) --
-  let parsedClub: RealClubStaff | null = null;
-  try {
-    assertOkStatus(raw.club);
-    parsedClub = parseClubXml(raw.club.rawXml);
-    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.club, parsedClub);
-    anySucceeded = true;
-  } catch (err) {
-    await saveSnapshotError(hattrickUserId, DATA_KEYS.club, `Персонал (club): ${errorMessage(err)}`);
-    anyFailed = true;
-  }
-
+    })(),
+    (async () => {
   // -- players (сводка + полный ростер, с национальностью и рейтингами
-  // последних матчей — нужны Составу/Расстановке, см. чат "Фаза 2") --
+  // последних матчей — нужны Составу/Расстановке, см. чат "Фаза 2"). Читает
+  // parsedMatches/homeCountry/countryIdLookupResult (волна 1) --
   try {
+    // См. комментарий у matchesFromWave1 в overviewFanExpectations выше —
+    // тот же приём для чтения через границу замыкания.
+    const homeCountryFromWave1 = homeCountry as HomeCountryInfo | null;
+    const matchesFromWave1 = parsedMatches as RealMatch[] | null;
     assertOkStatus(raw.players);
     const summary: RealSquadSummary = parsePlayersXml(raw.players.rawXml);
     let players: SquadPlayer[] = parsePlayersDetailedXml(
       raw.players.rawXml,
-      homeCountry,
+      homeCountryFromWave1,
       countryIdLookupResult.lookup ?? undefined,
     );
 
     // Рейтинги последних матчей (звёзды) — до RECENT_MATCH_COUNT сыгранных
     // матчей, каждый требует своего matchlineup.xml. Список сыгранных матчей
     // уже есть (parsedMatches выше) — второй раз matches.xml не запрашиваем.
-    if (parsedMatches) {
+    if (matchesFromWave1) {
       try {
-        const recentFinished = parsedMatches
+        const recentFinished = matchesFromWave1
           .filter((m) => m.status === "FINISHED" && m.matchId)
           .sort((a, b) => b.date.localeCompare(a.date))
           .slice(0, RECENT_MATCH_COUNT);
@@ -803,45 +1008,8 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     await saveSnapshotError(hattrickUserId, DATA_KEYS.players, `Состав (players): ${errorMessage(err)}`);
     anyFailed = true;
   }
-
-  // -- achievements --
-  try {
-    assertOkStatus(raw.achievements);
-    const achievements: AchievementsResult = parseAchievementsXml(raw.achievements.rawXml);
-    // Полный дамп достижений (искали скрытый сигнал о трофеях турниров,
-    // не нашли — вопрос закрыт, см. чат "Уборка диагностики") убран.
-    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.achievements, achievements);
-    anySucceeded = true;
-  } catch (err) {
-    await saveSnapshotError(hattrickUserId, DATA_KEYS.achievements, `Достижения (achievements): ${errorMessage(err)}`);
-    anyFailed = true;
-  }
-
-  // -- arena (Стадион) --
-  try {
-    assertOkStatus(raw.arenadetails);
-    const arena: RealArenaCapacity = parseArenaDetailsXml(raw.arenadetails.rawXml);
-    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arena, arena);
-    anySucceeded = true;
-  } catch (err) {
-    await saveSnapshotError(hattrickUserId, DATA_KEYS.arena, `Стадион (arenadetails): ${errorMessage(err)}`);
-    anyFailed = true;
-  }
-
-  // -- training (Тренировка) — второстепенная деталь: training.xml ни разу
-  // не пробовался живьём до появления этого проекта (см. src/lib/training.ts)
-  // — неудача не считается сбоем синхронизации, как и раньше молча
-  // оставляла тестовые значения по умолчанию.
-  try {
-    if (raw.training) {
-      assertOkStatus(raw.training);
-      const training: RealTraining = parseTrainingXml(raw.training.rawXml);
-      await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.training, training);
-    }
-  } catch (err) {
-    await saveSnapshotError(hattrickUserId, DATA_KEYS.training, errorMessage(err));
-  }
-
+    })(),
+    (async () => {
   // -- youthPlayers (Юношеская команда) — youthLevel уже есть в "club" выше,
   // здесь только сам список игроков академии. Ошибка и диагностика (HTTP-
   // статус, реально разобранное число игроков) хранятся ВНУТРИ объекта, как
@@ -856,8 +1024,12 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // игрока, вместо отдельного live-запроса по клику (см. раньше
   // /api/dashboard/youth-player-details — теперь не нужен, страница читает
   // details прямо из снимка). Один игрок не отвечает — просто остаётся без
-  // details, с навыками из youthplayerlist.xml как есть.
+  // details, с навыками из youthplayerlist.xml как есть. Читает homeCountry/
+  // countryIdLookupResult (волна 1) --
   {
+    // См. комментарий у matchesFromWave1 в overviewFanExpectations выше —
+    // тот же приём для чтения через границу замыкания.
+    const homeCountryFromWave1 = homeCountry as HomeCountryInfo | null;
     let youthPlayers: RealYouthPlayer[] | null = null;
     let youthError: string | null = null;
     let youthHttpStatus: number | null = null;
@@ -871,7 +1043,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       youthRawCount = raw.youthplayerlist ? debugYouthPlayerListRawCount(raw.youthplayerlist.rawXml) : 0;
       rawFieldsSample = raw.youthplayerlist ? debugRawYouthPlayerFields(raw.youthplayerlist.rawXml) : [];
       assertOkStatus(raw.youthplayerlist);
-      youthPlayers = parseYouthPlayerListXml(raw.youthplayerlist.rawXml, homeCountry, countryIdLookupResult.lookup ?? undefined);
+      youthPlayers = parseYouthPlayerListXml(raw.youthplayerlist.rawXml, homeCountryFromWave1, countryIdLookupResult.lookup ?? undefined);
       anySucceeded = true;
 
       if (youthPlayers.length > 0) {
@@ -959,127 +1131,21 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.youthPlayers, stored);
   }
-
-  // -- arenaChallenges (заявки на товарищеские матчи, см. "Матчи") --
-  try {
-    assertOkStatus(raw.challenges);
-    const { sentByUs, offersFromOthers } = parseChallengesXml(raw.challenges.rawXml);
-    const result: ArenaChallengesResult = { sentByUs, offersFromOthers, error: null };
-    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arenaChallenges, result);
-    anySucceeded = true;
-  } catch (err) {
-    await saveSnapshotError(
-      hattrickUserId,
-      DATA_KEYS.arenaChallenges,
-      `Заявки на товарищеские матчи (challenges): ${errorMessage(err)}`,
-    );
-    anyFailed = true;
-  }
-
-  // -- transferHistory (Трансферы — история сделок команды; живой поиск по
-  // рынку убран целиком, см. чат "Трансферы: убрать поиск") --
-  // ИСПРАВЛЕНО (см. чат "Трансферы: пагинация не накапливается") —
-  // подтверждено диагностикой на реальных данных: pageIndex=0 отдаёт
-  // ПОСЛЕДНЮЮ страницу истории (сервер сам возвращает её настоящий номер —
-  // у пользователя это оказалась страница 28 из 28), а не все страницы
-  // сразу. NumberOfBuys/NumberOfSales в <Stats> — это ВСЕГО за карьеру,
-  // отдельно от постраничного <Transfers> (подтверждено: 322+356=678 при
-  // 28 страницах).
-  // ОПТИМИЗАЦИЯ (см. чат "Трансферы: полная история только один раз") —
-  // полный обход всех страниц (accumulateTransferHistory) нужен только
-  // ОДИН раз, пока для этого аккаунта ещё нет ни одной сохранённой сделки.
-  // На каждой следующей синхронизации запрашивается только последняя
-  // страница, а новые записи добавляются к уже сохранённой истории
-  // (mergeTransferHistory, дедупликация по TransferID) — вместо того чтобы
-  // каждый раз заново обходить всю историю. Снимок читается ДО того, как
-  // его перезапишет текущая синхронизация (тот же приём, что и для
-  // lastReliableCupId в разделе "cupInfo" выше).
-  try {
-    const httpStatus = raw.transfersteam?.httpStatus ?? null;
-    assertOkStatus(raw.transfersteam);
-    const latestPage: TransferHistoryResult = parseTransfersTeamXml(raw.transfersteam.rawXml, teamId, ourTeamName);
-
-    const previousSnapshot = await getSnapshot<TransferHistoryResult>(hattrickUserId, DATA_KEYS.transferHistory);
-    const hasPriorHistory = (previousSnapshot?.data?.transfers.length ?? 0) > 0;
-    // САМОВОССТАНОВЛЕНИЕ (см. чат "Трансферы: фильтр 'Проданные' всё ещё
-    // пуст на реальных данных" и "...логическая нестыковка — 'Куплен у
-    // Zhezburg'") — уже сохранённая история могла целиком накопиться ДО
-    // исправления определения покупка/продажа (полный обход всех страниц
-    // происходит только один раз, а инкрементальные обновления трогают
-    // только последнюю страницу — старые записи иначе НИКОГДА не
-    // пересчитаются). Два независимых признака устаревших/испорченных
-    // данных: (1) по статистике продажи точно есть, а среди сохранённых
-    // сделок ни одной "sale"; (2) среди сохранённых сделок есть хотя бы
-    // одна, где контрагентом указана НАША ЖЕ команда (та самая находка
-    // пользователя — "Куплен у Zhezburg", логически невозможная сделка).
-    // В любом из этих случаев форсируем ещё один полный обход (один раз),
-    // чтобы пересчитать ВСЮ историю новой логикой (TeamID + имя команды,
-    // см. parseTransfersTeamXml) — дальше снова переходим на инкрементальный
-    // режим.
-    const noSalesDespiteStats =
-      hasPriorHistory &&
-      previousSnapshot!.data!.numberOfSales > 0 &&
-      !previousSnapshot!.data!.transfers.some((t) => t.transferType === "sale");
-    const hasSelfAsCounterpart =
-      hasPriorHistory &&
-      !!ourTeamName &&
-      previousSnapshot!.data!.transfers.some((t) => t.counterpartTeamName === ourTeamName);
-    const priorLooksCorrupted = noSalesDespiteStats || hasSelfAsCounterpart;
-
-    let transferHistory: TransferHistoryResult;
-    let pageLog: string[];
-    if (hasPriorHistory && !priorLooksCorrupted) {
-      transferHistory = mergeTransferHistory(previousSnapshot!.data, latestPage);
-      pageLog = [
-        `инкрементально (уже была история из ${previousSnapshot!.data!.transfers.length} сделок): стр.${latestPage.pageIndex}/${latestPage.pages} → ${latestPage.transfers.length} сделок на странице, после слияния/дедупликации всего ${transferHistory.transfers.length}`,
-      ];
-    } else {
-      const accumulated = await accumulateTransferHistory(
-        latestPage,
-        (pageIndex) =>
-          requestChppXmlRaw("transfersteam", { pageIndex: String(pageIndex), version: TRANSFERS_TEAM_VERSION }, tokens),
-        { maxExtraFetches: MAX_EXTRA_TRANSFER_PAGE_FETCHES },
-        teamId,
-        ourTeamName,
-      );
-      transferHistory = accumulated.result;
-      const reason = hasSelfAsCounterpart
-        ? "сохранённая история выглядела испорченной: среди сделок был контрагент = наша же команда"
-        : noSalesDespiteStats
-          ? `сохранённая история выглядела устаревшей: 0 продаж среди сохранённых при numberOfSales=${previousSnapshot!.data!.numberOfSales}`
-          : null;
-      pageLog = [
-        reason
-          ? `полный обход (пересчёт — ${reason}): ${accumulated.pageLog.join("; ")}`
-          : `полный обход (первая синхронизация): ${accumulated.pageLog.join("; ")}`,
-      ];
-    }
-
-    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.transferHistory, transferHistory);
-    anySucceeded = true;
-    // Построчный дамп Buyer/Seller TeamID и дамп сделок-по-имени убраны
-    // (см. чат "Уборка диагностики") — механизм подтверждён рабочим, оставлена
-    // только краткая сводка.
-    sectionErrors.push(
-      `Трансферы (диагностика): HTTP ${httpStatus}, команда "${transferHistory.teamName || "?"}", всего за карьеру куплено ${transferHistory.numberOfBuys}/продано ${transferHistory.numberOfSales}, в снимке ${transferHistory.transfers.length} сделок (продаж среди них: ${transferHistory.transfers.filter((t) => t.transferType === "sale").length}) (${pageLog.join("; ")}) — снимок сохранён.`,
-    );
-  } catch (err) {
-    const message = `История трансферов (transfersteam): ${errorMessage(err)}`;
-    await saveSnapshotError(hattrickUserId, DATA_KEYS.transferHistory, message);
-    sectionErrors.push(message);
-    anyFailed = true;
-  }
-
+    })(),
+    (async () => {
   // -- opponentAnalysis (Расстановка: разбор соперника в ближайшем матче) --
   // Три последовательных шага (ближайший соперник → его последний сыгранный
   // матч → состав того матча) — принципиально зависят друг от друга, как и
   // при живом запросе (resolveOpponentAnalysis), поэтому распараллелить
   // нечего; берём то, что уже есть, где возможно (teamId, parsedMatches).
   try {
+    // См. комментарий у matchesFromWave1 в overviewFanExpectations выше —
+    // тот же приём для чтения через границу замыкания.
+    const matchesFromWave1 = parsedMatches as RealMatch[] | null;
     if (!teamId) throw new Error("Не определена наша команда (teamdetails).");
-    if (!parsedMatches) throw new Error("Не удалось получить список матчей (matches).");
+    if (!matchesFromWave1) throw new Error("Не удалось получить список матчей (matches).");
 
-    const next = parsedMatches
+    const next = matchesFromWave1
       .filter((m) => m.status !== "FINISHED" && m.matchId)
       .sort((a, b) => a.date.localeCompare(b.date))[0];
 
@@ -1145,12 +1211,15 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     await saveSnapshotError(hattrickUserId, DATA_KEYS.opponentAnalysis, `Анализ соперника: ${errorMessage(err)}`);
     anyFailed = true;
   }
-
+    })(),
+    (async () => {
   // -- matchesCalendar (Матчи: список + история прошлых сезонов через
   // matchesarchive) — teamId и текущий сезон (parsedMatches/raw.matches) уже
-  // получены выше для секции "matches". Ошибка и предупреждение хранятся
-  // ВНУТРИ объекта (как и раньше на странице), а не через error-колонку —
-  // независимых частичных причин несколько.
+  // получены выше для секции "matches" (волна 1). Заполняет mergedSeasonMatches
+  // (см. общий блок волны 1 выше) — нужен волне 3 (arenaResults/cupInfo).
+  // Ошибка и предупреждение хранятся ВНУТРИ объекта (как и раньше на
+  // странице), а не через error-колонку — независимых частичных причин
+  // несколько.
   // ОПТИМИЗАЦИЯ (см. чат "Официальные матчи: та же архитектура, что и у
   // Трансферов") — полный обход всей истории через matchesarchive
   // (walkMatchArchiveHistory) нужен только ОДИН раз, пока для этого аккаунта
@@ -1171,10 +1240,14 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     let storedMatchHistory: RealMatch[] | null = null;
 
     try {
+      // См. комментарий у matchesFromWave1 в overviewFanExpectations выше —
+      // тот же приём для чтения через границу замыкания.
+      const matchesFromWave1 = parsedMatches as RealMatch[] | null;
+      const seasonAnchorFromWave1 = currentSeasonAnchor as SeasonAnchor | null;
       if (!teamId) throw new Error("Не определена наша команда (teamdetails).");
-      if (!raw.matches || !parsedMatches) throw new Error("Не удалось получить список матчей (matches).");
+      if (!raw.matches || !matchesFromWave1) throw new Error("Не удалось получить список матчей (matches).");
 
-      const currentSeasonMatches = parsedMatches;
+      const currentSeasonMatches = matchesFromWave1;
       debugCounts.push(`matches.xml: ${currentSeasonMatches.length} матчей (HTTP ${raw.matches.httpStatus})`);
       debugRaw = debugRawMatchFields(raw.matches.rawXml);
 
@@ -1303,8 +1376,8 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       // заполняется в блоке "league" выше в этой же синхронизации; если он
       // null (якорь ни разу не был получен для этого аккаунта), season у
       // всех матчей честно null, а не выдуманное число.
-      shownMatches = toSeasonMatches(trainingRelevant, currentSeasonAnchor);
-      if (!currentSeasonAnchor) {
+      shownMatches = toSeasonMatches(trainingRelevant, seasonAnchorFromWave1);
+      if (!seasonAnchorFromWave1) {
         debugCounts.push(
           "номер сезона: якорь (Season + дата 1-го тура из leaguefixtures.xml) ещё не получен ни разу для этого аккаунта — у всех матчей season=null.",
         );
@@ -1317,12 +1390,12 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         // в matches.ts) — если жалоба на смещение границы повторится, здесь
         // сразу видно фактическую дату отсечки, а не только вычисленный номер.
         const dayMs = 24 * 60 * 60 * 1000;
-        const anchorMs = Date.parse(currentSeasonAnchor.seasonStartDate.replace(" ", "T") + "Z");
+        const anchorMs = Date.parse(seasonAnchorFromWave1.seasonStartDate.replace(" ", "T") + "Z");
         const boundaryStr = Number.isNaN(anchorMs)
           ? "?"
           : new Date(anchorMs - SEASON_PRE_ROUND1_BUFFER_DAYS * dayMs).toISOString().slice(0, 19).replace("T", " ");
         debugCounts.push(
-          `номер сезона: якорь — сезон ${currentSeasonAnchor.season}, round 1 лиги ${currentSeasonAnchor.seasonStartDate} ` +
+          `номер сезона: якорь — сезон ${seasonAnchorFromWave1.season}, round 1 лиги ${seasonAnchorFromWave1.seasonStartDate} ` +
             `→ граница сезона (с недельным буфером под кубковые матчи перед round 1) — ${boundaryStr}.`,
         );
       }
@@ -1344,18 +1417,31 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.matchesCalendar, stored);
   }
+    })(),
+  ]);
 
+  // ==================== ВОЛНА 3 ====================
+  // Зависят от результатов волны 2 (mergedSeasonMatches/parsedClub), но не
+  // друг от друга (cupInfo не читает ничего, что пишет arenaResults, и
+  // наоборот) — идут параллельно после того, как волна 2 полностью
+  // завершилась (await выше).
+  await Promise.allSettled([
+    (async () => {
   // -- arenaResults (Hattrick Arena: последние сыгранные матчи через
   // лестницу — см. чат "Hattrick Arena: синхронизация последних сыгранных
   // матчей"). Отдельного CHPP-файла для результатов Arena нет — выделяем
   // такие матчи из уже собранного mergedSeasonMatches (matches.xml +
-  // matchesarchive.xml, см. секцию "matchesCalendar" выше) по
+  // matchesarchive.xml, см. секцию "matchesCalendar" волны 2 выше) по
   // MatchType === LADDER_MATCH_TYPE (62, см. matches.ts). Полный список
   // сыгранных матчей и разбивка по MatchType (искали матчи лестницы —
   // подтверждённо не связаны с этим MatchType, вопрос закрыт) убраны — см.
   // чат "Уборка диагностики".
   {
-    const scanSource = mergedSeasonMatches ?? parsedMatches ?? [];
+    // См. комментарий у matchesFromWave1 в overviewFanExpectations выше —
+    // тот же приём для чтения через границу замыкания (здесь — волна 2).
+    const mergedFromWave2 = mergedSeasonMatches as RealMatch[] | null;
+    const matchesFromWave1 = parsedMatches as RealMatch[] | null;
+    const scanSource = mergedFromWave2 ?? matchesFromWave1 ?? [];
     const ladderResults = filterRecentArenaMatches(scanSource, ARENA_MATCHES_SHOWN);
 
     // ПОДТВЕРЖДЁННЫЙ РАБОЧИЙ ИСТОЧНИК (см. чат "Отличная новость по
@@ -1688,7 +1774,8 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     const arenaResults: ArenaSyncResult = { matches: arenaMatches, tournaments: tournamentSummaries, ladders };
     await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.arenaResults, arenaResults);
   }
-
+    })(),
+    (async () => {
   // -- cupInfo (Кубки: полная история сезона — путь по раундам ТЕКУЩЕГО
   // кубка плюс путь по каждому кубку, из которого команда уже выбыла в этом
   // сезоне, плюс ближайший предстоящий кубковый матч). teamId/stillInCup/
@@ -1703,12 +1790,16 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // напрямую из уже известных матчей (pastCupPathFromMatches), плюс по
   // одному лёгкому запросу fetchCupMeta на кубок за названием турнира. --
   {
+    // См. комментарий у matchesFromWave1 в overviewFanExpectations выше —
+    // тот же приём для чтения через границу замыкания (parsedClub — волна
+    // 1, mergedSeasonMatches — волна 2).
+    const parsedClubFromWave1 = parsedClub as RealClubStaff | null;
     const debug: CupDebugInfo = {
       teamId: teamId || null,
       stillInCup,
       teamDetailsCupId: cupIdFromTeamDetails,
       teamDetailsCupName: cupNameFromTeamDetails,
-      clubCupId: parsedClub?.cupId ?? null,
+      clubCupId: parsedClubFromWave1?.cupId ?? null,
       matchesCupId: null,
       chosenCupId: null,
       matchesRawSample: [],
@@ -1737,7 +1828,9 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     //      matchesCupId) — на случай, если teamDetailsCupId/clubCupId сейчас
     //      временно пусты (задержка на стороне Hattrick, см. managercompendium)
     //      и уровень 3 не дал уверенного кандидата.
-    const matchesForCup = mergedSeasonMatches ?? parsedMatches ?? [];
+    const mergedFromWave2 = mergedSeasonMatches as RealMatch[] | null;
+    const matchesFromWave1 = parsedMatches as RealMatch[] | null;
+    const matchesForCup = mergedFromWave2 ?? matchesFromWave1 ?? [];
     let cupId: string | null = null;
     let cupIdSource = "";
 
@@ -1878,6 +1971,8 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         `кубков в каскаде=${cupPaths.length}.`,
     );
   }
+    })(),
+  ]);
 
   const finalStatus: SyncResult["status"] = anyFailed && !anySucceeded ? "failed" : anyFailed ? "partial" : "ok";
   const summaryError = anyFailed
