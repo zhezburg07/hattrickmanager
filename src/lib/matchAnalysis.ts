@@ -618,6 +618,28 @@ function parseZoneRatings(team: Record<string, unknown> | undefined): MatchZoneR
   return hasAny ? zones : null;
 }
 
+function parseTacticType(team: Record<string, unknown> | undefined): number | null {
+  if (!team || team.TacticType === undefined) return null;
+  const n = Number(team.TacticType);
+  return Number.isNaN(n) ? null : n;
+}
+
+// Тактика "Контратаки" (TacticType=2, см. MATCH_TACTIC_LABEL выше) —
+// официальная поправка вики Hattrick (wiki.hattrick.org/wiki/Counter-attacks):
+// −7% к полузащите команды. Проверено ЭМПИРИЧЕСКИ, что RatingMidfield из
+// matchdetails.xml сам по себе НЕ содержит эту поправку (см. чат "Тактика
+// Контратака: −7% к полузащите — уже учтено?" — иначе применение здесь было
+// бы двойным счётом): парное внутрикомандное сравнение (та же команда,
+// Zhezburg) дало 16.7 (обычная игра, N=11) vs 16.8 (контратака, N=6),
+// разница +0.6% — близко к нулю, а не к −7%, то есть RatingMidfield тактику
+// не учитывает. ВАЖНО: само число −7% берётся из официальной вики, а НЕ
+// подогнано под эту выборку — выборка (всего 1 команда) использована только
+// чтобы решить, применять ли уже известную официальную поправку, а не чтобы
+// вычислить её величину. Стоит перепроверить на большей выборке позже (см.
+// getTacticMidfieldComparison в matchResearchDb.ts, если функция ещё жива).
+const COUNTER_ATTACK_TACTIC_TYPE = 2;
+const COUNTER_ATTACK_MIDFIELD_PENALTY = 0.07;
+
 // "Индекс силы" — НАШ СОБСТВЕННЫЙ расчётный показатель силы команды в этом
 // конкретном матче, а не официальный показатель Hattrick и не формула
 // HatStats/LoddarStats (та запатентована сообществом и не публикуется —
@@ -628,26 +650,33 @@ function parseZoneRatings(team: Record<string, unknown> | undefined): MatchZoneR
 //   Полузащита — одна зона (1-80), выступает МНОЖИТЕЛЕМ, а не слагаемым:
 //   команда с одинаковой защитой/атакой, но более сильной полузащитой,
 //   получает более высокий индекс — коэффициент 0.75 (полузащита=0) .. 1.25
-//   (полузащита=80), 1.0 при полузащите=40 (середина шкалы).
+//   (полузащита=80), 1.0 при полузащите=40 (середина шкалы). При тактике
+//   "Контратаки" полузащита сначала уменьшается на COUNTER_ATTACK_MIDFIELD_PENALTY
+//   (см. комментарий выше) — ДО подстановки в коэффициент.
 //   Итог нормализован делением на теоретический максимум (защита=240,
-//   атака=240, коэффициент=1.25) так, чтобы жёстко получалось 0-100.
+//   атака=240, коэффициент=1.25 — потолок не зависит от тактики конкретной
+//   команды, поэтому не меняется) так, чтобы жёстко получалось 0-100.
 // Считается только если ВСЕ 7 зон пришли реальными числами — при частичных
 // данных честно null, а не расчёт на угадываемых нулях.
-function computePowerIndex(zones: MatchZoneRatings | null): number | null {
+function computePowerIndex(zones: MatchZoneRatings | null, tacticType: number | null): number | null {
   if (!zones) return null;
   const { leftDef, midDef, rightDef, midfield, leftAtt, midAtt, rightAtt } = zones;
   if ([leftDef, midDef, rightDef, midfield, leftAtt, midAtt, rightAtt].some((v) => v === null)) return null;
   const defense = (leftDef as number) + (midDef as number) + (rightDef as number);
   const attack = (leftAtt as number) + (midAtt as number) + (rightAtt as number);
-  const coefficient = 0.75 + ((midfield as number) / 80) * 0.5;
+  const effectiveMidfield =
+    tacticType === COUNTER_ATTACK_TACTIC_TYPE
+      ? (midfield as number) * (1 - COUNTER_ATTACK_MIDFIELD_PENALTY)
+      : (midfield as number);
+  const coefficient = 0.75 + (effectiveMidfield / 80) * 0.5;
   const maxRaw = (240 + 240) * 1.25;
   const raw = (defense + attack) * coefficient;
   return Math.max(0, Math.min(100, Math.round((raw / maxRaw) * 100)));
 }
 
 function parseTacticLabel(team: Record<string, unknown> | undefined): string | null {
-  if (!team || team.TacticType === undefined) return null;
-  const n = Number(team.TacticType);
+  const n = parseTacticType(team);
+  if (n === null) return null;
   return MATCH_TACTIC_LABEL[n] ?? `Тактика (тип ${n})`;
 }
 
@@ -1341,8 +1370,8 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
   let homePowerIndex: number | null = null;
   let awayPowerIndex: number | null = null;
   try {
-    homePowerIndex = computePowerIndex(homeZones);
-    awayPowerIndex = computePowerIndex(awayZones);
+    homePowerIndex = computePowerIndex(homeZones, parseTacticType(homeTeam));
+    awayPowerIndex = computePowerIndex(awayZones, parseTacticType(awayTeam));
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     debug.push(`Индекс силы: исключение при расчёте — ${message}`);

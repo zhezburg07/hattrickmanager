@@ -888,7 +888,9 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
               <p style={{ fontSize: 11.5, color: "var(--color-text-muted)", marginTop: 6, marginBottom: 0 }}>
                 "Отношение к матчу" CHPP отдаёт только владельцу команды — для соперника поле честно отсутствует (не
                 "—" по ошибке). "Индекс силы" — наш собственный расчётный показатель (защита + атака, взвешенные по
-                силе полузащиты, 0-100), а не официальный показатель Hattrick и не формула HatStats/LoddarStats.
+                силе полузащиты, 0-100), а не официальный показатель Hattrick и не формула HatStats/LoddarStats. При
+                тактике "Контратаки" полузащита в расчёте учтена с официальной поправкой вики Hattrick (−7%) —
+                подтверждено эмпирически, что сам RatingMidfield эту поправку не содержит.
               </p>
             </div>
 
