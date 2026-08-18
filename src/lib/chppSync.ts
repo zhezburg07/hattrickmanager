@@ -746,6 +746,8 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
                   formulaVersion: RATING_FORMULA_VERSION,
                   predictedRaw,
                   actualRatingStars: c.actualRatingStars,
+                  ratingStarsFull: c.ratingStarsFull,
+                  ratingStarsEndOfMatch: c.ratingStarsEndOfMatch,
                 });
               })().catch(() => {
                 // Один игрок/матч — не должен ронять остальной цикл калибровки.

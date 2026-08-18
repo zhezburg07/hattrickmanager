@@ -117,9 +117,19 @@ function asArray(value: unknown): Record<string, unknown>[] {
 // или относится к скамейке/спецроли. Добавлено для "Калибровка позиционного
 // рейтинга по реальным звёздам Hattrick" (см. план в .claude/plans, шаг 1) —
 // раньше эта функция отдавала только рейтинг, roleId отбрасывался.
+//
+// ratingStarsFull/ratingStarsEndOfMatch — ОБЕ оценки звёзд по отдельности
+// (см. чат "Калькулятор оптимальной минуты замены" — сбор данных для
+// будущей калибровки формулы усталости, шаг 1 плана). rating (выше) — как и
+// раньше, ТОЛЬКО для отображения/существующей позиционной калибровки, его
+// логика (RatingStars ?? RatingStarsEndOfMatch) не меняется. Новые два поля
+// — сырые значения независимо друг от друга, null если конкретное поле не
+// пришло в этом ответе (не гадаем, не подставляем одно вместо другого).
 export interface MatchLineupRatingEntry {
   rating: number;
   roleId: number | null;
+  ratingStarsFull: number | null;
+  ratingStarsEndOfMatch: number | null;
 }
 
 export function parseMatchLineupRatings(xml: string): Record<number, MatchLineupRatingEntry> {
@@ -158,9 +168,22 @@ export function parseMatchLineupRatings(xml: string): Record<number, MatchLineup
     const roleId = roleIdRaw !== undefined ? Number(roleIdRaw) : null;
     const isFieldRole = roleId !== null && roleId >= 100 && roleId <= 113;
 
+    // Обе оценки НЕЗАВИСИМО друг от друга (см. комментарий у
+    // MatchLineupRatingEntry выше) — только для будущей калибровки, не
+    // участвуют в выборе rating/roleId выше.
+    const fullRaw = p.RatingStars !== undefined ? Number(p.RatingStars) : NaN;
+    const endOfMatchRaw = p.RatingStarsEndOfMatch !== undefined ? Number(p.RatingStarsEndOfMatch) : NaN;
+    const ratingStarsFull = Number.isNaN(fullRaw) ? null : fullRaw;
+    const ratingStarsEndOfMatch = Number.isNaN(endOfMatchRaw) ? null : endOfMatchRaw;
+
     const existing = ratings[id];
     if (!existing || isFieldRole) {
-      ratings[id] = { rating, roleId: isFieldRole ? roleId : (existing?.roleId ?? roleId) };
+      ratings[id] = {
+        rating,
+        roleId: isFieldRole ? roleId : (existing?.roleId ?? roleId),
+        ratingStarsFull,
+        ratingStarsEndOfMatch,
+      };
     }
   }
   return ratings;
@@ -180,6 +203,12 @@ export interface CalibrationCandidate {
   roleId: number;
   slotRole: SlotRole;
   actualRatingStars: number;
+  // Обе оценки звёзд по отдельности — только сбор данных для будущей
+  // калибровки калькулятора замены (см. чат "Калькулятор оптимальной минуты
+  // замены", шаг 1), не используются позиционной калибровкой рейтинга
+  // (actualRatingStars выше). null, если конкретное поле не пришло.
+  ratingStarsFull: number | null;
+  ratingStarsEndOfMatch: number | null;
 }
 
 // Только игроки СТАРТОВОГО состава (RoleID 100-113) — вышедшие на замену/
@@ -210,6 +239,8 @@ export function buildCalibrationCandidates(
         roleId: entry.roleId,
         slotRole,
         actualRatingStars: entry.rating,
+        ratingStarsFull: entry.ratingStarsFull,
+        ratingStarsEndOfMatch: entry.ratingStarsEndOfMatch,
       });
     }
   });

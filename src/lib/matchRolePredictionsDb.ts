@@ -49,6 +49,17 @@ async function ensureTable(): Promise<void> {
       PRIMARY KEY (match_id, player_id)
     )
   `;
+  // Обе оценки звёзд по отдельности (см. чат "Калькулятор оптимальной
+  // минуты замены", шаг 1 плана) — тот же аддитивный приём миграции, что
+  // уже применялся для loyalty/is_club_product выше (ALTER TABLE ADD COLUMN
+  // IF NOT EXISTS, а не новая таблица: тот же ключ match_id+player_id, те
+  // же навыки/stamina уже есть в этой строке — стамина нужна и будущей
+  // формуле усталости). ЧИСТО сбор данных — ничем пока не читаются, не
+  // участвуют в существующей позиционной калибровке (actual_rating_stars
+  // выше остаётся её единственным входом, логика та же, что и раньше).
+  // Nullable — конкретное поле может не прийти в ответе CHPP.
+  await db`ALTER TABLE match_role_predictions ADD COLUMN IF NOT EXISTS rating_stars_full NUMERIC`;
+  await db`ALTER TABLE match_role_predictions ADD COLUMN IF NOT EXISTS rating_stars_end_of_match NUMERIC`;
   tableEnsured = true;
 }
 
@@ -76,6 +87,12 @@ export interface MatchRolePredictionRecord {
   formulaVersion: string;
   predictedRaw: number;
   actualRatingStars: number;
+  // Обе оценки звёзд по отдельности — только сбор данных для будущей
+  // калибровки калькулятора замены (см. чат "Калькулятор оптимальной минуты
+  // замены", шаг 1), не влияют на actualRatingStars/существующую
+  // позиционную калибровку. null, если конкретное поле не пришло от CHPP.
+  ratingStarsFull: number | null;
+  ratingStarsEndOfMatch: number | null;
 }
 
 // Сохраняет пару "прогноз/реальность" для одного игрока в одном матче. В
@@ -94,12 +111,14 @@ export async function saveMatchRolePrediction(record: MatchRolePredictionRecord)
     INSERT INTO match_role_predictions (
       match_id, player_id, match_date, role_id, slot_role,
       skills, experience, form, stamina, loyalty, is_club_product,
-      formula_version, predicted_raw, actual_rating_stars
+      formula_version, predicted_raw, actual_rating_stars,
+      rating_stars_full, rating_stars_end_of_match
     ) VALUES (
       ${record.matchId}, ${record.playerId}, ${toTimestamp(record.matchDate)}, ${record.roleId}, ${record.slotRole},
       ${JSON.stringify(record.skills)}, ${record.experience}, ${record.form}, ${record.stamina},
       ${record.loyalty}, ${record.isClubProduct},
-      ${record.formulaVersion}, ${record.predictedRaw}, ${record.actualRatingStars}
+      ${record.formulaVersion}, ${record.predictedRaw}, ${record.actualRatingStars},
+      ${record.ratingStarsFull}, ${record.ratingStarsEndOfMatch}
     )
     ON CONFLICT (match_id, player_id) DO NOTHING
   `;
