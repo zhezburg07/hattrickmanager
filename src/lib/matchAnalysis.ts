@@ -280,6 +280,40 @@ const MISSED_OTHER = new Set([
   207, 287, 288,
 ]);
 
+// Дальние удары (тактика "Дальние удары", TacticType=8, см. MATCH_TACTIC_LABEL)
+// — подмножество кодов ВНУТРИ GOAL_OTHER/MISSED_OTHER выше (не убираем их
+// оттуда — существующая разбивка по зонам этого не требует и не должна
+// измениться), но также отслеживаются ОТДЕЛЬНО для точного подсчёта попыток
+// дальних ударов за матч (см. чат "Учёт эффектов всех 6 тактик Hattrick",
+// этап 1). Коды подтверждены построчно по HattrickOrganizer,
+// core/model/match/MatchEvent.java — метод isLongShot() перечисляет ровно
+// эти пять: GOAL_LONG_SHOT_NO_TACTIC(107), GOAL_LONG_SHOT(187),
+// NO_GOAL_LONG_SHOT_NO_TACTIC(207), NO_GOAL_LONG_SHOT(287),
+// NO_GOAL_LONG_SHOT_DEFENDED(288) — последний, по имени, судя по всему тот
+// самый "предотвращённый" дальний удар, упомянутый в официальном описании
+// тактики (взаимодействие с Прессингом соперника).
+const LONG_SHOT_GOAL_EVENT_IDS = new Set([107, 187]);
+const LONG_SHOT_MISSED_EVENT_IDS = new Set([207, 287, 288]);
+
+// Коды, для которых есть КОНКРЕТНАЯ гипотеза по официальному тексту вики
+// Hattrick (см. чат "Учёт эффектов всех 6 тактик Hattrick"), но которая ещё
+// НЕ подтверждена на живом матче — в отличие от KNOWN_NON_CHANCE_EVENT_IDS
+// (те уже расследованы и закрыты). Источник кодов — тот же
+// HattrickOrganizer/MatchEvent.java: SUCCESSFUL_PRESSING(68) — судя по
+// имени и официальному тексту "разрушил потенциальную атаку", тактика
+// Прессинг (TacticType=1), но БЕЗ возможности определить, чья именно атака
+// была бы разрушена (сама вики это подтверждает — "нельзя определить, чья
+// именно атака"); TACTIC_ATTACK_IN_MIDDLE_USED(343)/TACTIC_ATTACK_ON_WINGS_USED(344)
+// — отдельные от TACTIC_TYPE_ATTACK_IN_MIDDLE(333)/TACTIC_TYPE_ATTACK_ON_WINGS(334)
+// (те — одноразовое объявление выбора тактики в начале матча, уже
+// известны), судя по суффиксу "_USED" и отдельной логике показа иконки —
+// вероятно, срабатывают на КАЖДЫЙ перевод момента в центр/на фланг.
+const SUSPECTED_TACTIC_EVENT_IDS: Record<number, string> = {
+  68: "предположительно: успешный прессинг (SUCCESSFUL_PRESSING) — Прессинг сорвал момент соперника, чья именно атака не определить",
+  343: "предположительно: тактика 'Атака в центре' перевела момент в центр (TACTIC_ATTACK_IN_MIDDLE_USED)",
+  344: "предположительно: тактика 'Атака по флангам' перевела момент на фланг (TACTIC_ATTACK_ON_WINGS_USED)",
+};
+
 // Коды EventTypeID вне диапазонов голов/непопаданий (100-190/200-290),
 // подтверждённые построчной сверкой с полным текстом enum MatchEventID
 // (HattrickOrganizer, core/model/match/MatchEvent.java) — НЕ атакующие
@@ -309,14 +343,18 @@ function currentEventClassificationLabel(typeId: number): string {
   if (GOAL_ZONE_CENTER.has(typeId)) return "Голы→Ц";
   if (GOAL_ZONE_RIGHT.has(typeId)) return "Голы→П";
   if (GOAL_SPECIAL_EVENT.has(typeId)) return "Голы→Спец";
+  if (LONG_SHOT_GOAL_EVENT_IDS.has(typeId)) return "Голы→Другое (дальний удар)";
   if (GOAL_OTHER.has(typeId)) return "Голы→Другое";
   if (MISSED_ZONE_LEFT.has(typeId)) return "Непопадания→Л";
   if (MISSED_ZONE_CENTER.has(typeId)) return "Непопадания→Ц";
   if (MISSED_ZONE_RIGHT.has(typeId)) return "Непопадания→П";
   if (MISSED_SPECIAL_EVENT.has(typeId)) return "Непопадания→Спец";
+  if (LONG_SHOT_MISSED_EVENT_IDS.has(typeId)) return "Непопадания→Другое (дальний удар)";
   if (MISSED_OTHER.has(typeId)) return "Непопадания→Другое";
   const known = KNOWN_NON_CHANCE_EVENT_IDS[typeId];
   if (known) return `не момент атаки — ${known} (ожидаемо)`;
+  const suspected = SUSPECTED_TACTIC_EVENT_IDS[typeId];
+  if (suspected) return suspected;
   return "НЕ классифицирован (вне GOAL_*/MISSED_* таблиц) — требует проверки";
 }
 
@@ -503,6 +541,47 @@ function computeAttackZoneBreakdown(
     missedSpecialEvents: resolved["Спецсобытия"].missed,
     missedOther: resolved["Другое"].missed,
   };
+}
+
+// Точный подсчёт попыток дальних ударов за матч (см. чат "Учёт эффектов
+// всех 6 тактик Hattrick", этап 1, "Дальние удары") — коды уже входят в
+// GOAL_OTHER/MISSED_OTHER (существующая разбивка по зонам не трогается),
+// здесь просто отдельно посчитаны для точной статистики именно по этой
+// тактике. Нет отдельного официального поля matchdetails с итогом "сколько
+// было дальних ударов" — сверить не с чем, поэтому это сырой подсчёт по
+// EventList, а не подтверждённое числo (см. debug-строка ниже, честно об
+// этом говорит).
+function countLongShotAttempts(match: Record<string, unknown>, teamId: string): { goals: number; misses: number } {
+  const eventList = match.EventList as Record<string, unknown> | undefined;
+  const events = asArray(eventList?.Event);
+  let goals = 0;
+  let misses = 0;
+  for (const e of events) {
+    if (String(e.SubjectTeamID ?? "") !== teamId) continue;
+    const typeId = Number(e.EventTypeID ?? NaN);
+    if (Number.isNaN(typeId)) continue;
+    if (LONG_SHOT_GOAL_EVENT_IDS.has(typeId)) goals++;
+    else if (LONG_SHOT_MISSED_EVENT_IDS.has(typeId)) misses++;
+  }
+  return { goals, misses };
+}
+
+// Подсчёт кодов из SUSPECTED_TACTIC_EVENT_IDS (см. комментарий там) — ещё
+// НЕ подтверждённая гипотеза, поэтому результат идёт только в debug (не
+// используется ни в одной официальной цифре), с явной целью — дать
+// проверяемые числа для сверки с реальным отчётом матча на hattrick.org
+// (см. чат "Учёт эффектов всех 6 тактик Hattrick", этапы 2-3).
+function countSuspectedTacticEvents(match: Record<string, unknown>, teamId: string): Record<number, number> {
+  const eventList = match.EventList as Record<string, unknown> | undefined;
+  const events = asArray(eventList?.Event);
+  const counts: Record<number, number> = {};
+  for (const e of events) {
+    if (String(e.SubjectTeamID ?? "") !== teamId) continue;
+    const typeId = Number(e.EventTypeID ?? NaN);
+    if (Number.isNaN(typeId) || !(typeId in SUSPECTED_TACTIC_EVENT_IDS)) continue;
+    counts[typeId] = (counts[typeId] ?? 0) + 1;
+  }
+  return counts;
 }
 
 export type MatchTimelineKind = "goal" | "card" | "sub" | "injury" | "miss" | "special";
@@ -1480,6 +1559,41 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     const awayZoneBreakdown = computeAttackZoneBreakdown(match, awayTeamId, awayAttackStats, "гости", debug);
     if (homeAttackStats) homeAttackStats = { ...homeAttackStats, ...homeZoneBreakdown };
     if (awayAttackStats) awayAttackStats = { ...awayAttackStats, ...awayZoneBreakdown };
+
+    // Дальние удары — точный подсчёт попыток (см. countLongShotAttempts
+    // выше, этап 1 плана "Учёт эффектов всех 6 тактик Hattrick"). Тактика
+    // (homeTactic/awayTactic) добавлена для контекста — ожидаемо ненулевые
+    // числа в основном при TacticType=8 у соответствующей стороны, но
+    // дальний удар в принципе возможен и без этой тактики (коды *_NO_TACTIC).
+    const homeLongShots = countLongShotAttempts(match, homeTeamId);
+    const awayLongShots = countLongShotAttempts(match, awayTeamId);
+    debug.push(
+      `Дальние удары из EventList: хозяева (тактика: ${homeTactic ?? "нет данных"}) — голы=${homeLongShots.goals}, ` +
+        `непопадания=${homeLongShots.misses}, всего попыток=${homeLongShots.goals + homeLongShots.misses}; ` +
+        `гости (тактика: ${awayTactic ?? "нет данных"}) — голы=${awayLongShots.goals}, непопадания=${awayLongShots.misses}, ` +
+        `всего попыток=${awayLongShots.goals + awayLongShots.misses}.`,
+    );
+
+    // Прессинг/Атака в центре/Атака по флангам — коды ПОКА не подтверждены
+    // на живом матче (см. SUSPECTED_TACTIC_EVENT_IDS выше, этапы 2-3 того же
+    // плана). Считаются и логируются отдельно от общего дампа
+    // debugEventTypeBreakdown, чтобы сразу было видно: (а) появляются ли эти
+    // коды вообще, (б) коррелирует ли их количество и сторона с реально
+    // выбранной тактикой этой же команды в этом матче — первая, дешёвая
+    // проверка гипотезы ещё до похода на реальный отчёт hattrick.org.
+    const homeSuspected = countSuspectedTacticEvents(match, homeTeamId);
+    const awaySuspected = countSuspectedTacticEvents(match, awayTeamId);
+    const fmtSuspected = (counts: Record<number, number>) =>
+      Object.keys(counts).length === 0
+        ? "не встретились"
+        : Object.entries(counts)
+            .map(([id, n]) => `${SUSPECTED_TACTIC_EVENT_IDS[Number(id)]}: ${n}`)
+            .join("; ");
+    debug.push(
+      `Предположительные коды тактик (ещё не подтверждено, см. чат "Учёт эффектов всех 6 тактик Hattrick"): ` +
+        `хозяева (тактика: ${homeTactic ?? "нет данных"}) — ${fmtSuspected(homeSuspected)}; ` +
+        `гости (тактика: ${awayTactic ?? "нет данных"}) — ${fmtSuspected(awaySuspected)}.`,
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     debug.push(`attackStats: исключение при разборе — ${message}`);
