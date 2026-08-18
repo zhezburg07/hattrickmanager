@@ -1870,6 +1870,13 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     // в StoredCupInfo) — не рискуем закрепить уже ошибочное значение.
     const previousCupSnapshot = await getSnapshot<Record<string, unknown>>(hattrickUserId, DATA_KEYS.cupInfo);
     const previousLastReliableCupId = (previousCupSnapshot?.data?.lastReliableCupId as string | null | undefined) ?? null;
+    // ДОБАВЛЕНО (см. чат "Аудит проекта: производительность" — кэш пути по
+    // кубку) — пути прошлой синхронизации по CupID, для resolveOurCupPath
+    // (переиспользовать уже известные ЗАВЕРШЁННЫЕ раунды текущего кубка) и
+    // ниже для уже пройденных кубков (кубок, из которого выбыли, — путь
+    // больше никогда не меняется, повторный обход раундов не нужен вовсе).
+    const previousCupPaths = (previousCupSnapshot?.data?.cupPaths as OurCupPathResult[] | undefined) ?? [];
+    const previousCupPathById = new Map(previousCupPaths.map((p) => [p.cupId, p]));
 
     if (!cupId && previousLastReliableCupId) {
       cupId = previousLastReliableCupId;
@@ -1887,7 +1894,9 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
 
     let currentCupPath: OurCupPathResult | null = null;
     if (cupId && teamId) {
-      currentCupPath = await resolveOurCupPath(tokens, cupId, teamId, ourTeamName);
+      const cachedCurrent = previousCupPathById.get(cupId);
+      const cachedCurrentPath = cachedCurrent && !cachedCurrent.error ? cachedCurrent.path : [];
+      currentCupPath = await resolveOurCupPath(tokens, cupId, teamId, ourTeamName, cachedCurrentPath);
       debug.pathDebug = currentCupPath.debug;
       if (currentCupPath.error) errors.push(currentCupPath.error);
     }
@@ -1929,9 +1938,20 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     // раундов cupmatches.xml (resolvePastCupPath, тот же надёжный приём,
     // что и для активного кубка выше) — подтверждено рабочим, построчная
     // диагностика убрана (см. чат "Уборка диагностики").
+    //
+    // ДОБАВЛЕНО (см. чат "Аудит проекта: производительность" — кэш пути по
+    // кубку) — кубок, из которого команда уже выбыла, больше не сыграет ни
+    // одного нового матча НИКОГДА (в отличие от активного кубка выше, где
+    // текущий раунд ещё может измениться) — если путь по этому CupID уже
+    // был успешно построен в прошлой синхронизации, он гарантированно не
+    // изменится, и весь обход раундов (до MAX_PAST_CUP_ROUNDS запросов на
+    // кубок) можно полностью пропустить, а не повторять на каждой
+    // синхронизации без пользы.
     const pastCupPaths = (
       await Promise.all(
         pastCupIds.map(async (id) => {
+          const cached = previousCupPathById.get(id);
+          if (cached && !cached.error && cached.path.length > 0) return cached;
           const meta = await fetchCupMeta(tokens, id);
           if (currentSeason !== null && meta && meta.season !== currentSeason) return null;
           const walkSeason = meta?.season ?? currentSeason;

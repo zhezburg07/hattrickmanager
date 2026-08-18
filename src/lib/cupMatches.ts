@@ -192,12 +192,25 @@ async function fetchCupRound(
 // раунды (после текущего) не запрашиваются — соперник в них ещё не определён
 // самим Hattrick, пока не сыгран текущий этап, так что там честно нечего
 // показывать.
+// ДОБАВЛЕНО (см. чат "Аудит проекта: производительность" — кэш пути по
+// кубку) — cachedPath: путь ТОГО ЖЕ CupID из предыдущей синхронизации (см.
+// вызывающий код в chppSync.ts, previousCupPathById). Раунды, где наш матч
+// уже был найден ЗАВЕРШЁННЫМ (status === "FINISHED"), больше никогда не
+// меняются на стороне Hattrick — их не нужно перезапрашивать на каждой
+// синхронизации, как раньше. Текущий/последний раунд турнирной сетки
+// (current.round) всегда запрашивается заново без исключений — именно там
+// может смениться статус (UPCOMING → FINISHED) или наступить новый раунд.
 export async function resolveOurCupPath(
   tokens: StoredHattrickTokens,
   cupId: string,
   ourTeamId: string,
   ourTeamName = "",
+  cachedPath: RealCupMatch[] = [],
 ): Promise<OurCupPathResult> {
+  const cachedByRound = new Map<number, RealCupMatch>();
+  for (const m of cachedPath) {
+    if (m.status === "FINISHED") cachedByRound.set(m.round, m);
+  }
   const debug: string[] = [];
   const { result: current, error } = await fetchCupRound(tokens, cupId, ourTeamId);
   if (error || !current) {
@@ -223,6 +236,14 @@ export async function resolveOurCupPath(
   if (current.ourMatch) path.push(current.ourMatch);
 
   for (let round = current.round - 1; round >= 1; round--) {
+    const cached = cachedByRound.get(round);
+    if (cached) {
+      path.unshift(cached);
+      debug.push(
+        `Раунд ${round}: взят из кэша предыдущей синхронизации, без нового запроса (дата ${cached.date}, соперник «${cached.opponent}»).`,
+      );
+      continue;
+    }
     const { result: past, error: pastError } = await fetchCupRound(tokens, cupId, ourTeamId, {
       season: current.season,
       round,
