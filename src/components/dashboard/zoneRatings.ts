@@ -339,19 +339,66 @@ const POSITION_GROUP_SLOT_ROLES: Record<PositionGroup, SlotRole[]> = {
   FWD: ["FWD_WIDE", "FWD_CENTRAL"],
 };
 
-// "Потенциал" в таблицах "Состав"/"Расстановка" — та же формула и та же
-// калибровка, что и число на занятом слоте поля (computeSlotRatingBreakdown/
-// applyCalibration), а не отдельная упрощённая оценка. Игрок вне поля не
-// привязан к конкретному слоту (фланг/центр), поэтому берём МАКСИМУМ среди
-// всех ролей слота его позиционной группы — "какой лучший рейтинг он в
-// принципе способен дать где-то в этой линии прямо сейчас". Калибровка
-// применяется ОТДЕЛЬНО к каждой роли (у фланга и центра разные
-// коэффициенты), а максимум берётся уже среди откалиброванных чисел — не
-// наоборот, иначе максимум сырых рейтингов мог бы выбрать роль, которая на
-// самом деле после калибровки даёт результат похуже. Раньше здесь была
-// отдельная, куда более грубая оценка (estimatePotentialRating в squad.ts,
-// один навык + бонус формы, искусственно зажатая в [0, 10]) — диапазон
-// теперь НЕ ограничен сверху, как и у самой шкалы звёзд Hattrick.
+// ---- ВРЕМЕННОЕ УПРОЩЕНИЕ ОТОБРАЖЕНИЯ (см. чат "Временно упростить
+// отображение позиционного рейтинга") — computeSlotRatingBreakdown без
+// калибровки ничем не сжат сверху (взвешенное среднее навыков 0-20 плюс
+// небольшие бонусы) и легко показывает "17"-"18" на сильном защитнике —
+// непривычно и пугающе рядом с реальной шкалой звёзд Hattrick (0.5 и выше,
+// но матчевые оценки обычно 3-9). Пока датасет калибровки (см.
+// match_role_predictions, chppSync.ts) ещё маленький и калибровка почти
+// нигде не применяется, ПОКАЗЫВАЕМ пользователю вместо этого старую простую
+// оценку — один главный навык роли + бонус формы, зажатую в привычный
+// диапазон 0-10 (та же логика, что была у estimatePotentialRating в
+// squad.ts до "Унифицировать Потенциал с расчётом на слотах поля", только
+// теперь по КОНКРЕТНОЙ роли слота, а не по общей позиционной группе —
+// главный навык каждой роли взят из уже одобренного slotRoleWeights выше,
+// это его навык с наибольшим весом).
+//
+// Фоновый сбор данных для калибровки (computeSlotRatingBreakdown,
+// RATING_FORMULA_VERSION, запись в match_role_predictions в chppSync.ts) НЕ
+// затрагивается и продолжает работать полной формулой, как и раньше —
+// меняется только то, что видит пользователь. Когда датасет наберётся,
+// mainSkillByRole/estimateSimpleSlotPotential ниже нужно убрать и вернуть
+// computeSlotRatingBreakdown/applyCalibration как источник отображаемого
+// числа и в computePlayerPotential, и в LineupField.tsx.
+const mainSkillByRole: Record<SlotRole, keyof SquadSkills> = {
+  GK: "goalkeeping",
+  DEF_WIDE: "defending",
+  DEF_CENTRAL: "defending",
+  MID_WIDE: "winger",
+  MID_CENTRAL: "midfield",
+  FWD_CENTRAL: "scoring",
+  FWD_WIDE: "scoring",
+};
+
+export function estimateSimpleSlotPotential(player: Pick<RatingInputs, "skills" | "form">, role: SlotRole): number {
+  const mainSkill = player.skills[mainSkillByRole[role]];
+  const base = (mainSkill / 20) * 8.5;
+  const formBonus = (player.form / 8) * 1.5;
+  return Math.max(0, Math.min(10, base + formBonus));
+}
+
+export function formatSimpleSlotPotentialTooltip(rating: number, roleLabel: string): string {
+  return (
+    `Ориентировочный потенциал на позиции ${roleLabel}: ${rating.toFixed(1)}★ ` +
+    `(упрощённая временная оценка — главный навык роли + бонус формы; полная формула с ` +
+    `калибровкой по реальным матчам вернётся, когда накопится достаточно данных).`
+  );
+}
+
+// "Потенциал" в таблицах "Состав"/"Расстановка" — на время упрощения
+// отображения (см. блок выше) использует ту же простую оценку, что и число
+// на занятом слоте поля (estimateSimpleSlotPotential), а НЕ
+// computeSlotRatingBreakdown/applyCalibration. Игрок вне поля не привязан к
+// конкретному слоту (фланг/центр), поэтому берём МАКСИМУМ среди всех ролей
+// слота его позиционной группы — "какой лучший рейтинг он в принципе
+// способен дать где-то в этой линии прямо сейчас" — та же идея, что и
+// раньше, просто на упрощённых числах.
+//
+// calibrations/teamMoraleValue/teamConfidenceValue временно не используются
+// (сигнатура сохранена как есть, чтобы не трогать вызывающий код в
+// SquadTable.tsx/LineupPlayerList.tsx/squadCells.tsx — он передаёт их
+// по-прежнему) — вернутся в дело при откате упрощения.
 export function computePlayerPotential(
   player: RatingInputs,
   positionGroup: PositionGroup,
@@ -360,14 +407,7 @@ export function computePlayerPotential(
   teamConfidenceValue?: number | null,
 ): number {
   const roles = POSITION_GROUP_SLOT_ROLES[positionGroup];
-  return Math.max(
-    ...roles.map((role) =>
-      applyCalibration(
-        computeSlotRatingBreakdown(player, role, teamMoraleValue, teamConfidenceValue).rating,
-        calibrations[role] ?? null,
-      ),
-    ),
-  );
+  return Math.max(...roles.map((role) => estimateSimpleSlotPotential(player, role)));
 }
 
 // Тренд КОНКРЕТНОГО игрока на конкретной роли — среднее РЕАЛЬНОЕ
