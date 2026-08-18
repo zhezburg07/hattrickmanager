@@ -2,13 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { findByIdentifier } from "@/lib/accountsDb";
 import { verifyPassword } from "@/lib/passwordAuth";
 import { SESSION_COOKIE, buildSessionCookieValue } from "@/lib/siteSession";
-import { checkRateLimit, clientIp } from "@/lib/rateLimit";
+import { clientIp } from "@/lib/rateLimit";
+import { checkLoginLockout, recordFailedLogin, recordLoginSuccess } from "@/lib/loginLockout";
 
-// 10 попыток за 15 минут на IP — типичный порог защиты от перебора пароля,
-// достаточно щедрый, чтобы не мешать реальному пользователю, опечатавшемуся
-// пару раз (см. чат "Аудит проекта").
-const LOGIN_RATE_LIMIT_MAX = 10;
-const LOGIN_RATE_LIMIT_WINDOW_SECONDS = 15 * 60;
+const RATE_LIMIT_MESSAGE = "Слишком много попыток входа. Попробуйте позже.";
 
 // Без maxAge — это намеренно обычная сессионная cookie: вход по паролю
 // должен требовать повторного ввода логина/пароля при каждом новом визите
@@ -32,24 +29,22 @@ function cookieOptions() {
 // подписанный ID аккаунта (см. src/lib/accountsDb.ts), не сам Hattrick-
 // токен — тот (если команда подключена) уже лежит в базе отдельно.
 export async function POST(request: NextRequest) {
+  const bucketKey = `login:${clientIp(request)}`;
+
   try {
-    const rateLimit = await checkRateLimit(
-      `login:${clientIp(request)}`,
-      LOGIN_RATE_LIMIT_MAX,
-      LOGIN_RATE_LIMIT_WINDOW_SECONDS,
-    );
-    if (!rateLimit.allowed) {
+    const lockout = await checkLoginLockout(bucketKey);
+    if (lockout.blocked) {
       return NextResponse.json(
-        { error: "Слишком много попыток входа. Попробуйте позже." },
-        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } },
+        { error: RATE_LIMIT_MESSAGE },
+        { status: 429, headers: { "Retry-After": String(lockout.retryAfterSeconds) } },
       );
     }
   } catch (err) {
-    // Rate limit не должен блокировать вход, если сама проверка не удалась
-    // (например, БД временно недоступна) — честно логируем и пускаем
-    // дальше, а не превращаем сбой инфраструктуры защиты в отказ в доступе
-    // для всех.
-    console.error("Rate limit (вход): не удалось проверить —", err instanceof Error ? err.message : err);
+    // Ограничение входа не должно блокировать вход, если сама проверка не
+    // удалась (например, БД временно недоступна) — честно логируем и
+    // пускаем дальше, а не превращаем сбой инфраструктуры защиты в отказ в
+    // доступе для всех.
+    console.error("Ограничение входа: не удалось проверить блокировку —", err instanceof Error ? err.message : err);
   }
 
   let body: { identifier?: string; password?: string };
@@ -70,13 +65,38 @@ export async function POST(request: NextRequest) {
     const record = await findByIdentifier(identifier);
     // Намеренно один и тот же ответ и когда логин/email не найден, и когда
     // пароль не подошёл — чтобы нельзя было перебором узнать, какие
-    // логины/email вообще зарегистрированы.
-    const invalidResponse = () => NextResponse.json({ error: "Неверный логин, email или пароль." }, { status: 401 });
+    // логины/email вообще зарегистрированы. Обе ветки одинаково считаются
+    // неудачной попыткой для лестницы блокировок (см. loginLockout.ts) —
+    // перебор существующих логинов не должен обходить её просто потому,
+    // что конкретно этот логин не существует.
+    async function invalidResponse(): Promise<NextResponse> {
+      try {
+        const attempt = await recordFailedLogin(bucketKey);
+        if (attempt.blocked) {
+          return NextResponse.json(
+            { error: RATE_LIMIT_MESSAGE },
+            { status: 429, headers: { "Retry-After": String(attempt.retryAfterSeconds) } },
+          );
+        }
+        if (attempt.warning) {
+          return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 401 });
+        }
+      } catch (err) {
+        console.error("Ограничение входа: не удалось записать неудачную попытку —", err instanceof Error ? err.message : err);
+      }
+      return NextResponse.json({ error: "Неверный логин, email или пароль." }, { status: 401 });
+    }
 
-    if (!record) return invalidResponse();
+    if (!record) return await invalidResponse();
 
     const matches = await verifyPassword(password, record.passwordHash);
-    if (!matches) return invalidResponse();
+    if (!matches) return await invalidResponse();
+
+    try {
+      await recordLoginSuccess(bucketKey);
+    } catch (err) {
+      console.error("Ограничение входа: не удалось сбросить счётчик после успешного входа —", err instanceof Error ? err.message : err);
+    }
 
     const response = NextResponse.json({ ok: true });
     response.cookies.set(SESSION_COOKIE, buildSessionCookieValue(record.accountId), cookieOptions());
