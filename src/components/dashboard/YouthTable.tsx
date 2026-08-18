@@ -111,8 +111,17 @@ export default function YouthTable({
   players,
 }: {
   youthLevel?: number;
-  players?: RealYouthPlayer[];
+  players?: RealYouthPlayer[] | null;
 }) {
+  // ИСПРАВЛЕНО (см. чат "Юношеская команда: противоречивые тексты") —
+  // players === null/undefined означает "снимок не загрузился" (см.
+  // youthError в chppSync.ts, распространяется через getStoredYouthData),
+  // а players === [] означает "запрос успешен, академия реально пуста"
+  // (например, youthLevel === 0). Раньше оба случая сливались в один и тот
+  // же roster.length === 0, поэтому сообщение "не удалось загрузить"
+  // ошибочно показывалось и для нормального пустого состояния — теперь
+  // они различаются явно.
+  const dataUnavailable = players == null;
   const roster = players ?? [];
   const [selectedPlayer, setSelectedPlayer] = useState<RealYouthPlayer | null>(null);
   const { overrides, setOverride } = usePositionOverrides();
@@ -164,7 +173,7 @@ export default function YouthTable({
       <div className={styles.card}>
         <div className={styles.cardTitle}>Юношеская команда ({roster.length} игроков)</div>
         <p className={styles.hint}>Все игроки младше 17 лет — потенциальное пополнение основного состава.</p>
-        {roster.length === 0 && (
+        {dataUnavailable && (
           <p className={styles.hint} style={{ marginTop: -8 }}>
             Список игроков академии не удалось загрузить.
           </p>
