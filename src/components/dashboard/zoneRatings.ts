@@ -352,10 +352,10 @@ const POSITION_GROUP_SLOT_ROLES: Record<PositionGroup, SlotRole[]> = {
 // на слотах поля", только теперь по КОНКРЕТНОЙ роли слота, а не по общей
 // позиционной группе — главный навык каждой роли взят из уже одобренного
 // slotRoleWeights выше, это его навык с наибольшим весом). В отличие от
-// estimatePotentialRating верхнего клэмпа НЕТ (только нижняя граница 0) —
-// реальная шкала звёзд Hattrick открыта сверху, при обычных навыках/форме
-// (0-20/0-8) формула и так не превышает 10, но искусственного потолка,
-// который расходился бы с открытой шкалой, быть не должно.
+// estimatePotentialRating коэффициенты вдвое больше (максимум при обычных
+// навыках/форме — около 20, а не 10, см. комментарий у самой функции ниже)
+// и верхнего клэмпа НЕТ (только нижняя граница 0) — реальная шкала звёзд
+// Hattrick открыта сверху, искусственного потолка быть не должно.
 //
 // Фоновый сбор данных для калибровки (computeSlotRatingBreakdown,
 // RATING_FORMULA_VERSION, запись в match_role_predictions в chppSync.ts) НЕ
@@ -374,14 +374,19 @@ const mainSkillByRole: Record<SlotRole, keyof SquadSkills> = {
   FWD_WIDE: "scoring",
 };
 
+// Коэффициенты (17 и 3) — вдвое больше исходных (8.5 и 1.5) у
+// estimatePotentialRating: та же относительная важность навыка vs формы,
+// но масштаб при обычной шкале навыков/формы (0-20/0-8) доходит примерно до
+// 20, а не до 10 — ближе к реально наблюдаемым оценкам Hattrick (13.5 и
+// выше на практике), а не искусственно сжат вдвое против реальной шкалы.
 // Только нижняя граница (0, не уходить в отрицательные числа) — верхнего
-// предела намеренно нет, реальная шкала звёзд Hattrick открыта сверху
-// (оценки 13.5 и выше на практике бывают, см. STAR_SCALE_FLOOR/комментарий
-// выше про потолок у applyCalibration — тот же принцип).
+// предела намеренно нет, реальная шкала звёзд Hattrick открыта сверху (см.
+// STAR_SCALE_FLOOR/комментарий выше про потолок у applyCalibration — тот же
+// принцип).
 export function estimateSimpleSlotPotential(player: Pick<RatingInputs, "skills" | "form">, role: SlotRole): number {
   const mainSkill = player.skills[mainSkillByRole[role]];
-  const base = (mainSkill / 20) * 8.5;
-  const formBonus = (player.form / 8) * 1.5;
+  const base = (mainSkill / 20) * 17;
+  const formBonus = (player.form / 8) * 3;
   return Math.max(0, base + formBonus);
 }
 
