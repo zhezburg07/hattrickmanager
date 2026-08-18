@@ -154,6 +154,24 @@ export default function YouthTable({
     setSortDir(ascendingByDefault.has(key) ? "asc" : "desc");
   }
 
+  // ИСПРАВЛЕНО (см. чат "Юношеская команда: уточнение текста для
+  // отсутствующей академии") — youthLevel === 0 надёжно означает "академии
+  // вообще нет" (см. club.youthLevel в getStoredYouthData), в отличие от
+  // youthLevel === undefined ("не удалось узнать"). В этом случае — ровно
+  // одно короткое однозначное сообщение вместо двух карточек (уровень
+  // академии + пустая таблица с отдельными пояснениями), чтобы не плодить
+  // по сути одно и то же на разный лад.
+  if (youthLevel === 0) {
+    return (
+      <div className={styles.card}>
+        <div className={styles.cardTitle}>Юношеская команда</div>
+        <p className={styles.hint} style={{ margin: 0 }}>
+          У вас пока нет юношеской команды.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className={styles.card}>
@@ -161,7 +179,6 @@ export default function YouthTable({
         {youthLevel !== undefined ? (
           <p className={styles.hint} style={{ margin: 0 }}>
             Уровень академии: <b>{youthLevel}</b>
-            {youthLevel === 0 && " — инвестиций в академию пока не было"}
           </p>
         ) : (
           <p className={styles.hint} style={{ margin: 0 }}>
