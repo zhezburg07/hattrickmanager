@@ -347,12 +347,15 @@ const POSITION_GROUP_SLOT_ROLES: Record<PositionGroup, SlotRole[]> = {
 // но матчевые оценки обычно 3-9). Пока датасет калибровки (см.
 // match_role_predictions, chppSync.ts) ещё маленький и калибровка почти
 // нигде не применяется, ПОКАЗЫВАЕМ пользователю вместо этого старую простую
-// оценку — один главный навык роли + бонус формы, зажатую в привычный
-// диапазон 0-10 (та же логика, что была у estimatePotentialRating в
-// squad.ts до "Унифицировать Потенциал с расчётом на слотах поля", только
-// теперь по КОНКРЕТНОЙ роли слота, а не по общей позиционной группе —
-// главный навык каждой роли взят из уже одобренного slotRoleWeights выше,
-// это его навык с наибольшим весом).
+// оценку — один главный навык роли + бонус формы (та же логика, что была у
+// estimatePotentialRating в squad.ts до "Унифицировать Потенциал с расчётом
+// на слотах поля", только теперь по КОНКРЕТНОЙ роли слота, а не по общей
+// позиционной группе — главный навык каждой роли взят из уже одобренного
+// slotRoleWeights выше, это его навык с наибольшим весом). В отличие от
+// estimatePotentialRating верхнего клэмпа НЕТ (только нижняя граница 0) —
+// реальная шкала звёзд Hattrick открыта сверху, при обычных навыках/форме
+// (0-20/0-8) формула и так не превышает 10, но искусственного потолка,
+// который расходился бы с открытой шкалой, быть не должно.
 //
 // Фоновый сбор данных для калибровки (computeSlotRatingBreakdown,
 // RATING_FORMULA_VERSION, запись в match_role_predictions в chppSync.ts) НЕ
@@ -371,11 +374,15 @@ const mainSkillByRole: Record<SlotRole, keyof SquadSkills> = {
   FWD_WIDE: "scoring",
 };
 
+// Только нижняя граница (0, не уходить в отрицательные числа) — верхнего
+// предела намеренно нет, реальная шкала звёзд Hattrick открыта сверху
+// (оценки 13.5 и выше на практике бывают, см. STAR_SCALE_FLOOR/комментарий
+// выше про потолок у applyCalibration — тот же принцип).
 export function estimateSimpleSlotPotential(player: Pick<RatingInputs, "skills" | "form">, role: SlotRole): number {
   const mainSkill = player.skills[mainSkillByRole[role]];
   const base = (mainSkill / 20) * 8.5;
   const formBonus = (player.form / 8) * 1.5;
-  return Math.max(0, Math.min(10, base + formBonus));
+  return Math.max(0, base + formBonus);
 }
 
 export function formatSimpleSlotPotentialTooltip(rating: number, roleLabel: string): string {
