@@ -1003,6 +1003,36 @@ function debugEventTypeBreakdown(
     .join(" | ");
 }
 
+// Минута и команда КАЖДОГО отдельного срабатывания кодов из
+// SUSPECTED_TACTIC_EVENT_IDS (68/343/344) — в отличие от debugEventTypeBreakdown
+// выше (агрегированный счётчик по всем ~30 типам событий), здесь нужен
+// именно построчный список по этим трём конкретным кодам, чтобы сопоставить
+// каждое событие с тем, какая команда реально играла соответствующую
+// тактику (см. чат "Верификация тактических кодов событий"). Не меняет и
+// не заменяет debugEventTypeBreakdown — чисто дополнительный срез, ничего
+// не решает сама по себе (то же самое "предположительно", что и у
+// SUSPECTED_TACTIC_EVENT_IDS, пока не сверено с реальными матчами).
+function debugSuspectedTacticEventMinutes(match: Record<string, unknown>, homeTeamId: string, awayTeamId: string): string {
+  const eventList = match.EventList as Record<string, unknown> | undefined;
+  const events = asArray(eventList?.Event);
+  if (events.length === 0) return "EventList пуст или отсутствует (matchEvents=true не вернул событий).";
+
+  const codes = Object.keys(SUSPECTED_TACTIC_EVENT_IDS).map(Number);
+  const lines = codes.map((code) => {
+    const occurrences = events.filter((e) => Number(e.EventTypeID ?? NaN) === code);
+    if (occurrences.length === 0) return `код ${code}: не встретился ни разу — гипотеза НЕ подтверждена этим матчем`;
+    const detail = occurrences.map((e) => {
+      const teamId = String(e.SubjectTeamID ?? e.SubjectTeamId ?? "");
+      const side = teamId === homeTeamId ? "хозяева" : teamId === awayTeamId ? "гости" : `неизвестная сторона (TeamID=${teamId})`;
+      const minuteRaw = Number(e.Minute ?? NaN);
+      const minute = Number.isNaN(minuteRaw) ? "?" : String(minuteRaw);
+      return `${minute}' — ${side}`;
+    });
+    return `код ${code} (${SUSPECTED_TACTIC_EVENT_IDS[code]}) — ${occurrences.length} раз: ${detail.join("; ")}`;
+  });
+  return lines.join(" || ");
+}
+
 // Подпись зоны для маркера нереализованного момента на шкале — переиспользует
 // те же списки EventTypeID, что и computeAttackZoneBreakdown выше. Не
 // требует, чтобы разбивка по зонам для ВСЕЙ таблицы была "верифицирована"
@@ -1547,6 +1577,9 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     debug.push(attackStatsLine("attackStats (гости)", awayAttackStats));
     debug.push(
       `EventList — разбивка по EventTypeID: ${debugEventTypeBreakdown(match, homeTeamId, homeAttackStats, awayAttackStats)}`,
+    );
+    debug.push(
+      `EventList — минуты/команда для кодов гипотезы тактик (68/343/344): ${debugSuspectedTacticEventMinutes(match, homeTeamId, awayTeamId)}`,
     );
 
     // Разбивка голов/нереализованного ПО ЗОНАМ через отдельные события
