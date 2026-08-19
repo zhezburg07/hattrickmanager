@@ -11,11 +11,10 @@ export default function TeamSection() {
 
         <div className={styles.card}>
           <div className={styles.block}>
-            <h2 className={styles.blockTitle}>Один разработчик и ИИ</h2>
+            <h2 className={styles.blockTitle}>Наша команда</h2>
             <p className={styles.text}>
-              HattrickManager ведёт один разработчик-энтузиаст Hattrick, при активной помощи современных
-              ИИ-инструментов для написания и поддержки кода. Это небольшой независимый проект, а не продукт крупной
-              компании — отсюда и постепенный, но живой темп развития.
+              HattrickManager создаётся с искренней любовью к игре, при активной поддержке современных технологий для
+              разработки и развития. Независимый проект.
             </p>
           </div>
 
