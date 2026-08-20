@@ -39,22 +39,6 @@
   margin-top: 16px;
 }
 
-/* ВРЕМЕННЫЙ маркер — проверка, дошла ли эта версия кода до продакшена
-   (диагностика деплоя/кэша). Убрать после проверки. */
-.testBgMarker {
-  position: absolute;
-  top: 6px;
-  right: 10px;
-  z-index: 50;
-  color: #ff3b3b;
-  background: rgba(0, 0, 0, 0.6);
-  font-weight: 800;
-  font-size: 13px;
-  padding: 3px 9px;
-  border-radius: 6px;
-  pointer-events: none;
-}
-
 /* ИСПРАВЛЕНО: раньше у каждой вкладки был СВОЙ отдельный элемент поля
    (.splitPitch/.zonePitch/.timelineHorizontalWrap разных размеров и форм),
    так что при переключении вкладок поле визуально "пересоздавалось" другим

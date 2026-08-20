@@ -496,10 +496,6 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
 
   return (
     <div className={styles.card}>
-      {/* ВРЕМЕННЫЙ маркер для проверки деплоя — убрать после подтверждения,
-          что эта версия дошла до продакшена. */}
-      <div className={styles.testBgMarker}>ТЕСТ ФОНА v2</div>
-
       <div className={styles.reportTabs}>
         {reportTabs.map((t) => (
           <button
