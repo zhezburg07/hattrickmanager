@@ -45,6 +45,13 @@ async function ensureTables(): Promise<void> {
       last_error TEXT
     )
   `;
+  // Техническая диагностика синхронизации (см. чат "Согласны с
+  // разделением") — отдельно от last_error: никогда не означает сбой,
+  // видна только при явном включении отладочного флага (см.
+  // SHOW_SYNC_DIAGNOSTICS в dashboard/updates/page.tsx). Тот же аддитивный
+  // приём миграции, что и в других *Db.ts (ALTER TABLE ADD COLUMN IF NOT
+  // EXISTS, не новая таблица).
+  await db`ALTER TABLE chpp_sync_status ADD COLUMN IF NOT EXISTS last_diagnostic_notes TEXT`;
 
   tablesEnsured = true;
 }
@@ -123,13 +130,16 @@ export interface ChppSyncStatus {
   lastSyncedAt: string | null;
   lastAttemptedAt: string | null;
   lastError: string | null;
+  // Техническая диагностика — см. комментарий у last_diagnostic_notes в
+  // ensureTables выше. Никогда не означает сбой сама по себе.
+  lastDiagnosticNotes: string | null;
 }
 
 export async function getSyncStatus(hattrickUserId: string): Promise<ChppSyncStatus | null> {
   await ensureTables();
   const db = sql();
   const rows = await db`
-    SELECT status, last_synced_at, last_attempted_at, last_error
+    SELECT status, last_synced_at, last_attempted_at, last_error, last_diagnostic_notes
     FROM chpp_sync_status WHERE hattrick_user_id = ${hattrickUserId}
   `;
   if (rows.length === 0) return null;
@@ -139,6 +149,7 @@ export async function getSyncStatus(hattrickUserId: string): Promise<ChppSyncSta
     lastSyncedAt: row.last_synced_at,
     lastAttemptedAt: row.last_attempted_at,
     lastError: row.last_error,
+    lastDiagnosticNotes: row.last_diagnostic_notes,
   };
 }
 
@@ -159,17 +170,18 @@ export async function finishSync(
   hattrickUserId: string,
   status: "ok" | "partial" | "failed",
   lastError: string | null,
+  lastDiagnosticNotes: string | null,
 ): Promise<void> {
   await ensureTables();
   const db = sql();
   if (status === "failed") {
     await db`
-      UPDATE chpp_sync_status SET status = ${status}, last_error = ${lastError}
+      UPDATE chpp_sync_status SET status = ${status}, last_error = ${lastError}, last_diagnostic_notes = ${lastDiagnosticNotes}
       WHERE hattrick_user_id = ${hattrickUserId}
     `;
   } else {
     await db`
-      UPDATE chpp_sync_status SET status = ${status}, last_synced_at = now(), last_error = ${lastError}
+      UPDATE chpp_sync_status SET status = ${status}, last_synced_at = now(), last_error = ${lastError}, last_diagnostic_notes = ${lastDiagnosticNotes}
       WHERE hattrick_user_id = ${hattrickUserId}
     `;
   }

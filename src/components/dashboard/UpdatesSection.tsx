@@ -24,12 +24,18 @@ export default function UpdatesSection({
   lastSyncedAt,
   syncStatus,
   lastSyncError,
+  lastDiagnosticNotes,
   lastSnapshotAt,
   lastSeenAt,
 }: {
   lastSyncedAt: string | null;
   syncStatus: "ok" | "partial" | "failed" | "in_progress" | null;
   lastSyncError: string | null;
+  // Техническая диагностика (см. чат "Согласны с разделением") — отдельно
+  // от lastSyncError: никогда не означает сбой, страница уже решает, стоит
+  // ли вообще передавать сюда значение (см. SHOW_SYNC_DIAGNOSTICS в
+  // dashboard/updates/page.tsx) — null здесь просто ничего не показывает.
+  lastDiagnosticNotes: string | null;
   lastSnapshotAt: Date | null;
   lastSeenAt: string | null;
 }) {
@@ -54,17 +60,24 @@ export default function UpdatesSection({
           Последняя попытка обновить не удалась — показаны данные с предыдущей успешной синхронизации.
         </p>
       )}
-      {/* ВРЕМЕННО — см. чат "Кубки/Трансферы/Юношеская команда: не решены
-          после Обновить данные": lastSyncError теперь несёт подробности по
-          конкретным разделам (Кубки/Трансферы/Юношеская команда), а не
-          только общую фразу — показываем его всегда, когда есть, а не
-          только при статусе "failed", иначе диагностика "ok"-синхронизации
-          (например, "youthplayerlist ответил, но игроков 0") была бы не
-          видна вовсе. Убрать вместе с этим комментарием, когда причины
-          найдены и подтверждены. */}
+      {/* lastSyncError несёт подробности по конкретным разделам (Кубки/
+          Трансферы/Юношеская команда и т.п.), а не только общую фразу —
+          показываем его всегда, когда есть (см. чат "Кубки/Трансферы/
+          Юношеская команда: не решены после Обновить данные"). ИСПРАВЛЕНО
+          (см. чат "Согласны с разделением") — раньше сюда же примешивалась
+          техническая диагностика "ok"-синхронизации (например,
+          "youthplayerlist ответил, но игроков 0"), теперь это поле —
+          ТОЛЬКО настоящие сбои (см. sectionErrors/diagnosticNotes в
+          chppSync.ts), техническая диагностика — отдельным блоком ниже,
+          видна только при явном включении отладочного флага. */}
       {lastSyncError && (
         <p className={styles.statusLine} style={{ color: "var(--color-bad)", fontSize: 12.5, whiteSpace: "pre-wrap" }}>
-          Диагностика последней синхронизации: {lastSyncError}
+          Не удалось обновить полностью: {lastSyncError}
+        </p>
+      )}
+      {lastDiagnosticNotes && (
+        <p className={styles.statusLine} style={{ color: "var(--color-text-muted)", fontSize: 12.5, whiteSpace: "pre-wrap" }}>
+          Диагностика последней синхронизации: {lastDiagnosticNotes}
         </p>
       )}
 

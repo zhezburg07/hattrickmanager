@@ -355,6 +355,10 @@ function assertOkStatus(raw: ChppRawResponse | null, whatIfMissing = "запро
 export interface SyncResult {
   status: "ok" | "partial" | "failed";
   error: string | null;
+  // Техническая диагностика (см. чат "Согласны с разделением") — отдельно
+  // от error: никогда не означает сбой, только видна при явном включении
+  // отладочного флага (см. SHOW_SYNC_DIAGNOSTICS в dashboard/updates/page.tsx).
+  diagnosticNotes: string | null;
 }
 
 // Один синхронный проход по всем разделам, которые сейчас читают Обзор,
@@ -417,8 +421,8 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       // Токен недействителен/отозван — вся синхронизация проваливается сразу
       // (см. чат, пункт 3 — понятная ошибка вместо тихого сбоя, страница
       // покажет предложение переподключиться).
-      await finishSync(hattrickUserId, "failed", message);
-      return { status: "failed", error: message };
+      await finishSync(hattrickUserId, "failed", message, null);
+      return { status: "failed", error: message, diagnosticNotes: null };
     }
     // Не auth-ошибка — например, разовый сетевой сбой именно на этом запросе.
     // Продолжаем с остальными разделами (teamId и т.д. останутся ""), они не
@@ -462,7 +466,20 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   // saveSnapshotSuccess (см. ниже) даже при внутренних ошибках — их error
   // живёт внутри самого JSON, не в колонке chpp_snapshots.error, поэтому
   // общий проход по снимкам это не поймал бы.
+  //
+  // ИСПРАВЛЕНО (см. чат "Диагностика на вкладке Матчи видна на проде" →
+  // "Согласны с разделением") — раньше sectionErrors нёс ОБА вида текста:
+  // настоящие сбои И подробную техническую диагностику, накопленную за
+  // сессии расследований (разбивка турниров Арены, источник CupID и т.п.),
+  // и summaryError ниже включал их одинаково — даже при полностью успешной
+  // синхронизации ("ok", но есть что показать"), из-за чего "Обновления"
+  // показывали технический дамп любому пользователю без единого флага.
+  // Теперь sectionErrors — ТОЛЬКО настоящие ошибки/сбои (например, "не
+  // удалось синхронизировать раздел X"), diagnosticNotes — вся остальная
+  // техническая диагностика, видна только при явном включении отладочного
+  // флага (см. SHOW_SYNC_DIAGNOSTICS в dashboard/updates/page.tsx).
   const sectionErrors: string[] = [];
+  const diagnosticNotes: string[] = [];
 
   // Общие для нескольких волн переменные — раньше каждая была объявлена
   // прямо перед разделом, который её заполняет (см. git-историю), собраны
@@ -780,7 +797,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     // Построчный дамп Buyer/Seller TeamID и дамп сделок-по-имени убраны
     // (см. чат "Уборка диагностики") — механизм подтверждён рабочим, оставлена
     // только краткая сводка.
-    sectionErrors.push(
+    diagnosticNotes.push(
       `Трансферы (диагностика): HTTP ${httpStatus}, команда "${transferHistory.teamName || "?"}", всего за карьеру куплено ${transferHistory.numberOfBuys}/продано ${transferHistory.numberOfSales}, в снимке ${transferHistory.transfers.length} сделок (продаж среди них: ${transferHistory.transfers.filter((t) => t.transferType === "sale").length}) (${pageLog.join("; ")}) — снимок сохранён.`,
     );
   } catch (err) {
@@ -842,7 +859,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     );
     const matchedRecent = [...displayedRecentIds].filter((id) => byMatchId[id]).length;
     const matchedUpcoming = [...displayedUpcomingIds].filter((id) => byMatchId[id]).length;
-    sectionErrors.push(
+    diagnosticNotes.push(
       `Ожидания болельщиков (диагностика — fans.xml): всего записей — ${Object.keys(byMatchId).length}. ` +
         `Из показанных на Обзоре матчей нашлось: сыгранных ${matchedRecent}/${displayedRecentIds.size}, предстоящих ${matchedUpcoming}/${displayedUpcomingIds.size}.`,
     );
@@ -1109,14 +1126,14 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
       anyFailed = true;
     }
     if (youthError) sectionErrors.push(youthError);
-    else if (youthRawCount === 0) sectionErrors.push(`Юношеская команда: youthplayerlist.xml успешно ответил, но игроков академии в нём 0.`);
+    else if (youthRawCount === 0) diagnosticNotes.push(`Юношеская команда: youthplayerlist.xml успешно ответил, но игроков академии в нём 0.`);
     // Старая диагностика по youthplayerlist.xml убрана (см. чат "Уборка
     // диагностики") — рабочий источник youthplayerdetails.xml уже
     // подтверждён и используется, дамп ниже оставлен только для него.
     // rawFieldsSample по-прежнему собирается и хранится в StoredYouthPlayersData
     // — используется отдельной debug-панелью /dashboard/youth, не здесь.
     if (detailsRawFieldsSample.length > 0) {
-      sectionErrors.push(
+      diagnosticNotes.push(
         `Юношеская команда (те же поля из youthplayerdetails.xml — альтернативный источник): ${detailsRawFieldsSample.join(" || ")}`,
       );
     }
@@ -1714,7 +1731,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     } catch (err) {
       tournamentDiagnostics.push(`tournamentlist.xml: ошибка запроса — ${errorMessage(err)}`);
     }
-    sectionErrors.push(`Hattrick Arena (диагностика — турниры): ${tournamentDiagnostics.join(" ")}`);
+    diagnosticNotes.push(`Hattrick Arena (диагностика — турниры): ${tournamentDiagnostics.join(" ")}`);
 
     // ПЕРЕСМОТРЕНО (см. чат "Ещё одна честная попытка найти данные по
     // лестницам") — свежая проверка докстроки независимого клиента
@@ -1741,12 +1758,12 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     try {
       const ladderRaw = await requestChppXmlRaw("ladderlist", { version: LADDER_LIST_VERSION }, tokens);
       const structureDump = debugLadderListRawStructure(ladderRaw.rawXml);
-      sectionErrors.push(
+      diagnosticNotes.push(
         `Hattrick Arena (диагностика — ladderlist.xml): HTTP ${ladderRaw.httpStatus}. ${structureDump}`,
       );
       if (ladderRaw.httpStatus >= 200 && ladderRaw.httpStatus < 300) {
         ladders = parseLadderListXml(ladderRaw.rawXml);
-        sectionErrors.push(
+        diagnosticNotes.push(
           `Hattrick Arena (ladderlist.xml — место в лестнице): найдено записей — ${ladders.length}${
             ladders.length > 0
               ? ` (${ladders.map((l) => `"${l.name}": место ${l.position}, ${l.wins}W/${l.lost}L`).join("; ")})`
@@ -1755,7 +1772,14 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
         );
       }
     } catch (err) {
-      sectionErrors.push(`Hattrick Arena (диагностика — ladderlist.xml): ошибка — ${errorMessage(err)}`);
+      // ИСПРАВЛЕНО (см. чат "Согласны с разделением") — раньше текст называл
+      // это "диагностика", но это настоящий сбой запроса (не удалось
+      // получить место команды в лестнице Арены), а не техническая заметка —
+      // должен идти в sectionErrors, не в diagnosticNotes. anyFailed
+      // намеренно НЕ трогается здесь — вся секция Arena (как и раньше) не
+      // участвует в общем anySucceeded/anyFailed, это отдельный, более
+      // широкий вопрос, не часть этой сортировки текста.
+      sectionErrors.push(`Hattrick Arena: не удалось получить место в лестнице (ladderlist.xml) — ${errorMessage(err)}`);
     }
 
     // ДИАГНОСТИКА (см. чат "Матчи Арены: слишком мало показывается") —
@@ -1766,7 +1790,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     // меньше лимита, показываются все доступные, без искусственного урезания.
     const allArenaMatches = [...ladderResults, ...tournamentResults].sort((a, b) => b.date.localeCompare(a.date));
     const arenaMatches = allArenaMatches.slice(0, ARENA_MATCHES_SHOWN);
-    sectionErrors.push(
+    diagnosticNotes.push(
       `Hattrick Arena (диагностика — итоговый список матчей): всего доступно (лестница + турниры) — ${allArenaMatches.length}, лимит показа — ${ARENA_MATCHES_SHOWN}, сохранено в снимок — ${arenaMatches.length}${
         allArenaMatches.length > ARENA_MATCHES_SHOWN ? " (обрезано лимитом)" : " (лимит не сработал — показаны все доступные)"
       }.`,
@@ -1890,7 +1914,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     const lastReliableCupId = cupIdFromTeamDetails || debug.clubCupId || previousLastReliableCupId;
 
     debug.chosenCupId = cupId;
-    sectionErrors.push(`Кубки (источник chosenCupId): ${cupIdSource || "(не найден ни один уровень)"}.`);
+    diagnosticNotes.push(`Кубки (источник chosenCupId): ${cupIdSource || "(не найден ни один уровень)"}.`);
 
     let currentCupPath: OurCupPathResult | null = null;
     if (cupId && teamId) {
@@ -1985,7 +2009,7 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     // Подробный "сырой пул кандидатов" и разбивка по каждому источнику CupID
     // убраны (см. чат "Уборка диагностики") — система работает надёжно,
     // оставлена только итоговая сводка.
-    sectionErrors.push(
+    diagnosticNotes.push(
       `Кубки (диагностика TeamID): наша команда — teamId="${teamId || "(пусто!)"}" ` +
         `teamName="${ourTeamName || "(пусто!)"}", итоговый CupID="${cupId ?? "(не найден)"}", ` +
         `кубков в каскаде=${cupPaths.length}.`,
@@ -1995,15 +2019,19 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   ]);
 
   const finalStatus: SyncResult["status"] = anyFailed && !anySucceeded ? "failed" : anyFailed ? "partial" : "ok";
+  // ИСПРАВЛЕНО (см. чат "Согласны с разделением") — summaryError теперь
+  // строится ТОЛЬКО из sectionErrors (настоящие сбои) — при anyFailed=false
+  // он честно null, даже если diagnosticNotes непустой (раньше "ok", но есть
+  // что показать" примешивал сюда техническую диагностику, теперь она едет
+  // отдельным полем и не считается ошибкой).
   const summaryError = anyFailed
     ? sectionErrors.length > 0
       ? sectionErrors.join(" | ")
       : "Не все разделы удалось обновить — подробности у конкретных вкладок."
-    : sectionErrors.length > 0
-      ? sectionErrors.join(" | ") // "ok", но есть что показать (например, пустая академия/CupID диагностика)
-      : null;
-  await finishSync(hattrickUserId, finalStatus, summaryError);
-  return { status: finalStatus, error: summaryError };
+    : null;
+  const diagnosticSummary = diagnosticNotes.length > 0 ? diagnosticNotes.join(" | ") : null;
+  await finishSync(hattrickUserId, finalStatus, summaryError, diagnosticSummary);
+  return { status: finalStatus, error: summaryError, diagnosticNotes: diagnosticSummary };
 }
 
 // --- Чтение сохранённых данных для Обзора --------------------------------

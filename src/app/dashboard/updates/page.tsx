@@ -7,6 +7,15 @@ import { getLatestSkillSnapshotAt } from "@/lib/playerHistoryDb";
 import { getConnectedUser } from "@/lib/connectedUsersDb";
 import { getSyncStatus } from "@/lib/chppSyncDb";
 
+// ВРЕМЕННАЯ диагностика — показывает техническую диагностику последней
+// синхронизации (разбивка турниров Арены, источник CupID, статус по
+// разделам и т.п., см. diagnosticNotes в chppSync.ts), отдельно от
+// настоящих ошибок (lastSyncError, показывается всегда — см.
+// UpdatesSection.tsx). Выключено по умолчанию — обычные пользователи не
+// должны видеть эту диагностику (см. чат "Согласны с разделением"). Код не
+// удалён — вернуть можно одной строкой, если понадобится диагностировать.
+const SHOW_SYNC_DIAGNOSTICS = false;
+
 export default async function UpdatesPage() {
   const hattrickUserId = await getStoredHattrickUserId();
 
@@ -30,6 +39,7 @@ export default async function UpdatesPage() {
             lastSyncedAt={syncStatus?.lastSyncedAt ?? null}
             syncStatus={syncStatus?.status ?? null}
             lastSyncError={syncStatus?.lastError ?? null}
+            lastDiagnosticNotes={SHOW_SYNC_DIAGNOSTICS ? (syncStatus?.lastDiagnosticNotes ?? null) : null}
             lastSnapshotAt={lastSnapshotAt}
             lastSeenAt={connectedUser?.lastSeenAt ?? null}
           />
