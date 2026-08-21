@@ -20,6 +20,20 @@
   margin: 0 0 16px;
 }
 
+/* Два блока рядом (Турниры прямо сейчас / Место в лестнице) — см. чат
+   "Переработать вкладку Арена". */
+.twoColumnRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 720px) {
+  .twoColumnRow {
+    grid-template-columns: 1fr;
+  }
+}
+
 .tableWrap {
   overflow-x: auto;
 }

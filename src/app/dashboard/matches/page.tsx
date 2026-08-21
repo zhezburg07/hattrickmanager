@@ -34,7 +34,6 @@ export default async function MatchesPage() {
     warning,
     debugCounts,
     debugRaw,
-    challenges,
     arenaMatches,
     arenaTournaments,
     arenaLadders,
@@ -47,7 +46,6 @@ export default async function MatchesPage() {
         warning: null,
         debugCounts: [] as string[],
         debugRaw: [] as Record<string, unknown>[],
-        challenges: { sentByUs: [], offersFromOthers: [], error: null },
         arenaMatches: [],
         arenaTournaments: [],
         arenaLadders: [],
@@ -85,7 +83,6 @@ export default async function MatchesPage() {
 
   const arenaContent = (
     <HattrickArenaSection
-      challenges={challenges}
       arenaMatches={arenaMatches}
       arenaTournaments={arenaTournaments}
       arenaLadders={arenaLadders}
