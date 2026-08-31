@@ -98,6 +98,26 @@
   transform: scale(1.08);
 }
 
+/* Кнопка-мяч меню личного кабинета — раньше делила класс .overviewBall с
+   иконкой "Обновления" (та же круглая рамка с фоном), но по просьбе
+   пользователя здесь оставлен только сам мяч без обводки/подложки —
+   поэтому отдельный класс, чтобы не задеть .overviewBall (у "Обновления"
+   рамка нужна). */
+.menuBallButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  transition: transform 0.15s ease;
+}
+
+.menuBallButton:hover {
+  transform: scale(1.08);
+}
+
 .dropdown {
   position: absolute;
   top: calc(100% + 10px);
@@ -164,5 +184,10 @@
   .overviewBall svg {
     width: 16px;
     height: 16px;
+  }
+
+  .menuBallButton svg {
+    width: 26px;
+    height: 26px;
   }
 }
