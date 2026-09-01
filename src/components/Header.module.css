@@ -23,31 +23,32 @@
   letter-spacing: 0.2px;
 }
 
-/* Круглая золотая рамка нового логотипа (мяч + мини-значок "A") — position:
-   relative нужен, чтобы .logoBadgeA (position:absolute) позиционировался
-   именно от неё, а не от всего .logo. */
+/* Утверждённый логотип (см. чат "Логотип шапки: точный SVG") — целиком
+   один SVG (рамка/фон/мяч/подпись "Hm"/значок "A" уже нарисованы внутри
+   него, см. Header.tsx), .logoMark задаёт только его размер на странице. */
 .logoMark {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--color-bg-darker);
-  border: 1.5px solid var(--color-accent);
+  display: block;
   flex: none;
 }
 
-/* Сам мяч внутри рамки — единственный элемент, который крутится при
-   наведении (см. .logo:hover ниже); чуть меньше рамки, чтобы вокруг был
-   виден золотой ободок. */
-.logoBall {
-  width: 26px;
-  height: 26px;
+/* Презентационный transform="translate(95,59) scale(0.2444)" (позиция и
+   масштаб мяча внутри рамки) — сюда НЕ добавляется CSS-вращение: CSS
+   transform на SVG-элементе (в т.ч. из @keyframes) ЗАМЕНЯЕТ, а не
+   дополняет, его собственный transform-атрибут (спецификация CSS
+   Transforms/SVG2) — вращение прямо здесь сбрасывало бы translate/scale
+   при наведении, и мяч прыгал бы не на месте вместо плавного вращения.
+   Вращение — на вложенной .logoBallSpin ниже, у которой собственного
+   transform-атрибута нет и поэтому нечего терять. */
+.logoBallGroup {
 }
 
-.logo:hover .logoBall {
+/* transform-box:fill-box — вращение вокруг центра РЕАЛЬНОЙ отрисованной
+   геометрии мяча (его bounding box), а не (0,0) координат SVG-документа
+   (дефолт для transform-origin на SVG-элементах) — без этого мяч крутился
+   бы по широкой дуге где-то за пределами рамки, а не на месте. */
+.logo:hover .logoBallSpin {
+  transform-box: fill-box;
+  transform-origin: center;
   animation: logoBallSpin 1.1s linear infinite;
 }
 
@@ -58,30 +59,6 @@
   to {
     transform: rotate(360deg);
   }
-}
-
-/* Мини-кружок "A" (Assistant) — поверх нижнего правого края рамки, тёмная
-   обводка отделяет его от мяча под ним и от фона шапки. */
-.logoBadgeA {
-  position: absolute;
-  right: -3px;
-  bottom: -3px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-accent);
-  color: var(--color-bg-darker);
-  border: 1.5px solid var(--color-bg-darker);
-  font-size: 9px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.logoText strong {
-  color: var(--color-accent);
 }
 
 .actions {
@@ -218,20 +195,6 @@
   .logoMark {
     width: 26px;
     height: 26px;
-    font-size: 13px;
-  }
-
-  .logoBall {
-    width: 20px;
-    height: 20px;
-  }
-
-  .logoBadgeA {
-    width: 11px;
-    height: 11px;
-    font-size: 7px;
-    right: -2px;
-    bottom: -2px;
   }
 
   .overviewBall {
