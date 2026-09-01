@@ -152,7 +152,12 @@ function CupCard({ cupPath, nextMatch }: { cupPath: OurCupPathResult; nextMatch?
                     <span
                       className={`${styles.timelineScore} ${status === "won" ? styles.timelineScoreWon : styles.timelineScoreLost}`}
                     >
-                      {m.ourScore}:{m.oppScore}
+                      {/* ИСПРАВЛЕНО (см. чат "Расхождение в счёте: Inner
+                          Focus Club — Zhezburg 4:3") — тот же приём, что и в
+                          MatchDetailAnalysis.tsx: счёт в том же порядке, что
+                          и названия команд в matchupLabel ниже (там первой
+                          идёт домашняя команда), а не всегда "наш:чужой". */}
+                      {m.home ? `${m.ourScore}:${m.oppScore}` : `${m.oppScore}:${m.ourScore}`}
                     </span>
                   )}
                 </div>

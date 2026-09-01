@@ -118,7 +118,11 @@ export default function HattrickArenaSection({
                       {m.source === "tournament" && m.tournamentName ? ` · ${m.tournamentName}` : ""}
                     </span>
                     <span className={`${styles.matchScore} ${scoreClass}`}>
-                      {m.ourScore}:{m.oppScore}
+                      {/* ИСПРАВЛЕНО (см. чат "Расхождение в счёте: Inner
+                          Focus Club — Zhezburg 4:3") — тот же приём, что и в
+                          MatchDetailAnalysis.tsx: счёт в том же порядке, что
+                          и названия команд выше, а не всегда "наш:чужой". */}
+                      {m.home ? `${m.ourScore}:${m.oppScore}` : `${m.oppScore}:${m.ourScore}`}
                     </span>
                   </div>
 

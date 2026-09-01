@@ -128,7 +128,14 @@ export default function MatchesCalendar({
                   )}
                 </span>
                 <span className={`${styles.matchScore} ${scoreClass}`}>
-                  {m.ourScore}:{m.oppScore}
+                  {/* ИСПРАВЛЕНО (см. чат "Расхождение в счёте: Inner Focus
+                      Club — Zhezburg 4:3") — счёт раньше шёл фиксированно
+                      "наш:чужой", а название команд слева-направо
+                      переставлялось по home/away (см. .matchTeams выше) —
+                      для гостевого матча это давало "Соперник — Мы  4:3",
+                      что читается как "соперник забил 4", хотя 4 забили мы.
+                      Тот же приём, что уже работает в MatchDetailAnalysis.tsx. */}
+                  {m.home ? `${m.ourScore}:${m.oppScore}` : `${m.oppScore}:${m.ourScore}`}
                 </span>
               </div>
 

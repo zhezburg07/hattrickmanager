@@ -109,7 +109,12 @@ export default function MatchesSection({
                   <span className={styles.matchOpponent}>{matchupLabel(m.home, ourTeamName, m.opponent)}</span>
                   <FanExpectationBadge expectation={m.fanExpectation} />
                   <span className={`${styles.matchScore} ${resultClass[m.result]}`}>
-                    {m.ourScore}:{m.oppScore}
+                    {/* ИСПРАВЛЕНО (см. чат "Расхождение в счёте: Inner Focus
+                        Club — Zhezburg 4:3") — тот же приём, что и в
+                        MatchDetailAnalysis.tsx: счёт должен идти в том же
+                        порядке, что и названия команд (matchupLabel выше),
+                        а не всегда "наш:чужой". */}
+                    {m.home ? `${m.ourScore}:${m.oppScore}` : `${m.oppScore}:${m.ourScore}`}
                   </span>
                 </div>
               );

@@ -89,7 +89,11 @@ export default function YouthMatchesSection({
                       широкой 1fr. */}
                   <span aria-hidden="true" />
                   <span className={`${styles.matchScore} ${m.result ? resultClass[m.result] : ""}`}>
-                    {m.ourScore}:{m.oppScore}
+                    {/* ИСПРАВЛЕНО (см. чат "Расхождение в счёте: Inner Focus
+                        Club — Zhezburg 4:3") — унаследовано при копировании
+                        с MatchesSection.tsx, тот же приём, что и в
+                        MatchDetailAnalysis.tsx. */}
+                    {m.home ? `${m.ourScore}:${m.oppScore}` : `${m.oppScore}:${m.ourScore}`}
                   </span>
                 </div>
               );
