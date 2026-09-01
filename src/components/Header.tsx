@@ -104,7 +104,7 @@ export default function Header() {
           title="Hattrick Manager Assistant"
           aria-label="Hattrick Manager Assistant"
         >
-          <svg className={styles.logoMark} viewBox="0 0 300 300" width="45" height="45" aria-hidden="true">
+          <svg className={styles.logoMark} viewBox="0 0 300 300" width="68" height="68" aria-hidden="true">
             <circle cx="150" cy="150" r="140" fill="none" stroke="#C9A227" strokeWidth="6" />
             <circle cx="150" cy="150" r="131" fill="#152C26" />
             <g className={styles.logoBallGroup} transform="translate(95,59) scale(0.2444)">
