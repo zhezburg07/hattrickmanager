@@ -18,6 +18,7 @@ import LineupField from "./LineupField";
 import LineupPlayerList from "./LineupPlayerList";
 import LineupPlayerDetails from "./LineupPlayerDetails";
 import OpponentAnalysis from "./OpponentAnalysis";
+import LineupTabs from "./LineupTabs";
 import { recommendLineup } from "./recommendLineup";
 import { formationExperienceLevel } from "./formationExperience";
 import type { DragPayload } from "./dragPayload";
@@ -441,8 +442,11 @@ export default function LineupBoard({
 
   const selectedPlayer = selectedPlayerId !== null ? (playersById.get(selectedPlayerId) ?? null) : null;
 
-  return (
+  const lineupContent = (
     <>
+      <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "0 0 12px" }}>
+        CHPP не сообщает, кто сейчас стоит в основе — расставьте игроков сами или нажмите «Рекомендовать состав».
+      </p>
       <div className={styles.pitchGridGroup}>
         <LineupField
           slots={boardSlots}
@@ -537,13 +541,20 @@ export default function LineupBoard({
       </div>
 
       <LineupPlayerDetails player={selectedPlayer} prev={selectedPlayer ? resolvedPrevByPlayerId[selectedPlayer.id] : undefined} />
+    </>
+  );
 
-      <OpponentAnalysis
-        analysis={opponentAnalysis}
-        roster={roster}
-        onRecommendAgainstOpponent={(next) => setAssignments(next)}
-      />
+  const opponentContent = (
+    <OpponentAnalysis
+      analysis={opponentAnalysis}
+      roster={roster}
+      onRecommendAgainstOpponent={(next) => setAssignments(next)}
+    />
+  );
 
+  return (
+    <>
+      <LineupTabs lineup={lineupContent} opponent={opponentContent} />
       {toast && <div className={styles.toast}>{toast}</div>}
     </>
   );

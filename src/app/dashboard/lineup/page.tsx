@@ -87,22 +87,16 @@ export default async function LineupPage() {
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
           {error && <DemoModeBanner title="Не удалось загрузить реальный состав" reasons={[error]} />}
           {players && (
-            <>
-              <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "0 0 12px" }}>
-                CHPP не сообщает, кто сейчас стоит в основе — расставьте игроков сами или нажмите
-                «Рекомендовать состав».
-              </p>
-              <LineupBoard
-                players={players}
-                prevByPlayerId={prevByPlayerId}
-                opponentAnalysis={opponentAnalysis}
-                trainerPlayerId={trainerPlayerId}
-                calibrations={calibrations}
-                trends={trends}
-                teamMoraleValue={teamMoraleValue}
-                teamConfidenceValue={teamConfidenceValue}
-              />
-            </>
+            <LineupBoard
+              players={players}
+              prevByPlayerId={prevByPlayerId}
+              opponentAnalysis={opponentAnalysis}
+              trainerPlayerId={trainerPlayerId}
+              calibrations={calibrations}
+              trends={trends}
+              teamMoraleValue={teamMoraleValue}
+              teamConfidenceValue={teamConfidenceValue}
+            />
           )}
         </div>
       </main>
