@@ -217,13 +217,23 @@ export function positionSortValue<T extends AmpluaSource>(
   return positionRank[effectiveAbbrev(player, overrides)] ?? TRAINER_RANK;
 }
 
-// Обозначение тренера в столбце "Поз." — "Т" вместо его игровой позиции: у
-// тренера нет настоящего амплуа в смысле навыков/расстановки, и он не
-// участвует в подсчёте средних (см. AverageRow), так что показывать его
-// GK/CD/CM/W/ST было бы вводящим в заблуждение. Бейдж не кликабелен (даже
-// в "Составе", где остальные позиции можно менять вручную) — амплуа менять
-// нечему.
-const TRAINER_ABBREV = "Т";
+// Обозначение тренера в столбце "Поз." — "COACH" вместо его игровой
+// позиции: у тренера нет настоящего амплуа в смысле навыков/расстановки, и
+// он не участвует в подсчёте средних (см. AverageRow), так что показывать
+// его GK/CD/CM/W/ST было бы вводящим в заблуждение. Бейдж не кликабелен
+// (даже в "Составе", где остальные позиции можно менять вручную) — амплуа
+// менять нечему.
+//
+// ИСПРАВЛЕНО (см. чат "Тренер: 'Т' → 'COACH'") — было "Т" (1 буква), сюда
+// же был точно рассчитан min-width бейджа (40px, см. .positionBadge в
+// SquadTable.module.css). "COACH" (5 букв) при том же 11.5px, что и у
+// игровых позиций (GK/CD/CM/W/ST, максимум 2 буквы), не поместился бы в
+// те же 40px и раздул бы бейдж заметно шире соседних — против исходного
+// намерения "такой же ширины, как остальные позиции". Вместо этого шрифт
+// именно для этого бейджа уменьшен отдельным классом (.positionBadgeCoach)
+// — см. проверку визуально на реальном рендере перед тем, как выбрано
+// финальное значение.
+const TRAINER_ABBREV = "COACH";
 // Отдельный синий — не пересекается ни с одним амплуа (GK зелёный, DEF
 // оранжевый, MID жёлтый, WING бирюзовый, FWD красный, см.
 // positionGroupAccentColor/positionAbbrevAccentColor в data/squad.ts) — по
@@ -234,7 +244,7 @@ const TRAINER_ACCENT_COLOR = "#4a90d9";
 export function TrainerPositionBadge() {
   return (
     <span
-      className={`${styles.positionBadge} ${styles.positionBadgeStatic}`}
+      className={`${styles.positionBadge} ${styles.positionBadgeStatic} ${styles.positionBadgeCoach}`}
       style={{ "--position-accent": TRAINER_ACCENT_COLOR, cursor: "default" } as React.CSSProperties}
       title="Тренер команды"
     >

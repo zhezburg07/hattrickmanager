@@ -239,6 +239,19 @@
   justify-content: center;
 }
 
+/* Бейдж тренера ("COACH") — тот же .positionBadge/.positionBadgeStatic, что
+   и у игровых позиций (GK/CD/CM/W/ST — максимум 2 буквы), но у него 5 букв,
+   поэтому одного min-width:40px недостаточно, чтобы остаться "такой же
+   ширины, как остальные позиции" (см. комментарий у TRAINER_ABBREV в
+   squadCells.tsx) — при обычных 11.5px текст просто раздул бы бейдж заметно
+   шире соседних. Меньший шрифт + чуть уже горизонтальный паддинг держат
+   ширину близкой к остальным бейджам без обрезания букв. */
+.positionBadgeCoach {
+  font-size: 8px;
+  letter-spacing: -0.2px;
+  padding: 3px 5px;
+}
+
 .overrideMark {
   font-size: 12px;
   color: var(--color-accent);
