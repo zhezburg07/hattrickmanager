@@ -47,16 +47,36 @@
   letter-spacing: 0.2px;
 }
 
+/* Тот же утверждённый SVG-логотип, что и в шапке личного кабинета (см.
+   Header.module.css) — рамка/фон/подпись уже нарисованы внутри самого SVG,
+   .logoMark задаёт только размер и лёгкую тень для веса на большом баннере. */
 .logoMark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
-  background: var(--color-accent);
-  color: var(--color-bg-darker);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: block;
+  flex: none;
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.35));
+}
+
+/* См. подробное объяснение у одноимённых классов в Header.module.css —
+   вращение при наведении применяется на вложенную .logoBallSpin, а не
+   прямо на .logoBallGroup (у неё есть собственный presentation-атрибут
+   transform для позиции/масштаба мяча, который CSS-transform иначе бы
+   заменил, а не дополнил, и сбросил бы при наведении). */
+.logoBallGroup {
+}
+
+.logo:hover .logoBallSpin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: logoBallSpin 1.1s linear infinite;
+}
+
+@keyframes logoBallSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .logoText strong {
@@ -83,7 +103,5 @@
   .logoMark {
     width: 36px;
     height: 36px;
-    font-size: 17px;
-    border-radius: 8px;
   }
 }
