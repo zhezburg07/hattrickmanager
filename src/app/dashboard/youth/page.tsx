@@ -1,11 +1,14 @@
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import YouthTable from "@/components/dashboard/YouthTable";
+import LeagueTable from "@/components/dashboard/LeagueTable";
+import YouthMatchesSection from "@/components/dashboard/YouthMatchesSection";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import SyncFailedScreen from "@/components/dashboard/SyncFailedScreen";
+import overviewStyles from "@/components/dashboard/Overview.module.css";
 import styles from "@/components/dashboard/Dashboard.module.css";
 import { getRequiredHattrickTokens, getStoredHattrickUserId } from "@/lib/hattrickApi";
-import { ensureSynced, getStoredYouthData } from "@/lib/chppSync";
+import { ensureSynced, getStoredYouthData, getStoredYouthLeagueData } from "@/lib/chppSync";
 
 // ВРЕМЕННАЯ диагностика — показывает реальный HTTP-статус и количество
 // игроков, найденных в ответе youthplayerlist (снятый во время синхронизации),
@@ -52,6 +55,8 @@ export default async function YouthPage() {
       };
   const errors = [levelError, playersError].filter((e): e is string => e !== null);
 
+  const youthLeague = hattrickUserId ? await getStoredYouthLeagueData(hattrickUserId) : null;
+
   return (
     <>
       <Header />
@@ -94,6 +99,19 @@ export default async function YouthPage() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {youthLeague && (
+            <div className={overviewStyles.sideBySideRow}>
+              <LeagueTable rows={youthLeague.leagueRows} leagueName={youthLeague.leagueName} showZones={false} />
+              <YouthMatchesSection
+                ourTeamName={youthLeague.youthTeamName}
+                recentMatches={youthLeague.recentMatches}
+                upcomingMatches={youthLeague.upcomingMatches}
+                matrixTeams={youthLeague.resultsMatrixTeams}
+                resultsMatrix={youthLeague.resultsMatrix}
+              />
             </div>
           )}
 

@@ -51,6 +51,7 @@ export default function LeagueTable({
   leagueName,
   matrixTeams,
   resultsMatrix,
+  showZones = true,
 }: {
   rows: LeagueTableRow[];
   leagueName?: string;
@@ -60,6 +61,14 @@ export default function LeagueTable({
   // сетки под ней, как раньше.
   matrixTeams?: MatrixTeamMeta[];
   resultsMatrix?: (string | null)[][];
+  // getZone ниже жёстко зашит под серию из 8 команд (правило основной лиги
+  // Hattrick — повышение/плей-офф/понижение по позициям 1/5-6/7-8). У
+  // юношеских лиг число команд в серии реально разное (в проверенных
+  // примерах — 4 и 12, см. NrOfTeamsInLeague в youthleaguedetails.xml), и
+  // правила повышения/понижения для них не подтверждены вовсе — применять ту
+  // же раскраску было бы прямой ошибкой, поэтому таблица юношеской лиги
+  // передаёт showZones={false}.
+  showZones?: boolean;
 }) {
   const [mode, setMode] = useState<LeagueTableMode>("all");
   const showResultsMatrix = !!matrixTeams && !!resultsMatrix;
@@ -129,7 +138,7 @@ export default function LeagueTable({
           </thead>
           <tbody>
             {displayedRows.map((row) => {
-              const zone = getZone(row.position);
+              const zone = showZones ? getZone(row.position) : null;
               const rowClass = [zone ? zoneClass[zone] : "", row.isOurTeam ? styles.rowUs : ""]
                 .filter(Boolean)
                 .join(" ");

@@ -2,6 +2,7 @@ import { XMLParser } from "fast-xml-parser";
 import type { MatrixTeamMeta } from "@/data/leagueMatrix";
 import type { LeagueTableRow } from "@/components/dashboard/LeagueTable";
 import type { RecentMatchRow, UpcomingMatchRow } from "@/components/dashboard/MatchesSection";
+import type { YouthMatchRow } from "@/components/dashboard/YouthMatchesSection";
 import { defaultCurrency, chppSupportersPopularityToFanMoodLevel } from "@/data/dashboard";
 import { resolveCountryByEnglishName, type SquadPlayer } from "@/data/squad";
 import { requestChppXmlRaw, type ChppRawResponse, type StoredHattrickTokens } from "./hattrickApi";
@@ -45,6 +46,9 @@ import {
   type DebugYouthPlayerRaw,
 } from "./youthPlayers";
 import { parseYouthPlayerDetailsXml, debugYouthPlayerDetailsRawFields, YOUTH_PLAYER_DETAILS_VERSION } from "./youthPlayerDetails";
+import { parseYouthTeamDetailsXml } from "./youthTeamDetails";
+import { parseYouthLeagueDetailsXml, type RealYouthLeagueStandingRow } from "./youthLeagueDetails";
+import { parseYouthLeagueFixturesXml } from "./youthLeagueFixtures";
 import {
   parseChallengesXml,
   filterRecentArenaMatches,
@@ -131,6 +135,13 @@ const ARENA_MATCHES_SHOWN = 10;
 // чтения в getStoredOverviewData, чтобы они не могли разойтись между собой.
 const OVERVIEW_MATCHES_COUNT = 3;
 
+// Календарь юношеской лиги — отдельная страница ("Юношеская команда"), а не
+// компактная панель Обзора, и для юношеских соперников не запрашиваются
+// ожидания болельщиков (см. YouthMatchRow) — поэтому нет причины держаться
+// того же лимита в 3, что у OVERVIEW_MATCHES_COUNT (тот привязан именно к
+// пределу fans.xml).
+const YOUTH_LEAGUE_MATCHES_COUNT = 5;
+
 // Сколько ИСТОРИЧЕСКИХ турниров (уже выпавших из живого tournamentlist.xml,
 // см. known_tournaments) опрашивать НАПРЯМУЮ (tournamentdetails.xml +
 // tournamentfixtures.xml) за один проход синхронизации — см. чат "План:
@@ -181,6 +192,7 @@ export const DATA_KEYS = {
   cupInfo: "cupInfo",
   transferHistory: "transferHistory",
   overviewFanExpectations: "overviewFanExpectations",
+  youthLeague: "youthLeague",
 } as const;
 
 export interface StoredTeamData {
@@ -248,6 +260,26 @@ export interface StoredYouthPlayersData {
   // Юношеская команда/Трансферы: диагностика") — сырые поля Age*/Country*/
   // Nation* первых нескольких игроков ИЗ youthplayerlist.xml как есть.
   rawFieldsSample: DebugYouthPlayerRaw[];
+}
+
+// Таблица + календарь + сетка результатов юношеской лиги — прямой аналог
+// StoredLeagueData выше, но одним составным снимком (как cupInfo/
+// transferHistory), а не несколькими отдельными ключами: это отдельная,
+// самодостаточная фича на своей странице, а не часть Обзора, которая
+// собирает данные из многих разных снимков сразу.
+export interface StoredYouthLeagueData {
+  leagueName: string;
+  leagueRows: LeagueTableRow[];
+  recentMatches: YouthMatchRow[];
+  upcomingMatches: YouthMatchRow[];
+  resultsMatrixTeams?: MatrixTeamMeta[];
+  resultsMatrix?: (string | null)[][];
+  // НАРОЧНО живёт внутри самого объекта, а не в error-колонке
+  // chpp_snapshots (тот же приём, что у StoredYouthPlayersData/cupInfo выше)
+  // — неизвестно, отличает ли CHPP "у команды нет юношеской академии"
+  // (нормальное состояние) от настоящей ошибки, поэтому здесь никогда не
+  // считается сбоем всей синхронизации (см. блок "youthLeague" ниже).
+  error: string | null;
 }
 
 export interface StoredMatchesCalendar {
@@ -446,6 +478,15 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
     { key: "arenadetails", file: "arenadetails", params: {} },
     { key: "training", file: "training", params: {} },
     { key: "youthplayerlist", file: "youthplayerlist", params: { version: "1.3" } },
+    // youthTeamID/youthleagueid НЕ переданы намеренно — оба файла без
+    // параметров отдают данные СВОЕЙ юношеской команды по токену (тот же
+    // принцип, что у leaguedetails выше); YouthLeagueID для
+    // youthleaguefixtures узнаём только ПОСЛЕ ответа youthleaguedetails, тем
+    // же двухшаговым приёмом, что и leagueLevelUnitId → leaguefixtures, но
+    // отдельным запросом внутри волны 1 ниже (см. блок "youthLeague"), а не
+    // в этом статическом списке.
+    { key: "youthteamdetails", file: "youthteamdetails", params: {} },
+    { key: "youthleaguedetails", file: "youthleaguedetails", params: {} },
     { key: "challenges", file: "challenges", params: {} },
     { key: "transfersteam", file: "transfersteam", params: { pageIndex: "0", version: TRANSFERS_TEAM_VERSION } },
     ...(leagueId ? [{ key: "worlddetails", file: "worlddetails", params: { LeagueID: leagueId } }] : []),
@@ -599,6 +640,136 @@ export async function syncTeamData(hattrickUserId: string, tokens: StoredHattric
   } catch (err) {
     await saveSnapshotError(hattrickUserId, DATA_KEYS.league, `Лига и таблица (leaguedetails): ${errorMessage(err)}`);
     anyFailed = true;
+  }
+    })(),
+    (async () => {
+  // -- youthLeague (таблица + календарь + сетка результатов юношеской лиги,
+  // по образцу блока "league" выше, только для youthleaguedetails/
+  // youthleaguefixtures — см. чат "Юношеская лига") --
+  try {
+    assertOkStatus(raw.youthteamdetails);
+    const youthTeam = parseYouthTeamDetailsXml(raw.youthteamdetails.rawXml);
+
+    assertOkStatus(raw.youthleaguedetails);
+    const youthLeague = parseYouthLeagueDetailsXml(raw.youthleaguedetails.rawXml, youthTeam.youthTeamId);
+
+    // ВРЕМЕННАЯ диагностика (см. план "Юношеская лига", шаг 0) — youthTeamId
+    // ниже НЕ подтверждён на живом ответе как "своя команда по токену без
+    // параметра" (только по типу Optional в независимом клиенте pychpp, см.
+    // youthTeamDetails.ts) — эта строка одним взглядом покажет, нашлась ли
+    // строка isOurTeam=true в таблице (значит, youthTeamId совпал с одной из
+    // TeamID) на первых 1-2 синхронизациях. Убрать вместе с этим комментарием
+    // после подтверждения.
+    diagnosticNotes.push(
+      `Юношеская лига (диагностика): youthTeamId=${youthTeam.youthTeamId || "(пусто)"}, youthLeagueId=${youthLeague.youthLeagueId || "(пусто)"}, команд в таблице=${youthLeague.standings.length}, своя команда найдена в таблице=${youthLeague.standings.some((s) => s.isOurTeam)}.`,
+    );
+
+    const stored: StoredYouthLeagueData = {
+      leagueName: youthLeague.leagueName,
+      leagueRows: youthLeague.standings.map((r: RealYouthLeagueStandingRow) => ({
+        position: r.position,
+        name: r.teamName,
+        played: r.played,
+        wins: r.wins,
+        draws: r.draws,
+        losses: r.losses,
+        goalsFor: r.goalsFor,
+        goalsAgainst: r.goalsAgainst,
+        points: r.points,
+        isOurTeam: r.isOurTeam,
+      })),
+      recentMatches: [],
+      upcomingMatches: [],
+      error: null,
+    };
+
+    // Таблица появляется, только если у команды вообще есть юношеская
+    // академия и сезон уже начался — тот же принцип, что и у "league" выше
+    // (standings пуст в межсезонье). YouthLeagueID берём из
+    // youthleaguedetails.xml, с запасным вариантом из youthteamdetails.xml
+    // (оба файла его отдают, см. комментарии в соответствующих парсерах).
+    const youthLeagueId = youthLeague.youthLeagueId || youthTeam.youthLeagueId;
+    if (youthLeague.standings.length > 0 && youthLeagueId) {
+      try {
+        const fixturesRaw = await requestChppXmlRaw("youthleaguefixtures", { youthleagueid: youthLeagueId }, tokens);
+        assertOkStatus(fixturesRaw);
+        const fixtures = parseYouthLeagueFixturesXml(fixturesRaw.rawXml);
+
+        const { teams, matrix } = buildRealLeagueMatrix(youthLeague.standings, fixtures);
+        const filledCells = matrix.reduce((sum, row) => sum + row.filter((c) => c !== null).length, 0);
+        if (filledCells > 0) {
+          stored.resultsMatrixTeams = teams;
+          stored.resultsMatrix = matrix;
+        }
+
+        const ourMatches = fixtures.filter(
+          (m) => m.homeTeamId === youthTeam.youthTeamId || m.awayTeamId === youthTeam.youthTeamId,
+        );
+        const played = ourMatches.filter((m) => m.homeGoals !== null && m.awayGoals !== null);
+        const notPlayed = ourMatches.filter((m) => m.homeGoals === null || m.awayGoals === null);
+
+        // По убыванию для сыгранных (самый свежий первым), по возрастанию
+        // для предстоящих (ближайший первым) — тот же приём, что и у
+        // recentMatches/upcomingMatches Обзора выше.
+        stored.recentMatches = played
+          .sort((a, b) => b.matchDate.localeCompare(a.matchDate))
+          .slice(0, YOUTH_LEAGUE_MATCHES_COUNT)
+          .map((m) => {
+            const home = m.homeTeamId === youthTeam.youthTeamId;
+            const ourScore = home ? m.homeGoals! : m.awayGoals!;
+            const oppScore = home ? m.awayGoals! : m.homeGoals!;
+            return {
+              id: m.matchId,
+              date: m.matchDate,
+              home,
+              opponent: home ? m.awayTeamName : m.homeTeamName,
+              ourScore,
+              oppScore,
+              result: (ourScore > oppScore ? "win" : ourScore < oppScore ? "loss" : "draw") as YouthMatchRow["result"],
+            };
+          });
+
+        stored.upcomingMatches = notPlayed
+          .sort((a, b) => a.matchDate.localeCompare(b.matchDate))
+          .slice(0, YOUTH_LEAGUE_MATCHES_COUNT)
+          .map((m) => {
+            const home = m.homeTeamId === youthTeam.youthTeamId;
+            return {
+              id: m.matchId,
+              date: m.matchDate,
+              home,
+              opponent: home ? m.awayTeamName : m.homeTeamName,
+            };
+          });
+      } catch {
+        // Календарь/сетка — необязательное дополнение к таблице, не должно
+        // ронять остальную синхронизацию (тот же приём, что у "league" выше).
+      }
+    }
+
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.youthLeague, stored);
+    anySucceeded = true;
+  } catch (err) {
+    // НАРОЧНО saveSnapshotSuccess, а не saveSnapshotError — та же причина,
+    // что у cupInfo/youthPlayers (см. общий комментарий про sectionErrors
+    // выше): неизвестно, отличает ли CHPP "у команды нет юношеской академии"
+    // (нормальное состояние) от настоящей ошибки на этом же коде ответа — не
+    // проверено на живых данных. Пустая таблица тогда просто не показывается
+    // на странице (тот же принцип, что у leagueRows на Обзоре в
+    // межсезонье), без тревожного баннера "не удалось загрузить".
+    await saveSnapshotSuccess(hattrickUserId, DATA_KEYS.youthLeague, {
+      leagueName: "",
+      leagueRows: [],
+      recentMatches: [],
+      upcomingMatches: [],
+      error: errorMessage(err),
+    });
+    // ВРЕМЕННАЯ диагностика (см. комментарий выше) — реальный текст причины,
+    // по которой блок youthLeague не дал таблицу вообще (упал на
+    // youthteamdetails/youthleaguedetails или их разборе). На живых данных
+    // покажет, действительно ли "нет академии" выглядит как обычная ошибка
+    // CHPP (и какой именно), а не как пустой успешный ответ.
+    diagnosticNotes.push(`Юношеская лига (диагностика): секция не дала таблицу — ${errorMessage(err)}`);
   }
     })(),
     (async () => {
@@ -2372,6 +2543,41 @@ export async function getStoredYouthData(hattrickUserId: string): Promise<YouthP
     detailsSucceeded: youth?.detailsSucceeded ?? 0,
     detailsFailed: youth?.detailsFailed ?? [],
     rawFieldsSample: youth?.rawFieldsSample ?? [],
+  };
+}
+
+export interface YouthLeaguePageData {
+  youthTeamName: string;
+  leagueName: string;
+  leagueRows: LeagueTableRow[];
+  recentMatches: YouthMatchRow[];
+  upcomingMatches: YouthMatchRow[];
+  resultsMatrixTeams?: MatrixTeamMeta[];
+  resultsMatrix?: (string | null)[][];
+}
+
+export async function getStoredYouthLeagueData(hattrickUserId: string): Promise<YouthLeaguePageData | null> {
+  const snapshots = await getAllSnapshots(hattrickUserId);
+  const entry = snapshots[DATA_KEYS.youthLeague];
+  const data = entry?.data as StoredYouthLeagueData | null;
+  // null (а не пустой объект) — снимка ещё нет вообще (старый аккаунт,
+  // синхронизировавшийся до этой фичи) ИЛИ leagueRows пуст (нет академии,
+  // либо сезон юношеской лиги ещё не начался — см. комментарий у
+  // StoredYouthLeagueData) — страница в обоих случаях просто не показывает
+  // панель лиги, без баннера ошибки (data.error здесь намеренно не читается
+  // как sectionError, см. ту же причину в chppSync.ts).
+  if (!data || data.leagueRows.length === 0) return null;
+
+  const team = snapshots[DATA_KEYS.team]?.data as StoredTeamData | null;
+
+  return {
+    youthTeamName: data.leagueRows.find((r) => r.isOurTeam)?.name ?? team?.clubShortName ?? team?.clubName ?? "Наша команда",
+    leagueName: data.leagueName,
+    leagueRows: data.leagueRows,
+    recentMatches: data.recentMatches,
+    upcomingMatches: data.upcomingMatches,
+    resultsMatrixTeams: data.resultsMatrixTeams,
+    resultsMatrix: data.resultsMatrix,
   };
 }
 
