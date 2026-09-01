@@ -259,7 +259,7 @@ export default function Header() {
                     "замыливали" иконку. Кнопка намеренно без рамки/фона
                     (.menuBallButton, не .overviewBall) — просьба пользователя
                     оставить только сам мяч. */}
-                <svg viewBox="0 0 450 483" width="45" height="45" aria-hidden="true">
+                <svg viewBox="0 0 450 483" width="68" height="68" aria-hidden="true">
                   <defs>
                     <radialGradient id="hmBallBody" cx="478.61" cy="550.29" r="225.06" gradientUnits="userSpaceOnUse">
                       <stop stopColor="#fff" offset="0" />
