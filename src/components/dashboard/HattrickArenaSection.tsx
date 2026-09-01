@@ -146,11 +146,6 @@ export default function HattrickArenaSection({
             })}
           </div>
         )}
-        <p className={styles.hint} style={{ marginTop: 8, marginBottom: 0 }}>
-          Матчи ручных турниров (HTO) — через tournamentlist.xml/tournamentfixtures.xml. Нажмите на матч, чтобы
-          открыть полный анализ — те же вкладки (Рейтинги игроков/Зоны поля/Посещаемость/Хронология), что и для
-          официальных матчей.
-        </p>
       </div>
     </ProLockOverlay>
   );

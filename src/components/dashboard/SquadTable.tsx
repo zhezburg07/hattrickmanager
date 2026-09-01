@@ -229,9 +229,6 @@ export default function SquadTable({
   return (
     <div className={styles.card}>
       <div className={styles.cardTitle}>Полный состав ({roster.length} игроков)</div>
-      <p className={styles.hint}>
-        Нажмите на заголовок столбца, чтобы отсортировать таблицу, или на строку игрока, чтобы увидеть его карточку.
-      </p>
 
       <div className={styles.tableWrap}>
         <table className={styles.table}>

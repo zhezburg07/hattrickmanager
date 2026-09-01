@@ -444,9 +444,6 @@ export default function LineupBoard({
 
   const lineupContent = (
     <>
-      <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "0 0 12px" }}>
-        CHPP не сообщает, кто сейчас стоит в основе — расставьте игроков сами или нажмите «Рекомендовать состав».
-      </p>
       <div className={styles.pitchGridGroup}>
         <LineupField
           slots={boardSlots}

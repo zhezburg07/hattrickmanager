@@ -241,12 +241,6 @@ export default function LineupPlayerList({
   return (
     <div className={`${styles.card} ${lineupStyles.gridCard}`}>
       <div className={styles.cardTitle}>Все игроки ({players.length})</div>
-      <p className={styles.hint}>
-        Строка подсвечена зелёным — игрок в основе, золотым — в запасе, без подсветки — не в составе. Перетащите
-        игрока на свободный слот на поле или скамейке выше, чтобы поставить/переставить его, или кликните на игрока,
-        а затем на нужный слот. Перетащите игрока сюда, чтобы снять его с поля/скамейки. Клик по заголовку столбца
-        сортирует таблицу.
-      </p>
 
       <span
         ref={dragGhostRef}

@@ -50,55 +50,54 @@ export default function LineupPlayerDetails({
   player: SquadPlayer | null;
   prev?: PlayerStatSnapshot;
 }) {
+  // Раньше здесь стоял пустой блок с подсказкой "Нажмите на игрока на поле
+  // ...", когда игрок не выбран — по запросу текст убран (см. чат "Убрать
+  // пояснительные тексты-инструкции"), а вместе с ним и сама карточка:
+  // пустая карточка с одним заголовком "Игрок" без текста выглядела бы как
+  // недорисованный интерфейс, а не как понятный пустой стейт.
+  if (!player) return null;
+
   return (
     <div className={styles.card}>
       <div className={styles.cardTitle}>Игрок</div>
 
-      {!player ? (
-        <p className={styles.hint} style={{ margin: 0 }}>
-          Нажмите на игрока на поле, чтобы увидеть его форму, выносливость и скиллы.
-        </p>
-      ) : (
-        <>
-          <div className={squadStyles.playerCardHead}>
-            <span className={squadStyles.playerCardName}>{player.name}</span>
-            <StatusTag status={player.status} />
-          </div>
+      <div className={squadStyles.playerCardHead}>
+        <span className={squadStyles.playerCardName}>{player.name}</span>
+        <StatusTag status={player.status} />
+      </div>
 
-          <div className={squadStyles.playerCardMeta}>
-            <NationalityTag nationality={player.nationality} />
-            <span>{positionGroupLabel[player.positionGroup]}</span>
-            <span>
-              <b>{player.age}</b> лет
-            </span>
-            <span
-              className={diffClass(diffDirection(player.form, prev?.form))}
-              title={diffTitle("Форма", prev?.form, player.form)}
-            >
-              Форма <b>{formWord(player.form)}</b>
-            </span>
-            <span
-              className={diffClass(diffDirection(player.stamina, prev?.stamina))}
-              title={diffTitle("Выносливость", prev?.stamina, player.stamina, (n) => `${n}%`)}
-            >
-              Вын-ть <b>{player.stamina}%</b>
-            </span>
-          </div>
+      <div className={squadStyles.playerCardMeta}>
+        <NationalityTag nationality={player.nationality} />
+        <span>{positionGroupLabel[player.positionGroup]}</span>
+        <span>
+          <b>{player.age}</b> лет
+        </span>
+        <span
+          className={diffClass(diffDirection(player.form, prev?.form))}
+          title={diffTitle("Форма", prev?.form, player.form)}
+        >
+          Форма <b>{formWord(player.form)}</b>
+        </span>
+        <span
+          className={diffClass(diffDirection(player.stamina, prev?.stamina))}
+          title={diffTitle("Выносливость", prev?.stamina, player.stamina, (n) => `${n}%`)}
+        >
+          Вын-ть <b>{player.stamina}%</b>
+        </span>
+      </div>
 
-          <div className={squadStyles.playerCardSkills}>
-            {skillKeys.map((k) => (
-              <div
-                className={`${squadStyles.playerCardSkillRow} ${diffClass(diffDirection(player.skills[k], prev?.skills[k]))}`}
-                key={k}
-                title={diffTitle(skillLabel[k], prev?.skills[k], player.skills[k])}
-              >
-                <span className={squadStyles.playerCardSkillLabel}>{skillLabel[k]}</span>
-                <span className={squadStyles.playerCardSkillValue}>{skillWordWithLevel(player.skills[k])}</span>
-              </div>
-            ))}
+      <div className={squadStyles.playerCardSkills}>
+        {skillKeys.map((k) => (
+          <div
+            className={`${squadStyles.playerCardSkillRow} ${diffClass(diffDirection(player.skills[k], prev?.skills[k]))}`}
+            key={k}
+            title={diffTitle(skillLabel[k], prev?.skills[k], player.skills[k])}
+          >
+            <span className={squadStyles.playerCardSkillLabel}>{skillLabel[k]}</span>
+            <span className={squadStyles.playerCardSkillValue}>{skillWordWithLevel(player.skills[k])}</span>
           </div>
-        </>
-      )}
+        ))}
+      </div>
     </div>
   );
 }

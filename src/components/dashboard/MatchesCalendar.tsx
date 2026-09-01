@@ -86,11 +86,6 @@ export default function MatchesCalendar({
   return (
     <div className={styles.card}>
       <div className={styles.cardTitle}>Сыгранные матчи</div>
-      <p className={styles.hint}>
-        Всего {matches.length} матчей основной команды, влияющие на тренировку игроков — лига, кубок и товарищеские,
-        сгруппированы по сезонам, от недавних к самым старым. Предстоящие матчи, юношеская команда и Hattrick
-        Arena/Masters/лестницы сюда не входят. Нажмите на матч, чтобы открыть полный анализ.
-      </p>
       {currentGroup?.season === null && (
         <p className={styles.hint} style={{ marginTop: -8 }}>
           Номер сезона для этих матчей ещё не определён — потребуется ещё одна успешная синхронизация, пока сезон в
