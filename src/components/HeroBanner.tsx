@@ -22,7 +22,7 @@ export default function HeroBanner() {
             В .logoBallGroup, а не заменяет её transform напрямую, см.
             подробное объяснение там же). */}
         <div className={styles.logo}>
-          <svg className={styles.logoMark} viewBox="0 0 300 300" width="90" height="90" aria-hidden="true">
+          <svg className={styles.logoMark} viewBox="0 0 300 300" width="68" height="68" aria-hidden="true">
             <circle cx="150" cy="150" r="140" fill="none" stroke="#C9A227" strokeWidth="6" />
             <circle cx="150" cy="150" r="131" fill="#152C26" />
             <g className={styles.logoBallGroup} transform="translate(95,59) scale(0.2444)">
