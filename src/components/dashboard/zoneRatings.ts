@@ -426,7 +426,7 @@ export function formatSlotRatingTooltip(
   const headline =
     calibration && calibration.isPreliminary
       ? `Расчётный рейтинг на позиции ${roleLabel}: ${displayRating.toFixed(1)}★ ` +
-        `(ВРЕМЕННАЯ предварительная калибровка — грубое ручное приближение по 33 точкам из 3 матчей, не полноценная регрессия по этой роли; до калибровки: ${breakdown.rating.toFixed(2)})`
+        `(ВРЕМЕННАЯ предварительная калибровка — общая регрессия по 43 накопленным парам прогноз/факт, не полноценная регрессия по этой роли отдельно; до калибровки: ${breakdown.rating.toFixed(2)})`
       : calibration
         ? `Расчётный рейтинг на позиции ${roleLabel}: ${displayRating.toFixed(1)}★ ` +
           `(откалибровано по ${calibration.sampleCount} реальным матчам игроков этой роли; до калибровки: ${breakdown.rating.toFixed(2)})`
