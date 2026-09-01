@@ -3,6 +3,7 @@ import Footer from "@/components/Footer";
 import YouthTable from "@/components/dashboard/YouthTable";
 import LeagueTable from "@/components/dashboard/LeagueTable";
 import YouthMatchesSection from "@/components/dashboard/YouthMatchesSection";
+import YouthTabs from "@/components/dashboard/YouthTabs";
 import DemoModeBanner from "@/components/dashboard/DemoModeBanner";
 import SyncFailedScreen from "@/components/dashboard/SyncFailedScreen";
 import overviewStyles from "@/components/dashboard/Overview.module.css";
@@ -57,65 +58,78 @@ export default async function YouthPage() {
 
   const youthLeague = hattrickUserId ? await getStoredYouthLeagueData(hattrickUserId) : null;
 
+  const squadContent = (
+    <>
+      {errors.length > 0 && (
+        <DemoModeBanner title="Не удалось загрузить часть данных академии" reasons={errors} />
+      )}
+
+      {SHOW_YOUTH_DEBUG_PANEL && (
+        <div className={styles.card}>
+          <div className={styles.balanceLabel}>Диагностика: youthplayerlist</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 8, fontSize: 12.5 }}>
+            <div>HTTP-статус: {playersHttpStatus ?? "запрос не выполнен (см. ошибку ниже)"}</div>
+            <div>Игроков в ответе (реально разобрано из &lt;PlayerList&gt;&lt;YouthPlayer&gt;): {rawPlayerCount}</div>
+            {playersError && <div style={{ color: "#c0503f" }}>Ошибка: {playersError}</div>}
+            <div style={{ marginTop: 6 }}>
+              Реальные навыки получены (youthplayerdetails): {detailsSucceeded} из {rawPlayerCount}
+            </div>
+            {detailsFailed.length > 0 && (
+              <div style={{ color: "#c0503f" }}>
+                Не удалось получить навыки для {detailsFailed.length} игрок(ов):
+                <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                  {detailsFailed.map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {rawFieldsSample.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                Сырые поля возраста/национальности (диагностика "не отображаются"):
+                <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                  {rawFieldsSample.map((p, i) => (
+                    <li key={i}>
+                      {p.name}: {p.ageLikeFields}; {p.countryLikeFields}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <YouthTable youthLevel={youthLevel ?? undefined} players={players ?? undefined} />
+    </>
+  );
+
+  const leagueContent = youthLeague ? (
+    <div className={overviewStyles.sideBySideRow}>
+      <LeagueTable rows={youthLeague.leagueRows} leagueName={youthLeague.leagueName} showZones={false} />
+      <YouthMatchesSection
+        ourTeamName={youthLeague.youthTeamName}
+        recentMatches={youthLeague.recentMatches}
+        upcomingMatches={youthLeague.upcomingMatches}
+        matrixTeams={youthLeague.resultsMatrixTeams}
+        resultsMatrix={youthLeague.resultsMatrix}
+      />
+    </div>
+  ) : (
+    <div className={styles.card}>
+      <div className={styles.cardTitle}>Юношеская лига</div>
+      <p>
+        Нет данных о юношеской лиге — либо у команды пока нет юношеской академии, либо её сезон ещё не начался.
+      </p>
+    </div>
+  );
+
   return (
     <>
       <Header />
       <main className={styles.page}>
         <div className={`container ${styles.stack}`} style={{ paddingBottom: 72 }}>
-          {errors.length > 0 && (
-            <DemoModeBanner title="Не удалось загрузить часть данных академии" reasons={errors} />
-          )}
-
-          {SHOW_YOUTH_DEBUG_PANEL && (
-            <div className={styles.card}>
-              <div className={styles.balanceLabel}>Диагностика: youthplayerlist</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 8, fontSize: 12.5 }}>
-                <div>HTTP-статус: {playersHttpStatus ?? "запрос не выполнен (см. ошибку ниже)"}</div>
-                <div>Игроков в ответе (реально разобрано из &lt;PlayerList&gt;&lt;YouthPlayer&gt;): {rawPlayerCount}</div>
-                {playersError && <div style={{ color: "#c0503f" }}>Ошибка: {playersError}</div>}
-                <div style={{ marginTop: 6 }}>
-                  Реальные навыки получены (youthplayerdetails): {detailsSucceeded} из {rawPlayerCount}
-                </div>
-                {detailsFailed.length > 0 && (
-                  <div style={{ color: "#c0503f" }}>
-                    Не удалось получить навыки для {detailsFailed.length} игрок(ов):
-                    <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-                      {detailsFailed.map((line, i) => (
-                        <li key={i}>{line}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {rawFieldsSample.length > 0 && (
-                  <div style={{ marginTop: 6 }}>
-                    Сырые поля возраста/национальности (диагностика "не отображаются"):
-                    <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-                      {rawFieldsSample.map((p, i) => (
-                        <li key={i}>
-                          {p.name}: {p.ageLikeFields}; {p.countryLikeFields}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {youthLeague && (
-            <div className={overviewStyles.sideBySideRow}>
-              <LeagueTable rows={youthLeague.leagueRows} leagueName={youthLeague.leagueName} showZones={false} />
-              <YouthMatchesSection
-                ourTeamName={youthLeague.youthTeamName}
-                recentMatches={youthLeague.recentMatches}
-                upcomingMatches={youthLeague.upcomingMatches}
-                matrixTeams={youthLeague.resultsMatrixTeams}
-                resultsMatrix={youthLeague.resultsMatrix}
-              />
-            </div>
-          )}
-
-          <YouthTable youthLevel={youthLevel ?? undefined} players={players ?? undefined} />
+          <YouthTabs squad={squadContent} league={leagueContent} />
         </div>
       </main>
       <Footer />
