@@ -314,6 +314,32 @@ const SUSPECTED_TACTIC_EVENT_IDS: Record<number, string> = {
   344: "предположительно: тактика 'Атака по флангам' перевела момент на фланг (TACTIC_ATTACK_ON_WINGS_USED)",
 };
 
+// Считает, сколько раз код из SUSPECTED_TACTIC_EVENT_IDS сработал на каждой
+// стороне матча — та же логика сопоставления SubjectTeamID, что уже
+// проверена в debugSuspectedTacticEventMinutes ниже, но без построчного
+// текста — для долгосрочного пассивного накопления в match_research_log
+// (см. чат "Автоматическая воронка сбора данных для будущей калибровки
+// тактик"), а не разового debug-вывода. Коды сами по себе остаются
+// гипотезой (68 подтверждён эмпирически на 2 матчах пользователем вручную,
+// 343/344 — нет) — эта функция просто копит числа, ничего не решает про их
+// смысл.
+function countTacticEventsBySide(
+  events: Record<string, unknown>[],
+  code: number,
+  homeTeamId: string,
+  awayTeamId: string,
+): { home: number; away: number } {
+  let home = 0;
+  let away = 0;
+  for (const e of events) {
+    if (Number(e.EventTypeID ?? NaN) !== code) continue;
+    const teamId = String(e.SubjectTeamID ?? e.SubjectTeamId ?? "");
+    if (teamId === homeTeamId) home++;
+    else if (teamId === awayTeamId) away++;
+  }
+  return { home, away };
+}
+
 // Коды EventTypeID вне диапазонов голов/непопаданий (100-190/200-290),
 // подтверждённые построчной сверкой с полным текстом enum MatchEventID
 // (HattrickOrganizer, core/model/match/MatchEvent.java) — НЕ атакующие
@@ -1731,6 +1757,19 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
       homeTeam?.TeamAttitude !== undefined && homeTeam.TeamAttitude !== null ? Number(homeTeam.TeamAttitude) : null;
     const awayTeamAttitudeRaw =
       awayTeam?.TeamAttitude !== undefined && awayTeam.TeamAttitude !== null ? Number(awayTeam.TeamAttitude) : null;
+
+    // Счётчики тактических событий (68/343/344) на воронку сбора данных
+    // калибровки тактик (см. чат "Автоматическая воронка сбора данных для
+    // будущей калибровки тактик") — тот же EventList, что уже используется
+    // выше для хронологии/дебага, разбирается заново локально (тот же
+    // приём, что и во всех остальных функциях этого файла, читающих
+    // EventList — общей переменной на весь resolveMatchAnalysis нет).
+    const researchEventList = match.EventList as Record<string, unknown> | undefined;
+    const researchEvents = asArray(researchEventList?.Event);
+    const pressingCounts = countTacticEventsBySide(researchEvents, 68, homeTeamId, awayTeamId);
+    const attackMiddleCounts = countTacticEventsBySide(researchEvents, 343, homeTeamId, awayTeamId);
+    const attackWingsCounts = countTacticEventsBySide(researchEvents, 344, homeTeamId, awayTeamId);
+
     saveMatchForResearch({
       matchId,
       matchDate: match.MatchDate !== undefined ? String(match.MatchDate) : null,
@@ -1750,6 +1789,28 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
       awayPowerIndex,
       homeGoals: homeAttackStats?.goals ?? null,
       awayGoals: awayAttackStats?.goals ?? null,
+      // researchEvents.length === 0 значит EventList вообще не пришёл (matchEvents
+      // не запрашивался/не вернул событий) — тогда честно null (не путать с
+      // "0 срабатываний", которое означает, что EventList пришёл, но кода в нём
+      // не было ни разу).
+      homePressingEvents: researchEvents.length > 0 ? pressingCounts.home : null,
+      awayPressingEvents: researchEvents.length > 0 ? pressingCounts.away : null,
+      homeAttackMiddleEvents: researchEvents.length > 0 ? attackMiddleCounts.home : null,
+      awayAttackMiddleEvents: researchEvents.length > 0 ? attackMiddleCounts.away : null,
+      homeAttackWingsEvents: researchEvents.length > 0 ? attackWingsCounts.home : null,
+      awayAttackWingsEvents: researchEvents.length > 0 ? attackWingsCounts.away : null,
+      homeChancesTotal: homeAttackStats?.chancesTotal ?? null,
+      homeChancesLeft: homeAttackStats?.chancesLeft ?? null,
+      homeChancesCenter: homeAttackStats?.chancesCenter ?? null,
+      homeChancesRight: homeAttackStats?.chancesRight ?? null,
+      homeChancesSpecial: homeAttackStats?.chancesSpecialEvents ?? null,
+      homeChancesOther: homeAttackStats?.chancesOther ?? null,
+      awayChancesTotal: awayAttackStats?.chancesTotal ?? null,
+      awayChancesLeft: awayAttackStats?.chancesLeft ?? null,
+      awayChancesCenter: awayAttackStats?.chancesCenter ?? null,
+      awayChancesRight: awayAttackStats?.chancesRight ?? null,
+      awayChancesSpecial: awayAttackStats?.chancesSpecialEvents ?? null,
+      awayChancesOther: awayAttackStats?.chancesOther ?? null,
     }).catch(() => {});
   } catch {
     // Никогда не должно ломать основной ответ.

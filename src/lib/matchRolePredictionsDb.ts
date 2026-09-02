@@ -1,6 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import type { SlotRole } from "@/data/pitchBoard";
-import type { SquadSkills } from "@/data/squad";
+import type { SquadSkills, PlayerSpecialty } from "@/data/squad";
 import type { RoleCalibration, PlayerRoleTrend } from "@/components/dashboard/zoneRatings";
 import { playerRoleTrendKey } from "@/components/dashboard/zoneRatings";
 
@@ -60,6 +60,14 @@ async function ensureTable(): Promise<void> {
   // Nullable — конкретное поле может не прийти в ответе CHPP.
   await db`ALTER TABLE match_role_predictions ADD COLUMN IF NOT EXISTS rating_stars_full NUMERIC`;
   await db`ALTER TABLE match_role_predictions ADD COLUMN IF NOT EXISTS rating_stars_end_of_match NUMERIC`;
+  // specialty (см. чат "Автоматическая воронка сбора данных для калибровки
+  // тактик") — денормализовано сюда из PlayerStatSnapshot на момент записи,
+  // а не только в player_weekly_stat_snapshots: это таблица ПО МАТЧАМ, а
+  // будущий анализ тактик (например, "опорник" — Мощный + оборонительная
+  // роль — vs командный Прессинг, код события 68) нужен именно на уровне
+  // конкретного игрока в конкретном матче, без JOIN'а к недельным снимкам.
+  // Тот же аддитивный приём — старые строки останутся NULL, не бэкфиллится.
+  await db`ALTER TABLE match_role_predictions ADD COLUMN IF NOT EXISTS specialty TEXT`;
   tableEnsured = true;
 }
 
@@ -93,6 +101,11 @@ export interface MatchRolePredictionRecord {
   // позиционную калибровку. null, если конкретное поле не пришло от CHPP.
   ratingStarsFull: number | null;
   ratingStarsEndOfMatch: number | null;
+  // Специализация игрока на момент этого матча (см. чат "Автоматическая
+  // воронка сбора данных для калибровки тактик") — денормализована из
+  // PlayerStatSnapshot вызывающим кодом. null, если снимок её не содержит
+  // (снимок сохранён до этого поля) или у игрока нет специализации.
+  specialty: PlayerSpecialty | null;
 }
 
 // Сохраняет пару "прогноз/реальность" для одного игрока в одном матче. В
@@ -112,13 +125,13 @@ export async function saveMatchRolePrediction(record: MatchRolePredictionRecord)
       match_id, player_id, match_date, role_id, slot_role,
       skills, experience, form, stamina, loyalty, is_club_product,
       formula_version, predicted_raw, actual_rating_stars,
-      rating_stars_full, rating_stars_end_of_match
+      rating_stars_full, rating_stars_end_of_match, specialty
     ) VALUES (
       ${record.matchId}, ${record.playerId}, ${toTimestamp(record.matchDate)}, ${record.roleId}, ${record.slotRole},
       ${JSON.stringify(record.skills)}, ${record.experience}, ${record.form}, ${record.stamina},
       ${record.loyalty}, ${record.isClubProduct},
       ${record.formulaVersion}, ${record.predictedRaw}, ${record.actualRatingStars},
-      ${record.ratingStarsFull}, ${record.ratingStarsEndOfMatch}
+      ${record.ratingStarsFull}, ${record.ratingStarsEndOfMatch}, ${record.specialty}
     )
     ON CONFLICT (match_id, player_id) DO NOTHING
   `;

@@ -64,6 +64,39 @@ async function ensureTable(): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  // Воронка сбора данных для будущей калибровки тактик (см. чат
+  // "Автоматическая воронка сбора данных для будущей калибровки тактик") —
+  // тот же аддитивный приём (ALTER TABLE ADD COLUMN IF NOT EXISTS), что и
+  // везде в проекте, старые строки просто останутся NULL.
+  //
+  // *_pressing_events/*_attack_middle_events/*_attack_wings_events — счётчик
+  // срабатываний кодов события 68/343/344 (SUSPECTED_TACTIC_EVENT_IDS,
+  // matchAnalysis.ts) на каждой стороне за матч. Коды пока НЕ подтверждены
+  // официально (68 подтверждён эмпирически на 2 матчах пользователем,
+  // 343/344 — только гипотеза) — сохраняем как есть, переинтерпретация
+  // кода не потребует новой миграции, только правки в коде, который их
+  // считает.
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS home_pressing_events SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_pressing_events SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS home_attack_middle_events SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_attack_middle_events SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS home_attack_wings_events SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_attack_wings_events SMALLINT`;
+  // NrOfChances* (MatchAttackStats, matchAnalysis.ts) — официальный эффект
+  // Прессинга измеряется именно здесь, не в RatingMidfield (см. чат "Полный
+  // аудит реализации тактик против официального руководства Hattrick").
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS home_chances_total SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS home_chances_left SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS home_chances_center SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS home_chances_right SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS home_chances_special SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS home_chances_other SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_chances_total SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_chances_left SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_chances_center SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_chances_right SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_chances_special SMALLINT`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_chances_other SMALLINT`;
   tableEnsured = true;
 }
 
@@ -88,6 +121,28 @@ export interface MatchResearchRecord {
   awayPowerIndex: number | null;
   homeGoals: number | null;
   awayGoals: number | null;
+  // Воронка сбора данных для калибровки тактик (см. чат "Автоматическая
+  // воронка сбора данных для будущей калибровки тактик") — счётчики
+  // тактических событий (68=Прессинг/343=Атака в центре/344=Атака по
+  // флангам, SUSPECTED_TACTIC_EVENT_IDS) и NrOfChances* по каждой стороне.
+  homePressingEvents: number | null;
+  awayPressingEvents: number | null;
+  homeAttackMiddleEvents: number | null;
+  awayAttackMiddleEvents: number | null;
+  homeAttackWingsEvents: number | null;
+  awayAttackWingsEvents: number | null;
+  homeChancesTotal: number | null;
+  homeChancesLeft: number | null;
+  homeChancesCenter: number | null;
+  homeChancesRight: number | null;
+  homeChancesSpecial: number | null;
+  homeChancesOther: number | null;
+  awayChancesTotal: number | null;
+  awayChancesLeft: number | null;
+  awayChancesCenter: number | null;
+  awayChancesRight: number | null;
+  awayChancesSpecial: number | null;
+  awayChancesOther: number | null;
 }
 
 function toTimestamp(raw: string | null): Date | null {
@@ -125,7 +180,13 @@ export async function saveMatchForResearch(record: MatchResearchRecord): Promise
       home_set_pieces_def, home_set_pieces_att,
       away_left_def, away_mid_def, away_right_def, away_midfield, away_left_att, away_mid_att, away_right_att,
       away_set_pieces_def, away_set_pieces_att,
-      home_power_index, away_power_index, home_goals, away_goals, updated_at
+      home_power_index, away_power_index, home_goals, away_goals,
+      home_pressing_events, away_pressing_events,
+      home_attack_middle_events, away_attack_middle_events,
+      home_attack_wings_events, away_attack_wings_events,
+      home_chances_total, home_chances_left, home_chances_center, home_chances_right, home_chances_special, home_chances_other,
+      away_chances_total, away_chances_left, away_chances_center, away_chances_right, away_chances_special, away_chances_other,
+      updated_at
     ) VALUES (
       ${record.matchId}, ${toTimestamp(record.matchDate)}, ${record.matchType}, ${record.cupId},
       ${record.homeTeamId}, ${record.awayTeamId}, ${record.homeFormation}, ${record.awayFormation},
@@ -136,7 +197,13 @@ export async function saveMatchForResearch(record: MatchResearchRecord): Promise
       ${az?.leftDef ?? null}, ${az?.midDef ?? null}, ${az?.rightDef ?? null}, ${az?.midfield ?? null},
       ${az?.leftAtt ?? null}, ${az?.midAtt ?? null}, ${az?.rightAtt ?? null},
       ${az?.setPiecesDef ?? null}, ${az?.setPiecesAtt ?? null},
-      ${record.homePowerIndex}, ${record.awayPowerIndex}, ${record.homeGoals}, ${record.awayGoals}, now()
+      ${record.homePowerIndex}, ${record.awayPowerIndex}, ${record.homeGoals}, ${record.awayGoals},
+      ${record.homePressingEvents}, ${record.awayPressingEvents},
+      ${record.homeAttackMiddleEvents}, ${record.awayAttackMiddleEvents},
+      ${record.homeAttackWingsEvents}, ${record.awayAttackWingsEvents},
+      ${record.homeChancesTotal}, ${record.homeChancesLeft}, ${record.homeChancesCenter}, ${record.homeChancesRight}, ${record.homeChancesSpecial}, ${record.homeChancesOther},
+      ${record.awayChancesTotal}, ${record.awayChancesLeft}, ${record.awayChancesCenter}, ${record.awayChancesRight}, ${record.awayChancesSpecial}, ${record.awayChancesOther},
+      now()
     )
     ON CONFLICT (match_id) DO UPDATE SET
       match_date = COALESCE(match_research_log.match_date, EXCLUDED.match_date),
@@ -172,6 +239,24 @@ export async function saveMatchForResearch(record: MatchResearchRecord): Promise
       away_power_index = COALESCE(match_research_log.away_power_index, EXCLUDED.away_power_index),
       home_goals = COALESCE(match_research_log.home_goals, EXCLUDED.home_goals),
       away_goals = COALESCE(match_research_log.away_goals, EXCLUDED.away_goals),
+      home_pressing_events = COALESCE(match_research_log.home_pressing_events, EXCLUDED.home_pressing_events),
+      away_pressing_events = COALESCE(match_research_log.away_pressing_events, EXCLUDED.away_pressing_events),
+      home_attack_middle_events = COALESCE(match_research_log.home_attack_middle_events, EXCLUDED.home_attack_middle_events),
+      away_attack_middle_events = COALESCE(match_research_log.away_attack_middle_events, EXCLUDED.away_attack_middle_events),
+      home_attack_wings_events = COALESCE(match_research_log.home_attack_wings_events, EXCLUDED.home_attack_wings_events),
+      away_attack_wings_events = COALESCE(match_research_log.away_attack_wings_events, EXCLUDED.away_attack_wings_events),
+      home_chances_total = COALESCE(match_research_log.home_chances_total, EXCLUDED.home_chances_total),
+      home_chances_left = COALESCE(match_research_log.home_chances_left, EXCLUDED.home_chances_left),
+      home_chances_center = COALESCE(match_research_log.home_chances_center, EXCLUDED.home_chances_center),
+      home_chances_right = COALESCE(match_research_log.home_chances_right, EXCLUDED.home_chances_right),
+      home_chances_special = COALESCE(match_research_log.home_chances_special, EXCLUDED.home_chances_special),
+      home_chances_other = COALESCE(match_research_log.home_chances_other, EXCLUDED.home_chances_other),
+      away_chances_total = COALESCE(match_research_log.away_chances_total, EXCLUDED.away_chances_total),
+      away_chances_left = COALESCE(match_research_log.away_chances_left, EXCLUDED.away_chances_left),
+      away_chances_center = COALESCE(match_research_log.away_chances_center, EXCLUDED.away_chances_center),
+      away_chances_right = COALESCE(match_research_log.away_chances_right, EXCLUDED.away_chances_right),
+      away_chances_special = COALESCE(match_research_log.away_chances_special, EXCLUDED.away_chances_special),
+      away_chances_other = COALESCE(match_research_log.away_chances_other, EXCLUDED.away_chances_other),
       updated_at = now()
   `;
 }

@@ -65,6 +65,12 @@ async function ensureTable(): Promise<void> {
   // таблица — это совместимое добавление колонок, PRIMARY KEY не меняется).
   await db`ALTER TABLE player_weekly_stat_snapshots ADD COLUMN IF NOT EXISTS loyalty INTEGER`;
   await db`ALTER TABLE player_weekly_stat_snapshots ADD COLUMN IF NOT EXISTS is_club_product BOOLEAN`;
+  // specialty (см. чат "Автоматическая воронка сбора данных для калибровки
+  // тактик") — тот же аддитивный приём, что и у loyalty/is_club_product
+  // выше. Копится только вперёд с этого момента, старые снимки — NULL, не
+  // бэкфиллится (задним числом специализацию игрока на момент прошлой
+  // недели восстановить нельзя).
+  await db`ALTER TABLE player_weekly_stat_snapshots ADD COLUMN IF NOT EXISTS specialty TEXT`;
   tableEnsured = true;
 }
 
@@ -77,6 +83,7 @@ function snapshotOf(p: SquadPlayer): PlayerStatSnapshot {
     tsi: p.tsi,
     loyalty: p.loyalty,
     isClubProduct: p.isClubProduct,
+    specialty: p.specialty,
   };
 }
 
@@ -91,7 +98,7 @@ export async function getPreviousWeekSnapshots(
   await ensureTable();
   const db = sql();
   const rows = await db`
-    SELECT DISTINCT ON (player_id) player_id, skills, experience, form, stamina, tsi, loyalty, is_club_product
+    SELECT DISTINCT ON (player_id) player_id, skills, experience, form, stamina, tsi, loyalty, is_club_product, specialty
     FROM player_weekly_stat_snapshots
     WHERE hattrick_user_id = ${hattrickUserId} AND training_week < ${currentWeek}
     ORDER BY player_id, training_week DESC
@@ -107,6 +114,7 @@ export async function getPreviousWeekSnapshots(
       tsi: row.tsi,
       loyalty: row.loyalty ?? undefined,
       isClubProduct: row.is_club_product ?? undefined,
+      specialty: row.specialty ?? undefined,
     };
   }
   return result;
@@ -128,7 +136,7 @@ export async function getSnapshotAsOf(
   await ensureTable();
   const db = sql();
   const rows = await db`
-    SELECT skills, experience, form, stamina, tsi, loyalty, is_club_product
+    SELECT skills, experience, form, stamina, tsi, loyalty, is_club_product, specialty
     FROM player_weekly_stat_snapshots
     WHERE hattrick_user_id = ${hattrickUserId} AND player_id = ${playerId} AND training_week <= ${atOrBeforeWeek}
     ORDER BY training_week DESC
@@ -144,6 +152,7 @@ export async function getSnapshotAsOf(
     tsi: row.tsi,
     loyalty: row.loyalty ?? undefined,
     isClubProduct: row.is_club_product ?? undefined,
+    specialty: row.specialty ?? undefined,
   };
 }
 
@@ -162,8 +171,8 @@ export async function saveCurrentWeekSnapshot(
     players.map((p) => {
       const snapshot = snapshotOf(p);
       return db`
-        INSERT INTO player_weekly_stat_snapshots (hattrick_user_id, player_id, training_week, skills, experience, form, stamina, tsi, loyalty, is_club_product, updated_at)
-        VALUES (${hattrickUserId}, ${p.id}, ${currentWeek}, ${JSON.stringify(snapshot.skills)}, ${snapshot.experience}, ${snapshot.form}, ${snapshot.stamina}, ${snapshot.tsi}, ${snapshot.loyalty ?? null}, ${snapshot.isClubProduct ?? null}, now())
+        INSERT INTO player_weekly_stat_snapshots (hattrick_user_id, player_id, training_week, skills, experience, form, stamina, tsi, loyalty, is_club_product, specialty, updated_at)
+        VALUES (${hattrickUserId}, ${p.id}, ${currentWeek}, ${JSON.stringify(snapshot.skills)}, ${snapshot.experience}, ${snapshot.form}, ${snapshot.stamina}, ${snapshot.tsi}, ${snapshot.loyalty ?? null}, ${snapshot.isClubProduct ?? null}, ${snapshot.specialty ?? null}, now())
         ON CONFLICT (hattrick_user_id, player_id, training_week)
         DO UPDATE SET
           skills = EXCLUDED.skills,
@@ -173,6 +182,7 @@ export async function saveCurrentWeekSnapshot(
           tsi = EXCLUDED.tsi,
           loyalty = EXCLUDED.loyalty,
           is_club_product = EXCLUDED.is_club_product,
+          specialty = EXCLUDED.specialty,
           updated_at = now()
       `;
     }),
