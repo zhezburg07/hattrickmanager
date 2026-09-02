@@ -97,6 +97,19 @@ async function ensureTable(): Promise<void> {
   await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_chances_right SMALLINT`;
   await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_chances_special SMALLINT`;
   await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_chances_other SMALLINT`;
+  // Производный сигнал для условия официального бонуса Контратак ("работает
+  // только если полузащита ПРОИГРЫВАЕТ сопернику, без учёта самого 7%-
+  // снижения" — см. чат "Полный аудит реализации тактик" и docs/
+  // hattrick-official-rules.md, раздел "Матч: Тактики"). Сам условный бонус
+  // (доп. шансы при перехвате) НЕ реализован — это только сырой признак для
+  // будущего статистического анализа, когда данных накопится достаточно:
+  // сравнивается ли слабость полузащиты именно у команд с TacticType=2
+  // (Контратаки) с тем, что происходит у них с NrOfChances/голами. Тривиально
+  // вычисляется из homeZones.midfield/awayZones.midfield, уже читаемых на
+  // этой же странице разбора матча — null, если хотя бы одна из сторон не
+  // дала зональные рейтинги (не гадаем на неполных данных).
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS home_midfield_weaker BOOLEAN`;
+  await db`ALTER TABLE match_research_log ADD COLUMN IF NOT EXISTS away_midfield_weaker BOOLEAN`;
   tableEnsured = true;
 }
 
@@ -143,6 +156,10 @@ export interface MatchResearchRecord {
   awayChancesRight: number | null;
   awayChancesSpecial: number | null;
   awayChancesOther: number | null;
+  // Сырой признак для условия бонуса Контратак — см. комментарий у ALTER
+  // TABLE выше. null, если homeZones/awayZones.midfield недоступны.
+  homeMidfieldWeaker: boolean | null;
+  awayMidfieldWeaker: boolean | null;
 }
 
 function toTimestamp(raw: string | null): Date | null {
@@ -186,6 +203,7 @@ export async function saveMatchForResearch(record: MatchResearchRecord): Promise
       home_attack_wings_events, away_attack_wings_events,
       home_chances_total, home_chances_left, home_chances_center, home_chances_right, home_chances_special, home_chances_other,
       away_chances_total, away_chances_left, away_chances_center, away_chances_right, away_chances_special, away_chances_other,
+      home_midfield_weaker, away_midfield_weaker,
       updated_at
     ) VALUES (
       ${record.matchId}, ${toTimestamp(record.matchDate)}, ${record.matchType}, ${record.cupId},
@@ -203,6 +221,7 @@ export async function saveMatchForResearch(record: MatchResearchRecord): Promise
       ${record.homeAttackWingsEvents}, ${record.awayAttackWingsEvents},
       ${record.homeChancesTotal}, ${record.homeChancesLeft}, ${record.homeChancesCenter}, ${record.homeChancesRight}, ${record.homeChancesSpecial}, ${record.homeChancesOther},
       ${record.awayChancesTotal}, ${record.awayChancesLeft}, ${record.awayChancesCenter}, ${record.awayChancesRight}, ${record.awayChancesSpecial}, ${record.awayChancesOther},
+      ${record.homeMidfieldWeaker}, ${record.awayMidfieldWeaker},
       now()
     )
     ON CONFLICT (match_id) DO UPDATE SET
@@ -257,6 +276,8 @@ export async function saveMatchForResearch(record: MatchResearchRecord): Promise
       away_chances_right = COALESCE(match_research_log.away_chances_right, EXCLUDED.away_chances_right),
       away_chances_special = COALESCE(match_research_log.away_chances_special, EXCLUDED.away_chances_special),
       away_chances_other = COALESCE(match_research_log.away_chances_other, EXCLUDED.away_chances_other),
+      home_midfield_weaker = COALESCE(match_research_log.home_midfield_weaker, EXCLUDED.home_midfield_weaker),
+      away_midfield_weaker = COALESCE(match_research_log.away_midfield_weaker, EXCLUDED.away_midfield_weaker),
       updated_at = now()
   `;
 }

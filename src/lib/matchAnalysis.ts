@@ -1811,6 +1811,19 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
       awayChancesRight: awayAttackStats?.chancesRight ?? null,
       awayChancesSpecial: awayAttackStats?.chancesSpecialEvents ?? null,
       awayChancesOther: awayAttackStats?.chancesOther ?? null,
+      // Сырой признак для условия официального бонуса Контратак ("работает
+      // только если полузащита ПРОИГРЫВАЕТ сопернику" — см. чат "Полный
+      // аудит реализации тактик", docs/hattrick-official-rules.md) — сам
+      // условный бонус НЕ реализован, это только данные для будущего
+      // анализа. null, если хотя бы одна сторона не дала зональные рейтинги.
+      homeMidfieldWeaker:
+        homeZones?.midfield !== null && homeZones?.midfield !== undefined && awayZones?.midfield !== null && awayZones?.midfield !== undefined
+          ? homeZones.midfield < awayZones.midfield
+          : null,
+      awayMidfieldWeaker:
+        homeZones?.midfield !== null && homeZones?.midfield !== undefined && awayZones?.midfield !== null && awayZones?.midfield !== undefined
+          ? awayZones.midfield < homeZones.midfield
+          : null,
     }).catch(() => {});
   } catch {
     // Никогда не должно ломать основной ответ.
