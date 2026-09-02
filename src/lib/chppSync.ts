@@ -2408,6 +2408,12 @@ export interface LineupPageData {
   trainerPlayerId: number | undefined;
   teamMoraleValue: number | null;
   teamConfidenceValue: number | null;
+  // Опыт построения по 10 именованным формациям (training.xml, см. чат
+  // "formationExperience.ts: реализовать (подтверждено)") — {} если снимок
+  // ещё не содержит этого поля (старый снимок до этой правки) или training
+  // не синхронизировался вовсе; resolveFormationExperience в
+  // components/dashboard/formationExperience.ts это честно отличает от "0".
+  experienceByFormation: Record<string, number>;
 }
 
 export async function getStoredLineupData(hattrickUserId: string): Promise<LineupPageData> {
@@ -2435,6 +2441,7 @@ export async function getStoredLineupData(hattrickUserId: string): Promise<Lineu
     trainerPlayerId,
     teamMoraleValue: training?.moraleValue ?? null,
     teamConfidenceValue: training?.confidenceValue ?? null,
+    experienceByFormation: training?.experienceByFormation ?? {},
   };
 }
 

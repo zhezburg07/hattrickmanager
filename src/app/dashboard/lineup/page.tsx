@@ -27,25 +27,27 @@ export default async function LineupPage() {
     return <SyncFailedScreen lastError={syncStatus.lastError} />;
   }
 
-  const { players, error, opponentAnalysis, trainerPlayerId, teamMoraleValue, teamConfidenceValue } = hattrickUserId
-    ? await getStoredLineupData(hattrickUserId)
-    : {
-        players: null,
-        error: null,
-        opponentAnalysis: {
-          opponentTeamId: null,
-          opponentTeamName: null,
-          upcomingMatchDate: null,
-          formation: null,
-          lastMatch: null,
-          lastMatchUnavailableReason: null,
-          zoneStrength: { ratings: {}, available: false, unavailableReason: null },
+  const { players, error, opponentAnalysis, trainerPlayerId, teamMoraleValue, teamConfidenceValue, experienceByFormation } =
+    hattrickUserId
+      ? await getStoredLineupData(hattrickUserId)
+      : {
+          players: null,
           error: null,
-        },
-        trainerPlayerId: undefined,
-        teamMoraleValue: null,
-        teamConfidenceValue: null,
-      };
+          opponentAnalysis: {
+            opponentTeamId: null,
+            opponentTeamName: null,
+            upcomingMatchDate: null,
+            formation: null,
+            lastMatch: null,
+            lastMatchUnavailableReason: null,
+            zoneStrength: { ratings: {}, available: false, unavailableReason: null },
+            error: null,
+          },
+          trainerPlayerId: undefined,
+          teamMoraleValue: null,
+          teamConfidenceValue: null,
+          experienceByFormation: {} as Record<string, number>,
+        };
 
   const prevByPlayerId =
     players && hattrickUserId ? await getPreviousWeekSnapshots(hattrickUserId, trainingWeekKey(new Date())) : {};
@@ -96,6 +98,7 @@ export default async function LineupPage() {
               trends={trends}
               teamMoraleValue={teamMoraleValue}
               teamConfidenceValue={teamConfidenceValue}
+              experienceByFormation={experienceByFormation}
             />
           )}
         </div>

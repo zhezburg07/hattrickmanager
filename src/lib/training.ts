@@ -17,7 +17,36 @@ export interface RealTraining {
   // тогда контейнер пуст по документации клиента).
   moraleValue: number | null;
   confidenceValue: number | null;
+  // Опыт построения по каждой из 10 именованных формаций, которые Hattrick
+  // вообще отслеживает (см. чат "formationExperience.ts: реализовать
+  // (подтверждено)") — ключи вида "4-4-2" (тот же формат, что и
+  // detectFormationLabel в pitchBoard.ts), значения 0-20 (SkillLevel, та
+  // же шкала, что у обычных навыков). Построения вне этих 10 просто
+  // отсутствуют как ключ — см. resolveFormationExperience в
+  // components/dashboard/formationExperience.ts, там это честно "нет
+  // данных", а не 0.
+  experienceByFormation: Record<string, number>;
 }
+
+// Поля training.xml с опытом построения — ПОДТВЕРЖДЕНО по независимому
+// CHPP-клиенту github.com/lucianoq/hattrick, chpp/file_training.go:
+// Hattrick считает опыт только для этих 10 конкретных формаций (сумма
+// DEF+MID+FWD всегда 10 полевых игроков), не для произвольного сочетания,
+// которое допускает наше поле (pitchBoard.ts, slotCounts DEF:5/MID:5/FWD:3).
+// Ключи — тот же формат "D-M-F", что и detectFormationLabel в
+// pitchBoard.ts, для прямого сопоставления без отдельной таблицы соответствий.
+const EXPERIENCE_FORMATION_FIELDS: Record<string, string> = {
+  "4-4-2": "Experience442",
+  "4-3-3": "Experience433",
+  "4-5-1": "Experience451",
+  "3-5-2": "Experience352",
+  "5-3-2": "Experience532",
+  "3-4-3": "Experience343",
+  "5-4-1": "Experience541",
+  "5-2-3": "Experience523",
+  "5-5-0": "Experience550",
+  "2-5-3": "Experience253",
+};
 
 // Числовые коды TrainingType, которыми Hattrick отмечает базовые тренировки
 // одного навыка (0-7) — общеизвестная, стабильная часть схемы CHPP.
@@ -72,11 +101,20 @@ export function parseTrainingXml(xml: string): RealTraining {
   const intensity = team?.TrainingIntensity !== undefined ? Number(team.TrainingIntensity) : NaN;
   const staminaShare = team?.StaminaTrainingPart !== undefined ? Number(team.StaminaTrainingPart) : NaN;
 
+  const experienceByFormation: Record<string, number> = {};
+  for (const [label, field] of Object.entries(EXPERIENCE_FORMATION_FIELDS)) {
+    const raw = team?.[field];
+    if (raw === undefined) continue;
+    const n = Number(raw);
+    if (!Number.isNaN(n)) experienceByFormation[label] = n;
+  }
+
   return {
     typeKey: Number.isNaN(typeCode) ? null : (trainingTypeKeyByCode[typeCode] ?? null),
     intensity: Number.isNaN(intensity) ? null : intensity,
     staminaShare: Number.isNaN(staminaShare) ? null : staminaShare,
     moraleValue: parseAvailableValue(team?.Morale),
     confidenceValue: parseAvailableValue(team?.SelfConfidence),
+    experienceByFormation,
   };
 }

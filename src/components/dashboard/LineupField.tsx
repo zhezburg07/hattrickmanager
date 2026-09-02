@@ -4,7 +4,6 @@ import { useState } from "react";
 import type { Assignments, BoardSlot, RoleAccent, SlotRole } from "@/data/pitchBoard";
 import { roleAccent, roleFullLabel } from "@/data/pitchBoard";
 import {
-  formWord,
   positionAccentColor,
   positionGroupLabel,
   skillWordWithLevel,
@@ -27,7 +26,7 @@ import {
   type PlayerRoleTrend,
 } from "./zoneRatings";
 import { applicableInstructions, instructionArrow, instructionLabel, type PlayerInstruction } from "@/data/playerInstructions";
-import { formationExperienceHint } from "./formationExperience";
+import { formationExperienceHint, type FormationExperience } from "./formationExperience";
 import LineupSubsRow from "./LineupSubsRow";
 import styles from "./Lineup.module.css";
 
@@ -100,7 +99,7 @@ export default function LineupField({
   getInstruction,
   onSetInstruction,
   formationLabel,
-  experienceLevel,
+  formationExperience,
   onRecommend,
   calibrations,
   trends,
@@ -123,7 +122,7 @@ export default function LineupField({
   getInstruction: (playerId: number) => PlayerInstruction;
   onSetInstruction: (playerId: number, instruction: PlayerInstruction) => void;
   formationLabel: string;
-  experienceLevel: number | null;
+  formationExperience: FormationExperience;
   onRecommend: () => void;
   // Коэффициенты калибровки сырого прогноза к реальной шкале звёзд Hattrick
   // (см. чат "Калибровка позиционного рейтинга по реальным звёздам
@@ -202,8 +201,9 @@ export default function LineupField({
       <div className={styles.pitchHeaderStrip}>
         <span className={styles.pitchHeaderInfo}>
           Расстановка: <b>{formationLabel}</b>
-          {experienceLevel !== null && <> · {formWord(experienceLevel)}</>}
-          <span className={styles.infoHint} title={formationExperienceHint}>
+          {formationExperience.kind === "known" && <> · {skillWordWithLevel(formationExperience.level)}</>}
+          {formationExperience.kind === "unknown" && <> · опыт неизвестен</>}
+          <span className={styles.infoHint} title={formationExperienceHint(formationExperience)}>
             ⓘ
           </span>
         </span>

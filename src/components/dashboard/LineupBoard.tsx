@@ -20,7 +20,7 @@ import LineupPlayerDetails from "./LineupPlayerDetails";
 import OpponentAnalysis from "./OpponentAnalysis";
 import LineupTabs from "./LineupTabs";
 import { recommendLineup } from "./recommendLineup";
-import { formationExperienceLevel } from "./formationExperience";
+import { resolveFormationExperience } from "./formationExperience";
 import type { DragPayload } from "./dragPayload";
 import type { OpponentAnalysisResult } from "@/lib/opponentAnalysis";
 import type { RoleCalibration, PlayerRoleTrend } from "./zoneRatings";
@@ -95,6 +95,7 @@ export default function LineupBoard({
   trends,
   teamMoraleValue = null,
   teamConfidenceValue = null,
+  experienceByFormation = {},
 }: {
   players: SquadPlayer[];
   prevByPlayerId: Record<number, PlayerStatSnapshot | undefined>;
@@ -104,6 +105,7 @@ export default function LineupBoard({
   trends?: Record<string, PlayerRoleTrend>;
   teamMoraleValue?: number | null;
   teamConfidenceValue?: number | null;
+  experienceByFormation?: Record<string, number>;
 }) {
   const roster = players;
   const playersById = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
@@ -393,9 +395,9 @@ export default function LineupBoard({
   );
 
   const formationLabel = useMemo(() => detectFormationLabel(assignments), [assignments]);
-  const experienceLevel = useMemo(
-    () => formationExperienceLevel(formationLabel, fieldPlayerCount(assignments)),
-    [assignments, formationLabel],
+  const formationExperience = useMemo(
+    () => resolveFormationExperience(formationLabel, fieldPlayerCount(assignments), experienceByFormation),
+    [assignments, formationLabel, experienceByFormation],
   );
 
   // Капитаном и исполнителем стандартов можно назначить только игрока, реально
@@ -462,7 +464,7 @@ export default function LineupBoard({
           getInstruction={getInstruction}
           onSetInstruction={handleSetInstruction}
           formationLabel={formationLabel}
-          experienceLevel={experienceLevel}
+          formationExperience={formationExperience}
           onRecommend={handleRecommend}
           calibrations={calibrations}
           trends={trends}
