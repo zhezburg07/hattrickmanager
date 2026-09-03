@@ -14,13 +14,14 @@ export interface AnalyzableMatch {
   oppScore: number;
 }
 
-type ReportTab = "ratings" | "zones" | "attendance" | "timeline";
+type ReportTab = "ratings" | "zones" | "attendance" | "timeline" | "stats";
 
 const reportTabs: { key: ReportTab; label: string }[] = [
   { key: "ratings", label: "Рейтинги игроков" },
   { key: "zones", label: "Зоны поля" },
   { key: "attendance", label: "Посещаемость" },
   { key: "timeline", label: "Хронология" },
+  { key: "stats", label: "Статистика" },
 ];
 
 interface MatchPlayerRating {
@@ -118,6 +119,10 @@ interface MatchAnalysisResponse {
   weather: string | null;
   homeAttackStats: MatchAttackStats | null;
   awayAttackStats: MatchAttackStats | null;
+  homeYellowCards: number;
+  homeRedCards: number;
+  awayYellowCards: number;
+  awayRedCards: number;
   timeline: MatchTimelineEntry[] | null;
   timelineSource: "with-subs" | "without-subs" | null;
   timelineError: string | null;
@@ -234,6 +239,71 @@ function zoneSharePercent(own: number | null, opponentContest: number | null): n
   const total = o + p;
   if (total <= 0) return null;
   return Math.round((o / total) * 100);
+}
+
+// Декоративная иконка-"герб" — Hattrick не отдаёт через CHPP реальное
+// изображение герба клуба (нет такого поля ни у одной команды в
+// matchdetails/teamdetails), поэтому это условный щит, а не настоящий герб
+// конкретного клуба — тот же принцип, что и у AvatarIcon для игрока без
+// фото (см. PlayerDetailModal.tsx).
+function TeamCrestIcon() {
+  return (
+    <svg width="20" height="24" viewBox="0 0 20 24" fill="none" aria-hidden="true">
+      <path
+        d="M10 1l8 3v7c0 6-4 9.5-8 11-4-1.5-8-5-8-11V4l8-3z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// Строка сравнения одного показателя — та же визуальная схема, что и у
+// "Стандартов" на вкладке "Зоны поля" (значение слева/справа, полоса-доля
+// посередине, свой=зелёный/чужой=красный вне зависимости от смысла числа —
+// тот же принцип оформления по всему разделу зон).
+function StatCompareRow({
+  label,
+  homeRaw,
+  awayRaw,
+  homeDisplay,
+  awayDisplay,
+}: {
+  label: string;
+  homeRaw: number | null;
+  awayRaw: number | null;
+  homeDisplay: string;
+  awayDisplay: string;
+}) {
+  const homeShare = zoneSharePercent(homeRaw, awayRaw) ?? 50;
+  return (
+    <div className={styles.zoneRow}>
+      <div className={styles.zoneSide}>
+        <span className={styles.zoneShare}>{homeDisplay}</span>
+      </div>
+      <div className={styles.zoneLabel}>
+        {label}
+        <div className={styles.zoneBar} style={{ marginTop: 6 }}>
+          <div className={styles.zoneBarOwn} style={{ width: `${homeShare}%` }} />
+          <div className={styles.zoneBarOpp} style={{ width: `${100 - homeShare}%` }} />
+        </div>
+      </div>
+      <div className={`${styles.zoneSide} ${styles.zoneSideRight}`}>
+        <span className={styles.zoneShare}>{awayDisplay}</span>
+      </div>
+    </div>
+  );
+}
+
+// Голы/(Голы+Нереализованные) — по запросу. null, если хотя бы одно из двух
+// чисел неизвестно, или сумма нулевая (без единой попытки процент реализации
+// не имеет смысла, а не "0%").
+function conversionPercent(goals: number | null | undefined, missed: number | null | undefined): number | null {
+  if (goals === null || goals === undefined || missed === null || missed === undefined) return null;
+  const total = goals + missed;
+  if (total <= 0) return null;
+  return Math.round((goals / total) * 100);
 }
 
 const NO_DATA = "нет данных";
@@ -454,6 +524,10 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
             weather: null,
             homeAttackStats: null,
             awayAttackStats: null,
+            homeYellowCards: 0,
+            homeRedCards: 0,
+            awayYellowCards: 0,
+            awayRedCards: 0,
             timeline: null,
             timelineSource: null,
             timelineError: "Не удалось загрузить",
@@ -784,6 +858,95 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                       </p>
                     </>
                   )
+                )}
+              </div>
+            )}
+
+            {tab === "stats" && (
+              <div className={styles.pitchOverlayPanel}>
+                {!data.homeAttackStats && !data.awayAttackStats ? (
+                  <p className={styles.cardTitle} style={{ fontWeight: 400, textTransform: "none" }}>
+                    Статистика атакующих моментов недоступна для этого матча.
+                  </p>
+                ) : (
+                  <>
+                    <div className={styles.zoneInfoPanel} style={{ marginBottom: 16 }}>
+                      <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColHome}`}>
+                        <TeamCrestIcon />
+                        <div className={styles.zoneInfoTeamName}>{data.homeTeamName || homeName}</div>
+                      </div>
+                      <div className={styles.zoneInfoDivider} />
+                      <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColAway}`}>
+                        <TeamCrestIcon />
+                        <div className={styles.zoneInfoTeamName}>{data.awayTeamName || awayName}</div>
+                      </div>
+                    </div>
+
+                    {(() => {
+                      const homeGoals = data.homeAttackStats?.goals ?? null;
+                      const awayGoals = data.awayAttackStats?.goals ?? null;
+                      const homeMissed = data.homeAttackStats?.missed ?? null;
+                      const awayMissed = data.awayAttackStats?.missed ?? null;
+                      const homePct = conversionPercent(homeGoals, homeMissed);
+                      const awayPct = conversionPercent(awayGoals, awayMissed);
+                      const homeSpecial = data.homeAttackStats?.chancesSpecialEvents ?? null;
+                      const awaySpecial = data.awayAttackStats?.chancesSpecialEvents ?? null;
+                      return (
+                        <>
+                          <StatCompareRow
+                            label="Голы"
+                            homeRaw={homeGoals}
+                            awayRaw={awayGoals}
+                            homeDisplay={fmtStat(homeGoals)}
+                            awayDisplay={fmtStat(awayGoals)}
+                          />
+                          <StatCompareRow
+                            label="Нереализованные моменты"
+                            homeRaw={homeMissed}
+                            awayRaw={awayMissed}
+                            homeDisplay={fmtStat(homeMissed)}
+                            awayDisplay={fmtStat(awayMissed)}
+                          />
+                          <StatCompareRow
+                            label="Процент реализации"
+                            homeRaw={homePct}
+                            awayRaw={awayPct}
+                            homeDisplay={homePct !== null ? `${homePct}%` : NO_DATA}
+                            awayDisplay={awayPct !== null ? `${awayPct}%` : NO_DATA}
+                          />
+                          <StatCompareRow
+                            label="Специальные события"
+                            homeRaw={homeSpecial}
+                            awayRaw={awaySpecial}
+                            homeDisplay={fmtStat(homeSpecial)}
+                            awayDisplay={fmtStat(awaySpecial)}
+                          />
+                          <StatCompareRow
+                            label="Жёлтые карточки"
+                            homeRaw={data.homeYellowCards}
+                            awayRaw={data.awayYellowCards}
+                            homeDisplay={String(data.homeYellowCards)}
+                            awayDisplay={String(data.awayYellowCards)}
+                          />
+                          <StatCompareRow
+                            label="Красные карточки"
+                            homeRaw={data.homeRedCards}
+                            awayRaw={data.awayRedCards}
+                            homeDisplay={String(data.homeRedCards)}
+                            awayDisplay={String(data.awayRedCards)}
+                          />
+                        </>
+                      );
+                    })()}
+
+                    <p style={{ fontSize: 11.5, color: "var(--color-text-muted)", marginTop: 14, marginBottom: 0 }}>
+                      Угловые и фолы Hattrick через CHPP не отдаёт (нет ни отдельного поля, ни надёжного способа
+                      посчитать их по тексту событий), поэтому вместо угловых показаны "Специальные события" —
+                      подтверждённое поле matchdetails (NrOfChancesSpecialEvents), в которое входят в том числе
+                      угловые, закончившиеся ударом по воротам, вместе с другими ситуативными моментами (ошибки
+                      защиты, скидки головой и т.п. — Hattrick не отдаёт их отдельно друг от друга).
+                    </p>
+                  </>
                 )}
               </div>
             )}

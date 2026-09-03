@@ -672,6 +672,14 @@ export interface MatchAnalysisResult {
   homeAttackStats: MatchAttackStats | null;
   awayAttackStats: MatchAttackStats | null;
 
+  // Карточки по командам — см. countCardsByTeam выше (Bookings/Booking,
+  // тот же подтверждённый контейнер, что уже используется в хронологии).
+  // Используется на вкладке "Статистика".
+  homeYellowCards: number;
+  homeRedCards: number;
+  awayYellowCards: number;
+  awayRedCards: number;
+
   timeline: MatchTimelineEntry[] | null;
   timelineSource: MatchTimelineSource | null;
   timelineError: string | null;
@@ -886,6 +894,30 @@ function parseGoalsAndCardsTimeline(
   }
   entries.sort((a, b) => a.minute - b.minute);
   return { entries, goalsRawCount: goals.length, bookingsRawCount: bookings.length };
+}
+
+// Количество жёлтых/красных карточек по командам за матч — тот же
+// подтверждённый контейнер Bookings/Booking, что и в parseGoalsAndCardsTimeline
+// выше (BookingTeamID/BookingType), просто агрегированный в число, а не в
+// список для хронологии. Используется на вкладке "Статистика" (см. чат
+// "Вкладка Статистика в разборе матча"). BookingType===2 — красная карточка
+// (подтверждено тем же независимым CHPP-клиентом, что и остальные поля
+// matchdetails), всё остальное — жёлтая.
+function countCardsByTeam(
+  match: Record<string, unknown>,
+  homeTeamId: string,
+): { home: { yellow: number; red: number }; away: { yellow: number; red: number } } {
+  const bookings = asArray((match.Bookings as Record<string, unknown> | undefined)?.Booking);
+  const home = { yellow: 0, red: 0 };
+  const away = { yellow: 0, red: 0 };
+  for (const b of bookings) {
+    const side = teamSideOf(String(b.BookingTeamID ?? ""), homeTeamId);
+    if (!side) continue;
+    const target = side === "home" ? home : away;
+    if (Number(b.BookingType ?? 0) === 2) target.red++;
+    else target.yellow++;
+  }
+  return { home, away };
 }
 
 // Травмы — ПОДТВЕРЖДЁННЫЙ реальный контейнер <Injuries><Injury> (см.
@@ -1445,6 +1477,10 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     weather: null,
     homeAttackStats: null,
     awayAttackStats: null,
+    homeYellowCards: 0,
+    homeRedCards: 0,
+    awayYellowCards: 0,
+    awayRedCards: 0,
     timeline: null,
     timelineSource: null,
     timelineError: null,
@@ -1581,6 +1617,21 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     debug.push(`погода: исключение при разборе — ${message}`);
+  }
+
+  let homeYellowCards = 0;
+  let homeRedCards = 0;
+  let awayYellowCards = 0;
+  let awayRedCards = 0;
+  try {
+    const cardCounts = countCardsByTeam(match, homeTeamId);
+    homeYellowCards = cardCounts.home.yellow;
+    homeRedCards = cardCounts.home.red;
+    awayYellowCards = cardCounts.away.yellow;
+    awayRedCards = cardCounts.away.red;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "неизвестная ошибка";
+    debug.push(`карточки по командам: исключение при разборе — ${message}`);
   }
 
   let homeAttackStats: MatchAttackStats | null = null;
@@ -1851,6 +1902,10 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     weather,
     homeAttackStats,
     awayAttackStats,
+    homeYellowCards,
+    homeRedCards,
+    awayYellowCards,
+    awayRedCards,
     timeline,
     timelineSource,
     timelineError,
