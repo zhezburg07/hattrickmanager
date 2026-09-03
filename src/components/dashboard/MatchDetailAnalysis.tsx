@@ -123,6 +123,8 @@ interface MatchAnalysisResponse {
   homeRedCards: number;
   awayYellowCards: number;
   awayRedCards: number;
+  homePossession: number | null;
+  awayPossession: number | null;
   timeline: MatchTimelineEntry[] | null;
   timelineSource: "with-subs" | "without-subs" | null;
   timelineError: string | null;
@@ -265,12 +267,14 @@ function TeamCrestIcon() {
 // тот же принцип оформления по всему разделу зон).
 function StatCompareRow({
   label,
+  labelTitle,
   homeRaw,
   awayRaw,
   homeDisplay,
   awayDisplay,
 }: {
   label: string;
+  labelTitle?: string;
   homeRaw: number | null;
   awayRaw: number | null;
   homeDisplay: string;
@@ -282,7 +286,7 @@ function StatCompareRow({
       <div className={styles.zoneSide}>
         <span className={styles.zoneShare}>{homeDisplay}</span>
       </div>
-      <div className={styles.zoneLabel}>
+      <div className={styles.zoneLabel} title={labelTitle}>
         {label}
         <div className={styles.zoneBar} style={{ marginTop: 6 }}>
           <div className={styles.zoneBarOwn} style={{ width: `${homeShare}%` }} />
@@ -307,6 +311,13 @@ function conversionPercent(goals: number | null | undefined, missed: number | nu
 }
 
 const NO_DATA = "нет данных";
+
+// Краткая подсказка вместо угловых/фолов (недоступны через CHPP — см. чат
+// "Вкладка Статистика в разборе матча"): угловые логируются только когда
+// доходят до удара по воротам (входят сюда же), фолы Hattrick не отдаёт
+// вообще ни в каком виде.
+const SPECIAL_EVENTS_HINT =
+  "Угловые и фолы отдельно CHPP не отдаёт. Здесь — подтверждённое поле NrOfChancesSpecialEvents: угловые, дошедшие до удара по воротам, вместе с другими ситуативными моментами (без разбивки).";
 
 function fmtStat(v: number | null | undefined): string {
   return v !== null && v !== undefined ? String(v) : NO_DATA;
@@ -528,6 +539,8 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
             homeRedCards: 0,
             awayYellowCards: 0,
             awayRedCards: 0,
+            homePossession: null,
+            awayPossession: null,
             timeline: null,
             timelineSource: null,
             timelineError: "Не удалось загрузить",
@@ -915,7 +928,15 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                             awayDisplay={awayPct !== null ? `${awayPct}%` : NO_DATA}
                           />
                           <StatCompareRow
+                            label="Владение мячом"
+                            homeRaw={data.homePossession}
+                            awayRaw={data.awayPossession}
+                            homeDisplay={data.homePossession !== null ? `${data.homePossession}%` : NO_DATA}
+                            awayDisplay={data.awayPossession !== null ? `${data.awayPossession}%` : NO_DATA}
+                          />
+                          <StatCompareRow
                             label="Специальные события"
+                            labelTitle={SPECIAL_EVENTS_HINT}
                             homeRaw={homeSpecial}
                             awayRaw={awaySpecial}
                             homeDisplay={fmtStat(homeSpecial)}
@@ -938,14 +959,6 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                         </>
                       );
                     })()}
-
-                    <p style={{ fontSize: 11.5, color: "var(--color-text-muted)", marginTop: 14, marginBottom: 0 }}>
-                      Угловые и фолы Hattrick через CHPP не отдаёт (нет ни отдельного поля, ни надёжного способа
-                      посчитать их по тексту событий), поэтому вместо угловых показаны "Специальные события" —
-                      подтверждённое поле matchdetails (NrOfChancesSpecialEvents), в которое входят в том числе
-                      угловые, закончившиеся ударом по воротам, вместе с другими ситуативными моментами (ошибки
-                      защиты, скидки головой и т.п. — Hattrick не отдаёт их отдельно друг от друга).
-                    </p>
                   </>
                 )}
               </div>

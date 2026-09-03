@@ -680,6 +680,11 @@ export interface MatchAnalysisResult {
   awayYellowCards: number;
   awayRedCards: number;
 
+  // Владение мячом (%) — см. computePossession выше. null, если CHPP не
+  // прислал ни одного из 4 полей вообще (не 0% — честное отсутствие данных).
+  homePossession: number | null;
+  awayPossession: number | null;
+
   timeline: MatchTimelineEntry[] | null;
   timelineSource: MatchTimelineSource | null;
   timelineError: string | null;
@@ -918,6 +923,31 @@ function countCardsByTeam(
     else target.yellow++;
   }
   return { home, away };
+}
+
+// Владение мячом — подтверждённые поля matchdetails.xml (независимый CHPP-
+// клиент github.com/lucianoq/hattrick, chpp/file_matchdetails.go):
+// PossessionFirstHalfHome/Away и PossessionSecondHalfHome/Away, оба
+// top-level поля самого MatchDetails (не внутри HomeTeam/AwayTeam, в
+// отличие от TacticType), в комментарии клиента прямо подписаны "Ball
+// possession in % for each team/half" — то есть Hattrick, вопреки тому, что
+// это текстовый симулятор, ЭТУ метрику всё же считает и отдаёт, в отличие
+// от угловых/фолов (см. countCardsByTeam выше). Итог за весь матч —
+// среднее двух половин (обе по 45 минут, поэтому простое среднее двух
+// официальных процентов равнозначно взвешенному по времени) — не
+// самостоятельно измеренное число, а прямое арифметическое среднее двух
+// подтверждённых полей. Если хотя бы одна половина не пришла для команды —
+// используется единственная пришедшая (без деления на 2); null — только
+// если не пришло вообще ни одного из 4 полей (сам матч слишком старый или
+// незавершённый).
+function computePossession(match: Record<string, unknown>): { home: number | null; away: number | null } | null {
+  const hf1 = numOrNull(match.PossessionFirstHalfHome);
+  const af1 = numOrNull(match.PossessionFirstHalfAway);
+  const hf2 = numOrNull(match.PossessionSecondHalfHome);
+  const af2 = numOrNull(match.PossessionSecondHalfAway);
+  if (hf1 === null && af1 === null && hf2 === null && af2 === null) return null;
+  const avg = (a: number | null, b: number | null) => (a !== null && b !== null ? Math.round((a + b) / 2) : (a ?? b));
+  return { home: avg(hf1, hf2), away: avg(af1, af2) };
 }
 
 // Травмы — ПОДТВЕРЖДЁННЫЙ реальный контейнер <Injuries><Injury> (см.
@@ -1481,6 +1511,8 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     homeRedCards: 0,
     awayYellowCards: 0,
     awayRedCards: 0,
+    homePossession: null,
+    awayPossession: null,
     timeline: null,
     timelineSource: null,
     timelineError: null,
@@ -1632,6 +1664,24 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
   } catch (err) {
     const message = err instanceof Error ? err.message : "неизвестная ошибка";
     debug.push(`карточки по командам: исключение при разборе — ${message}`);
+  }
+
+  let homePossession: number | null = null;
+  let awayPossession: number | null = null;
+  try {
+    const possession = computePossession(match);
+    homePossession = possession?.home ?? null;
+    awayPossession = possession?.away ?? null;
+    const fmtDebugPossession = (v: unknown) => (v === null || v === undefined ? "нет поля" : String(v));
+    debug.push(
+      `владение мячом — сырые поля: 1-й тайм ${fmtDebugPossession(match.PossessionFirstHalfHome)}/` +
+        `${fmtDebugPossession(match.PossessionFirstHalfAway)}, 2-й тайм ` +
+        `${fmtDebugPossession(match.PossessionSecondHalfHome)}/${fmtDebugPossession(match.PossessionSecondHalfAway)}, ` +
+        `итог (среднее по таймам) ${fmtDebugPossession(homePossession)}/${fmtDebugPossession(awayPossession)}`,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "неизвестная ошибка";
+    debug.push(`владение мячом: исключение при разборе — ${message}`);
   }
 
   let homeAttackStats: MatchAttackStats | null = null;
@@ -1906,6 +1956,8 @@ export async function resolveMatchAnalysis(tokens: StoredHattrickTokens, matchId
     homeRedCards,
     awayYellowCards,
     awayRedCards,
+    homePossession,
+    awayPossession,
     timeline,
     timelineSource,
     timelineError,
