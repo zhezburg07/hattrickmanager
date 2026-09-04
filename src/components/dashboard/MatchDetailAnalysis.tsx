@@ -243,24 +243,6 @@ function zoneSharePercent(own: number | null, opponentContest: number | null): n
   return Math.round((o / total) * 100);
 }
 
-// Декоративная иконка-"герб" — Hattrick не отдаёт через CHPP реальное
-// изображение герба клуба (нет такого поля ни у одной команды в
-// matchdetails/teamdetails), поэтому это условный щит, а не настоящий герб
-// конкретного клуба — тот же принцип, что и у AvatarIcon для игрока без
-// фото (см. PlayerDetailModal.tsx).
-function TeamCrestIcon() {
-  return (
-    <svg width="20" height="24" viewBox="0 0 20 24" fill="none" aria-hidden="true">
-      <path
-        d="M10 1l8 3v7c0 6-4 9.5-8 11-4-1.5-8-5-8-11V4l8-3z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 // Строка сравнения одного показателя — та же визуальная схема, что и у
 // "Стандартов" на вкладке "Зоны поля" (значение слева/справа, полоса-доля
 // посередине, свой=зелёный/чужой=красный вне зависимости от смысла числа —
@@ -883,18 +865,6 @@ export default function MatchDetailAnalysis({ match, ourTeamName }: { match: Ana
                   </p>
                 ) : (
                   <>
-                    <div className={styles.zoneInfoPanel} style={{ marginBottom: 16 }}>
-                      <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColHome}`}>
-                        <TeamCrestIcon />
-                        <div className={styles.zoneInfoTeamName}>{data.homeTeamName || homeName}</div>
-                      </div>
-                      <div className={styles.zoneInfoDivider} />
-                      <div className={`${styles.zoneInfoCol} ${styles.zoneInfoColAway}`}>
-                        <TeamCrestIcon />
-                        <div className={styles.zoneInfoTeamName}>{data.awayTeamName || awayName}</div>
-                      </div>
-                    </div>
-
                     {(() => {
                       const homeGoals = data.homeAttackStats?.goals ?? null;
                       const awayGoals = data.awayAttackStats?.goals ?? null;
